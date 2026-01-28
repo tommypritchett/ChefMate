@@ -1,6 +1,14 @@
-# ChefMate - AI Meal Planning & Food Management Platform
+# 🍳 ChefMate - AI-Powered Healthy Cooking App
 
-A mobile-first web application that helps users recreate fast food favorites in healthier versions at home, manage food inventory, reduce waste, and save money through AI-powered meal planning and smart shopping features.
+> Transform your favorite fast food into healthy, protein-rich meals with the power of AI
+
+[![React](https://img.shields.io/badge/React-18-blue?logo=react)](https://reactjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-Latest-green?logo=node.js)](https://nodejs.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-ORM-purple?logo=prisma)](https://prisma.io/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-GPT-orange?logo=openai)](https://openai.com/)
+
+ChefMate revolutionizes healthy cooking by transforming popular fast food items into nutritious, home-cooked meals. Using advanced AI and smart ingredient substitutions like Greek yogurt and 93% lean ground beef, we make healthy eating both delicious and accessible.
 
 ## ✨ Features
 
@@ -54,9 +62,11 @@ A mobile-first web application that helps users recreate fast food favorites in 
    ```bash
    cd backend
    npm install
-   npm run db:generate
-   npm run db:push
-   npm run db:seed
+   cp .env.example .env
+   # Add your OpenAI API key to .env
+   npx prisma generate
+   npx prisma db push
+   npx prisma db seed
    npm run build
    ```
 
@@ -78,9 +88,14 @@ A mobile-first web application that helps users recreate fast food favorites in 
 2. **Start the frontend (in a new terminal)**
    ```bash
    cd frontend
-   npm start
-   # App runs on http://localhost:3000
+   PORT=3002 npm start
+   # App runs on http://localhost:3002
    ```
+
+3. **Access the Application**
+   - Frontend: http://localhost:3002
+   - Backend: http://localhost:3001
+   - Test Login: `test@example.com` / `password123`
 
 ### Environment Variables
 
