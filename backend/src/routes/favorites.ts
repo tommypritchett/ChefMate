@@ -5,6 +5,81 @@ import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// ==================
+// FOLDERS
+// ==================
+
+// GET /api/favorites/folders
+router.get('/folders', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const folders = await prisma.recipeFolder.findMany({
+      where: { userId: req.user!.userId },
+      include: {
+        _count: {
+          select: { recipes: true }
+        }
+      },
+      orderBy: { sortOrder: 'asc' }
+    });
+    
+    res.json({ folders: folders.map(f => ({
+      ...f,
+      recipeCount: f._count.recipes
+    })) });
+  } catch (error) {
+    console.error('Get folders error:', error);
+    res.status(500).json({ error: 'Failed to fetch folders' });
+  }
+});
+
+// POST /api/favorites/folders
+router.post('/folders', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { name, description, icon, color } = req.body;
+    
+    const folder = await prisma.recipeFolder.create({
+      data: {
+        userId: req.user!.userId,
+        name,
+        description,
+        icon,
+        color
+      }
+    });
+    
+    res.status(201).json({ folder });
+  } catch (error) {
+    console.error('Create folder error:', error);
+    res.status(500).json({ error: 'Failed to create folder' });
+  }
+});
+
+// DELETE /api/favorites/folders/:id
+router.delete('/folders/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verify ownership
+    const folder = await prisma.recipeFolder.findFirst({
+      where: { id, userId: req.user!.userId }
+    });
+    
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+    
+    await prisma.recipeFolder.delete({ where: { id } });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete folder error:', error);
+    res.status(500).json({ error: 'Failed to delete folder' });
+  }
+});
+
+// ==================
+// SAVED RECIPES
+// ==================
+
 // GET /api/favorites
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {

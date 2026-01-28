@@ -1,38 +1,78 @@
-import React, { useState } from 'react';
-import { Heart, FolderPlus, X, Folder, Plus, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Heart, FolderPlus, X, Folder, Plus, Trash2, Loader } from 'lucide-react';
+import { favoritesApi } from '../services/api';
+
+interface FolderType {
+  id: string;
+  name: string;
+  description?: string;
+  recipeCount: number;
+  recipes: Array<{id: string, title: string, brand?: string, image: string}>;
+}
 
 const FavoritesPage: React.FC = () => {
+  const [loading, setLoading] = useState(true);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderDescription, setNewFolderDescription] = useState('');
-  const [folders, setFolders] = useState<Array<{id: string, name: string, description?: string, recipeCount: number, recipes: Array<{id: string, title: string, brand?: string, image: string}>}>>([]);
-  const [selectedFolder, setSelectedFolder] = useState<any>(null);
+  const [folders, setFolders] = useState<FolderType[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<FolderType | null>(null);
   const [showAddRecipeModal, setShowAddRecipeModal] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   // Sample recipes that can be added to folders
   const availableRecipes = [
-    { id: '1', title: 'Protein-Packed Big Mac', brand: "McDonald's", image: '🍔' },
-    { id: '2', title: 'Crispy Baked KFC Chicken', brand: 'KFC', image: '🍗' },
-    { id: '3', title: 'Healthy Crunchwrap Supreme', brand: 'Taco Bell', image: '🌯' },
-    { id: '4', title: 'Greek Yogurt Chicken Tikka', brand: 'Crock Pot', image: '🍛' },
-    { id: '5', title: 'Turkey & Sweet Potato Chili', brand: 'Crock Pot', image: '🍲' }
+    { id: 'mock-1', title: 'Protein-Packed Big Mac', brand: "McDonald's", image: '🍔' },
+    { id: 'mock-2', title: 'Crispy Baked KFC Chicken', brand: 'KFC', image: '🍗' },
+    { id: 'mock-3', title: 'Healthy Crunchwrap Supreme', brand: 'Taco Bell', image: '🌯' },
+    { id: 'mock-4', title: 'Greek Yogurt Chicken Tikka', brand: 'Crock Pot', image: '🍛' },
+    { id: 'mock-5', title: 'Turkey & Sweet Potato Chili', brand: 'Crock Pot', image: '🍲' }
   ];
+
+  useEffect(() => {
+    loadFolders();
+  }, []);
+
+  const loadFolders = async () => {
+    try {
+      setLoading(true);
+      const response = await favoritesApi.getFolders();
+      const mappedFolders = (response.folders || []).map((f: any) => ({
+        id: f.id,
+        name: f.name,
+        description: f.description,
+        recipeCount: f.recipeCount || 0,
+        recipes: []
+      }));
+      setFolders(mappedFolders);
+    } catch (error) {
+      console.error('Failed to load folders:', error);
+      setFolders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
   
-  const handleCreateFolder = () => {
+  const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     
-    const newFolder = {
-      id: Date.now().toString(),
-      name: newFolderName,
-      description: newFolderDescription,
-      recipeCount: 0,
-      recipes: []
-    };
-    
-    setFolders([...folders, newFolder]);
-    setNewFolderName('');
-    setNewFolderDescription('');
-    setShowNewFolderModal(false);
+    setIsCreating(true);
+    try {
+      await favoritesApi.createFolder({
+        name: newFolderName,
+        description: newFolderDescription
+      });
+      
+      await loadFolders();
+      setNewFolderName('');
+      setNewFolderDescription('');
+      setShowNewFolderModal(false);
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      alert('Failed to create folder. Please make sure you are logged in.');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const addRecipeToFolder = (recipeId: string) => {
@@ -96,7 +136,12 @@ const FavoritesPage: React.FC = () => {
       </div>
 
       {/* Folders Display */}
-      {folders.length === 0 ? (
+      {loading ? (
+        <div className="card p-12 text-center">
+          <Loader className="w-8 h-8 mx-auto animate-spin text-primary mb-4" />
+          <p className="text-gray-500">Loading folders...</p>
+        </div>
+      ) : folders.length === 0 ? (
         /* Empty State */
         <div className="card p-12 text-center">
           <Heart className="w-16 h-16 mx-auto text-gray-300 mb-4" />
@@ -196,15 +241,23 @@ const FavoritesPage: React.FC = () => {
               <button 
                 onClick={() => setShowNewFolderModal(false)}
                 className="btn btn-secondary flex-1"
+                disabled={isCreating}
               >
                 Cancel
               </button>
               <button 
                 onClick={handleCreateFolder}
-                disabled={!newFolderName.trim()}
+                disabled={!newFolderName.trim() || isCreating}
                 className="btn btn-primary flex-1"
               >
-                Create Folder
+                {isCreating ? (
+                  <>
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Folder'
+                )}
               </button>
             </div>
           </div>

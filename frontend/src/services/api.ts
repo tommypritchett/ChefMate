@@ -117,6 +117,27 @@ export const aiApi = {
 
 // Favorites API
 export const favoritesApi = {
+  // Folders
+  getFolders: async (): Promise<{ folders: any[] }> => {
+    const response = await api.get('/favorites/folders');
+    return response.data;
+  },
+
+  createFolder: async (data: {
+    name: string;
+    description?: string;
+    icon?: string;
+    color?: string;
+  }): Promise<{ folder: any }> => {
+    const response = await api.post('/favorites/folders', data);
+    return response.data;
+  },
+
+  deleteFolder: async (id: string): Promise<void> => {
+    await api.delete(`/favorites/folders/${id}`);
+  },
+
+  // Saved Recipes
   getFavorites: async (): Promise<{ savedRecipes: any[] }> => {
     const response = await api.get('/favorites');
     return response.data;
