@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Plus, ExternalLink, X, Trash2, Check } from 'lucide-react';
-// import { shoppingApi } from '../services/api';
+import { ShoppingCart, Plus, ExternalLink, X, Trash2, Check, Loader } from 'lucide-react';
+import { shoppingApi } from '../services/api';
 
 interface ShoppingList {
   id: string;
@@ -33,88 +33,125 @@ const ShoppingListsPage: React.FC = () => {
     loadShoppingLists();
   }, []);
 
+  // Sync selectedList when lists update
+  useEffect(() => {
+    if (selectedList) {
+      const updated = lists.find(l => l.id === selectedList.id);
+      if (updated) {
+        setSelectedList(updated);
+      }
+    }
+  }, [lists]);
+
   const loadShoppingLists = async () => {
     try {
       setLoading(true);
-      // For now, we'll use mock data since the API might not have full shopping list items support
-      setLists([
-        {
-          id: '1',
-          name: 'Weekly Groceries',
-          description: 'Regular weekly shopping',
-          createdAt: new Date().toISOString(),
-          isActive: true,
-          items: [
-            { id: '1', name: 'Greek Yogurt', quantity: 2, unit: 'cups', isCompleted: false, category: 'dairy' },
-            { id: '2', name: 'Chicken Breast', quantity: 2, unit: 'lbs', isCompleted: true, category: 'protein' },
-            { id: '3', name: 'Spinach', quantity: 1, unit: 'bag', isCompleted: false, category: 'vegetables' }
-          ]
-        }
-      ]);
+      const response = await shoppingApi.getLists();
+      // Map backend data to frontend format
+      const mappedLists = (response.lists || []).map((list: any) => ({
+        id: list.id,
+        name: list.name,
+        description: list.description,
+        createdAt: list.createdAt,
+        isActive: list.isActive,
+        items: (list.items || []).map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          isCompleted: item.isChecked || false,
+          category: item.category
+        }))
+      }));
+      setLists(mappedLists);
     } catch (error) {
       console.error('Failed to load shopping lists:', error);
+      // Fallback to empty array, user needs to create lists
       setLists([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateList = () => {
+  const handleCreateList = async () => {
     if (!newListName.trim()) return;
     
-    const newList: ShoppingList = {
-      id: Date.now().toString(),
-      name: newListName,
-      description: newListDescription,
-      createdAt: new Date().toISOString(),
-      isActive: true,
-      items: []
-    };
-    
-    setLists([newList, ...lists]);
-    setNewListName('');
-    setNewListDescription('');
-    setShowNewListModal(false);
+    try {
+      await shoppingApi.createList({
+        name: newListName,
+        description: newListDescription,
+        sourceType: 'manual'
+      });
+      
+      // Reload lists from backend
+      await loadShoppingLists();
+      setNewListName('');
+      setNewListDescription('');
+      setShowNewListModal(false);
+    } catch (error) {
+      console.error('Failed to create list:', error);
+      alert('Failed to create shopping list. Please make sure you are logged in.');
+    }
   };
 
-  const handleAddItem = (listId: string) => {
+  const handleAddItem = async (listId: string) => {
     if (!newItemName.trim()) return;
     
-    setLists(lists.map(list => 
-      list.id === listId 
-        ? {
-            ...list,
-            items: [
-              ...list.items,
-              {
-                id: Date.now().toString(),
-                name: newItemName,
-                isCompleted: false
-              }
-            ]
-          }
-        : list
-    ));
-    setNewItemName('');
+    try {
+      await shoppingApi.addItem(listId, {
+        name: newItemName
+      });
+      
+      // Reload lists and update selectedList
+      await loadShoppingLists();
+      setNewItemName('');
+    } catch (error) {
+      console.error('Failed to add item:', error);
+      alert('Failed to add item. Please try again.');
+    }
   };
 
-  const toggleItemCompleted = (listId: string, itemId: string) => {
-    setLists(lists.map(list =>
-      list.id === listId
+  const toggleItemCompleted = async (listId: string, itemId: string) => {
+    // Find current state
+    const list = lists.find(l => l.id === listId);
+    const item = list?.items.find(i => i.id === itemId);
+    if (!item) return;
+    
+    // Optimistic update for better UX
+    setLists(lists.map(l =>
+      l.id === listId
         ? {
-            ...list,
-            items: list.items.map(item =>
-              item.id === itemId
-                ? { ...item, isCompleted: !item.isCompleted }
-                : item
+            ...l,
+            items: l.items.map(i =>
+              i.id === itemId
+                ? { ...i, isCompleted: !i.isCompleted }
+                : i
             )
           }
-        : list
+        : l
     ));
+    
+    try {
+      await shoppingApi.updateItem(listId, itemId, {
+        isChecked: !item.isCompleted
+      });
+    } catch (error) {
+      console.error('Failed to update item:', error);
+      // Revert on error
+      await loadShoppingLists();
+    }
   };
 
-  const deleteList = (listId: string) => {
-    setLists(lists.filter(list => list.id !== listId));
+  const deleteList = async (listId: string) => {
+    if (!window.confirm('Are you sure you want to delete this list?')) return;
+    
+    try {
+      await shoppingApi.deleteList(listId);
+      setLists(lists.filter(list => list.id !== listId));
+    } catch (error) {
+      console.error('Failed to delete list:', error);
+      alert('Failed to delete shopping list.');
+    }
   };
   return (
     <div className="space-y-6">

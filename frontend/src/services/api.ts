@@ -192,6 +192,27 @@ export const shoppingApi = {
   deleteList: async (id: string): Promise<void> => {
     await api.delete(`/shopping-lists/${id}`);
   },
+
+  addItem: async (listId: string, data: {
+    name: string;
+    quantity?: number;
+    unit?: string;
+    category?: string;
+  }): Promise<{ item: any }> => {
+    const response = await api.post(`/shopping-lists/${listId}/items`, data);
+    return response.data;
+  },
+
+  updateItem: async (listId: string, itemId: string, data: {
+    isChecked?: boolean;
+  }): Promise<{ item: any }> => {
+    const response = await api.patch(`/shopping-lists/${listId}/items/${itemId}`, data);
+    return response.data;
+  },
+
+  deleteItem: async (listId: string, itemId: string): Promise<void> => {
+    await api.delete(`/shopping-lists/${listId}/items/${itemId}`);
+  },
 };
 
 export default api;

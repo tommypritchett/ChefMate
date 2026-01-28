@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Search, Filter, Sparkles, X, Clock, Users, ChefHat, Heart, ShoppingCart } from 'lucide-react';
+import { Search, Filter, Sparkles, X, Clock, Users, ChefHat, Heart, ShoppingCart, Bookmark, Loader } from 'lucide-react';
 import AIRecipeGenerator from '../components/recipe/AIRecipeGenerator';
+import { favoritesApi, shoppingApi } from '../services/api';
 
 interface Recipe {
   title: string;
@@ -17,6 +18,56 @@ interface Recipe {
 const RecipesPage: React.FC = () => {
   const [showAIGenerator, setShowAIGenerator] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedRecipes, setSavedRecipes] = useState<Set<string>>(new Set());
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+
+  const handleSaveRecipe = async (recipe: Recipe) => {
+    if (!recipe) return;
+    
+    setIsSaving(true);
+    try {
+      // Generate a mock ID based on the recipe title for pre-defined recipes
+      const recipeId = `mock-predefined-${recipe.title.toLowerCase().replace(/\s+/g, '-')}`;
+      
+      console.log('Saving recipe:', recipeId);
+      await favoritesApi.saveRecipe({
+        recipeId,
+        notes: `${recipe.brand} - ${recipe.description}`
+      });
+      
+      setSavedRecipes(prev => new Set(prev).add(recipe.title));
+      alert('Recipe saved to favorites!');
+    } catch (err) {
+      console.error('Failed to save recipe:', err);
+      alert('Failed to save recipe. Please make sure you are logged in.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddToShoppingList = async (recipe: Recipe) => {
+    if (!recipe || !recipe.ingredients) return;
+    
+    setIsAddingToCart(true);
+    try {
+      const recipeId = `mock-predefined-${recipe.title.toLowerCase().replace(/\s+/g, '-')}`;
+      
+      await shoppingApi.createList({
+        name: `${recipe.title} Ingredients`,
+        description: `Shopping list for ${recipe.title}`,
+        sourceType: 'recipe',
+        sourceRecipeId: recipeId
+      });
+      
+      alert('Shopping list created!');
+    } catch (err) {
+      console.error('Failed to create shopping list:', err);
+      alert('Failed to create shopping list. Please make sure you are logged in.');
+    } finally {
+      setIsAddingToCart(false);
+    }
+  };
 
   const recipeData: Recipe[] = [
     {
@@ -447,12 +498,30 @@ const RecipesPage: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="flex gap-4">
-                <button className="btn btn-primary flex-1">
-                  <Heart className="w-4 h-4 mr-2" />
-                  Save Recipe
+                <button 
+                  className={`btn flex-1 ${savedRecipes.has(selectedRecipe.title) ? 'btn-secondary' : 'btn-primary'}`}
+                  onClick={() => handleSaveRecipe(selectedRecipe)}
+                  disabled={isSaving || savedRecipes.has(selectedRecipe.title)}
+                >
+                  {isSaving ? (
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  ) : savedRecipes.has(selectedRecipe.title) ? (
+                    <Bookmark className="w-4 h-4 mr-2" />
+                  ) : (
+                    <Heart className="w-4 h-4 mr-2" />
+                  )}
+                  {savedRecipes.has(selectedRecipe.title) ? 'Saved!' : 'Save Recipe'}
                 </button>
-                <button className="btn btn-secondary flex-1">
-                  <ShoppingCart className="w-4 h-4 mr-2" />
+                <button 
+                  className="btn btn-secondary flex-1"
+                  onClick={() => handleAddToShoppingList(selectedRecipe)}
+                  disabled={isAddingToCart}
+                >
+                  {isAddingToCart ? (
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <ShoppingCart className="w-4 h-4 mr-2" />
+                  )}
                   Add to Shopping List
                 </button>
               </div>
