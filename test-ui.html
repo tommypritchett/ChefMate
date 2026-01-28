@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ChefMate - AI Recipe Generator</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .container { background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        input, button, textarea, select { padding: 10px; margin: 5px; border: 1px solid #ddd; border-radius: 5px; }
+        button { background: #007bff; color: white; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { background: white; padding: 15px; border-radius: 5px; margin-top: 10px; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>🍔 ChefMate - AI-Powered Fast Food Recreation</h1>
+    
+    <div class="container">
+        <h2>1. Login</h2>
+        <input type="email" id="email" placeholder="Email" value="test@example.com">
+        <input type="password" id="password" placeholder="Password" value="test123">
+        <button onclick="login()">Login</button>
+        <button onclick="register()">Register</button>
+        <div id="authResult"></div>
+    </div>
+
+    <div class="container">
+        <h2>2. Generate AI Recipe</h2>
+        <select id="fastFood">
+            <option value="McDonald's Big Mac">McDonald's Big Mac</option>
+            <option value="KFC Original Recipe Chicken">KFC Original Recipe</option>
+            <option value="Taco Bell Crunchwrap Supreme">Taco Bell Crunchwrap</option>
+            <option value="Burger King Whopper">Burger King Whopper</option>
+            <option value="Pizza Hut Pepperoni Pizza">Pizza Hut Pizza</option>
+        </select>
+        <br>
+        <button onclick="generateRecipe()">Generate Healthy Recipe</button>
+        <div id="recipeResult"></div>
+    </div>
+
+    <div class="container">
+        <h2>3. AI Chat Assistant</h2>
+        <textarea id="chatMessage" placeholder="Ask cooking questions..." rows="3" cols="50">How can I make healthier fried chicken?</textarea>
+        <br>
+        <button onclick="chatWithAI()">Ask Chef AI</button>
+        <div id="chatResult"></div>
+    </div>
+
+    <script>
+        let authToken = '';
+        
+        async function register() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        email, password, 
+                        firstName: 'Test', 
+                        lastName: 'User' 
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.token) {
+                    authToken = data.token;
+                    document.getElementById('authResult').innerHTML = 
+                        '<div class="success">✅ Registered & Logged In!</div>';
+                } else {
+                    document.getElementById('authResult').innerHTML = 
+                        '<div class="error">❌ ' + (data.error || 'Registration failed') + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('authResult').innerHTML = 
+                    '<div class="error">❌ Connection error: ' + error.message + '</div>';
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.token) {
+                    authToken = data.token;
+                    document.getElementById('authResult').innerHTML = 
+                        '<div class="success">✅ Logged In Successfully!</div>';
+                } else {
+                    document.getElementById('authResult').innerHTML = 
+                        '<div class="error">❌ ' + (data.error || 'Login failed') + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('authResult').innerHTML = 
+                    '<div class="error">❌ Connection error: ' + error.message + '</div>';
+            }
+        }
+
+        async function generateRecipe() {
+            if (!authToken) {
+                document.getElementById('recipeResult').innerHTML = 
+                    '<div class="error">❌ Please login first</div>';
+                return;
+            }
+            
+            const prompt = document.getElementById('fastFood').value;
+            document.getElementById('recipeResult').innerHTML = 
+                '<div>🤖 Generating AI recipe for ' + prompt + '...</div>';
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/ai/generate-recipe', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + authToken
+                    },
+                    body: JSON.stringify({ 
+                        prompt, 
+                        servings: 2,
+                        dietaryRestrictions: [],
+                        maxTime: 45,
+                        difficulty: 'medium'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.recipe) {
+                    const recipe = data.recipe;
+                    const nutrition = typeof recipe.nutrition === 'string' ? 
+                        JSON.parse(recipe.nutrition) : recipe.nutrition;
+                        
+                    document.getElementById('recipeResult').innerHTML = `
+                        <div class="result">
+                            <h3>🎉 ${recipe.title}</h3>
+                            <p><strong>Brand:</strong> ${recipe.brand || 'Generic'}</p>
+                            <p><strong>Description:</strong> ${recipe.description}</p>
+                            <p><strong>Time:</strong> ${recipe.prepTimeMinutes + recipe.cookTimeMinutes} minutes</p>
+                            <p><strong>Nutrition:</strong> ${nutrition.calories} calories, ${nutrition.protein}g protein</p>
+                            <p><strong>Ingredients:</strong> ${recipe.ingredients.length} items</p>
+                            <p><strong>Instructions:</strong> ${recipe.instructions.length} steps</p>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('recipeResult').innerHTML = 
+                        '<div class="error">❌ ' + (data.error || 'Recipe generation failed') + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('recipeResult').innerHTML = 
+                    '<div class="error">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function chatWithAI() {
+            if (!authToken) {
+                document.getElementById('chatResult').innerHTML = 
+                    '<div class="error">❌ Please login first</div>';
+                return;
+            }
+            
+            const message = document.getElementById('chatMessage').value;
+            document.getElementById('chatResult').innerHTML = 
+                '<div>🤖 AI Chef thinking...</div>';
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/ai/chat', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + authToken
+                    },
+                    body: JSON.stringify({ 
+                        message,
+                        context: { type: 'cooking_question' }
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.message) {
+                    document.getElementById('chatResult').innerHTML = `
+                        <div class="result">
+                            <h4>👨‍🍳 Chef AI Says:</h4>
+                            <p>${data.message}</p>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('chatResult').innerHTML = 
+                        '<div class="error">❌ Chat failed</div>';
+                }
+            } catch (error) {
+                document.getElementById('chatResult').innerHTML = 
+                    '<div class="error">❌ Error: ' + error.message + '</div>';
+            }
+        }
+    </script>
+</body>
+</html>
