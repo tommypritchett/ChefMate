@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { ChefHat, Sparkles, Clock, Heart, ShoppingCart, Package, Loader } from 'lucide-react';
+import { ChefHat, Sparkles, Clock, Heart, ShoppingCart, Package, Loader, X, ArrowRight } from 'lucide-react';
 import { favoritesApi, inventoryApi, shoppingApi, recipesApi } from '../services/api';
 
 const HomePage: React.FC = () => {
   const { user, isAuthenticated } = useAuthStore();
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [stats, setStats] = useState({
     savedRecipes: 0,
     inventoryItems: 0,
@@ -13,6 +14,18 @@ const HomePage: React.FC = () => {
     totalRecipes: 0,
     loading: true
   });
+
+  // Check if user needs onboarding (no preferences set)
+  useEffect(() => {
+    if (user && !user.onboardingCompleted) {
+      const prefs = user.preferences ? 
+        (typeof user.preferences === 'string' ? JSON.parse(user.preferences) : user.preferences) 
+        : null;
+      if (!prefs || !prefs.dietaryPreferences || prefs.dietaryPreferences.length === 0) {
+        setShowOnboarding(true);
+      }
+    }
+  }, [user]);
 
   useEffect(() => {
     loadStats();
@@ -85,6 +98,34 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      {/* Onboarding Banner */}
+      {showOnboarding && isAuthenticated && (
+        <div className="bg-gradient-to-r from-primary/10 to-blue-100 rounded-lg p-6 relative">
+          <button 
+            onClick={() => setShowOnboarding(false)}
+            className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+            <div className="text-4xl">🎉</div>
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold text-gray-900">Welcome to ChefMate!</h2>
+              <p className="text-gray-600 mt-1">
+                Let's personalize your experience. Set your dietary preferences to get recipe recommendations that match your lifestyle.
+              </p>
+            </div>
+            <Link 
+              to="/profile" 
+              className="btn btn-primary whitespace-nowrap"
+            >
+              Set Preferences
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <div className="text-center space-y-4">
         <h1 className="text-4xl md:text-5xl font-display font-bold text-gray-900">

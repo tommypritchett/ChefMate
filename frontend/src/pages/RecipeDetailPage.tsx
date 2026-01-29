@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Clock, Users, Heart, ShoppingCart, ArrowLeft, Loader, ChefHat, Bookmark } from 'lucide-react';
+import { Clock, Users, Heart, ShoppingCart, ArrowLeft, Loader, ChefHat, Bookmark, CheckCircle } from 'lucide-react';
 import { recipesApi, favoritesApi, shoppingApi } from '../services/api';
 import { Recipe } from '../types';
 
@@ -13,6 +13,8 @@ const RecipeDetailPage: React.FC = () => {
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [isMakingIt, setIsMakingIt] = useState(false);
+  const [timesMade, setTimesMade] = useState(0);
 
   useEffect(() => {
     if (id) {
@@ -78,6 +80,34 @@ const RecipeDetailPage: React.FC = () => {
       toast.error('Please log in to create shopping lists');
     } finally {
       setIsAddingToCart(false);
+    }
+  };
+
+  const handleMadeIt = async () => {
+    if (!recipe) return;
+    
+    setIsMakingIt(true);
+    try {
+      // First save to favorites if not saved
+      if (!isSaved) {
+        await favoritesApi.saveRecipe({
+          recipeId: recipe.id,
+          notes: ''
+        });
+        setIsSaved(true);
+      }
+      
+      // Update the timesMade count
+      // Note: This would need a backend endpoint to track properly
+      setTimesMade(prev => prev + 1);
+      toast.success(`Nice! You've made this ${timesMade + 1} time${timesMade + 1 > 1 ? 's' : ''}! 🎉`, {
+        duration: 3000,
+      });
+    } catch (err) {
+      console.error('Failed to mark as made:', err);
+      toast.error('Please log in to track your cooking');
+    } finally {
+      setIsMakingIt(false);
     }
   };
 
@@ -213,6 +243,18 @@ const RecipeDetailPage: React.FC = () => {
                 <ShoppingCart className="w-4 h-4 mr-2" />
               )}
               Add to Shopping List
+            </button>
+            <button 
+              onClick={handleMadeIt}
+              disabled={isMakingIt}
+              className="btn btn-secondary w-full border-green-300 hover:bg-green-50"
+            >
+              {isMakingIt ? (
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
+              )}
+              I Made This!{timesMade > 0 && ` (${timesMade})`}
             </button>
           </div>
 
