@@ -350,3 +350,57 @@ const generateFallbackRecipe = (prompt: string): GeneratedRecipe => {
     ]
   };
 };
+// Analyze a food photo and return detected items
+export const detectFoodItems = async (imageBase64: string): Promise<string[]> => {
+  if (!process.env.OPENAI_API_KEY) {
+    // Return demo items when API key not configured
+    return [
+      'Chicken breast',
+      'Broccoli', 
+      'Brown rice',
+      'Bell pepper',
+      'Onion'
+    ];
+  }
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are a food identification assistant. Analyze the image and list all identifiable food items. Return a JSON array of item names. Be specific (e.g., 'chicken breast' not just 'meat'). Only list food items you can clearly identify."
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "What food items do you see in this image? Return as JSON array of strings."
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+                detail: "low"
+              }
+            }
+          ]
+        }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 300,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (content) {
+      const parsed = JSON.parse(content);
+      return parsed.items || parsed.foods || Object.values(parsed).flat();
+    }
+  } catch (error) {
+    console.error('Food detection error:', error);
+  }
+
+  // Fallback
+  return ['Unable to detect items. Please add manually.'];
+};

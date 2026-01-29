@@ -116,16 +116,52 @@ const InventoryPage: React.FC = () => {
     }
   };
 
+  const [detectedItems, setDetectedItems] = useState<string[]>([]);
+  const [detectingFood, setDetectingFood] = useState(false);
+  const [selectedDetectedItems, setSelectedDetectedItems] = useState<Set<string>>(new Set());
+
   const handlePhotoSubmit = async () => {
     if (!capturedPhoto) return;
     
-    // For now, show a message that AI processing would happen here
-    toast.success('Photo captured! AI item detection coming soon.', { icon: '📸' });
+    setDetectingFood(true);
+    try {
+      const result = await aiApi.detectFood(capturedPhoto);
+      setDetectedItems(result.items);
+      setSelectedDetectedItems(new Set(result.items));
+      toast.success(`Detected ${result.count} items!`, { icon: '📸' });
+    } catch (error) {
+      console.error('Failed to detect food:', error);
+      toast.error('Failed to analyze photo');
+    } finally {
+      setDetectingFood(false);
+    }
+  };
+
+  const handleAddDetectedItems = async () => {
+    const itemsToAdd = Array.from(selectedDetectedItems);
+    let added = 0;
+    
+    for (const itemName of itemsToAdd) {
+      try {
+        await inventoryApi.addItem({
+          name: itemName,
+          category: 'other',
+          storageLocation: 'fridge',
+          quantity: 1,
+          unit: 'pieces'
+        });
+        added++;
+      } catch (error) {
+        console.error(`Failed to add ${itemName}:`, error);
+      }
+    }
+    
+    toast.success(`Added ${added} items to inventory!`, { icon: '✅' });
     setShowPhotoModal(false);
     setCapturedPhoto(null);
-    
-    // TODO: Send to AI endpoint for item detection
-    // const detectedItems = await aiApi.detectItemsFromPhoto(capturedPhoto);
+    setDetectedItems([]);
+    setSelectedDetectedItems(new Set());
+    await loadInventory();
   };
 
   // AI suggestions handler
@@ -487,13 +523,15 @@ const InventoryPage: React.FC = () => {
       {/* Photo Capture Modal */}
       {showPhotoModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="flex items-center justify-between p-4 border-b">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b rounded-t-lg">
               <h3 className="text-lg font-semibold">📸 Add Items from Photo</h3>
               <button 
                 onClick={() => {
                   setShowPhotoModal(false);
                   setCapturedPhoto(null);
+                  setDetectedItems([]);
+                  setSelectedDetectedItems(new Set());
                 }}
                 className="text-gray-500 hover:text-gray-700"
               >
@@ -507,39 +545,86 @@ const InventoryPage: React.FC = () => {
                   <img 
                     src={capturedPhoto} 
                     alt="Captured" 
-                    className="w-full rounded-lg"
+                    className="w-full rounded-lg max-h-48 object-cover"
                   />
                 </div>
               )}
               
-              <p className="text-sm text-gray-600 mb-4">
-                Take a photo of your groceries or fridge contents. AI will detect items and add them to your inventory.
-              </p>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                <p className="text-sm text-blue-700">
-                  <strong>Coming Soon:</strong> AI-powered item detection will automatically identify food items in your photos!
+              {!detectedItems.length && !detectingFood && (
+                <p className="text-sm text-gray-600 mb-4">
+                  AI will analyze your photo and detect food items to add to your inventory.
                 </p>
-              </div>
+              )}
+
+              {detectingFood && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader className="w-8 h-8 animate-spin text-primary mr-3" />
+                  <span className="text-gray-600">Analyzing photo...</span>
+                </div>
+              )}
+
+              {detectedItems.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-800 mb-3">
+                    Detected {detectedItems.length} items — select which to add:
+                  </h4>
+                  <div className="space-y-2 mb-4">
+                    {detectedItems.map((item, i) => (
+                      <label key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input 
+                          type="checkbox"
+                          checked={selectedDetectedItems.has(item)}
+                          onChange={(e) => {
+                            const next = new Set(selectedDetectedItems);
+                            if (e.target.checked) next.add(item);
+                            else next.delete(item);
+                            setSelectedDetectedItems(next);
+                          }}
+                          className="rounded text-primary"
+                        />
+                        <span className="text-gray-800">{item}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-2 p-4 border-t">
+            <div className="sticky bottom-0 bg-white flex gap-2 p-4 border-t">
               <button 
                 onClick={() => {
                   setShowPhotoModal(false);
                   setCapturedPhoto(null);
+                  setDetectedItems([]);
+                  setSelectedDetectedItems(new Set());
                 }}
                 className="btn btn-secondary flex-1"
               >
                 Cancel
               </button>
-              <button 
-                onClick={handlePhotoSubmit}
-                className="btn btn-primary flex-1"
-              >
-                <Camera className="w-4 h-4 mr-2" />
-                Process Photo
-              </button>
+              {detectedItems.length > 0 ? (
+                <button 
+                  onClick={handleAddDetectedItems}
+                  disabled={selectedDetectedItems.size === 0}
+                  className="btn btn-primary flex-1"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add {selectedDetectedItems.size} Items
+                </button>
+              ) : (
+                <button 
+                  onClick={handlePhotoSubmit}
+                  disabled={detectingFood}
+                  className="btn btn-primary flex-1"
+                >
+                  {detectingFood ? (
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 mr-2" />
+                  )}
+                  Detect Items
+                </button>
+              )}
             </div>
           </div>
         </div>

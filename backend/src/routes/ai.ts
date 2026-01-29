@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { body, validationResult } from 'express-validator';
-import { generateRecipe, chatWithAssistant, generateInventoryBasedSuggestions } from '../services/openai';
+import { generateRecipe, chatWithAssistant, generateInventoryBasedSuggestions, detectFoodItems } from '../services/openai';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -235,6 +235,31 @@ router.get('/inventory-suggestions', requireAuth, async (req: AuthenticatedReque
   } catch (error) {
     console.error('Inventory suggestions error:', error);
     res.status(500).json({ error: 'Failed to generate suggestions' });
+  }
+});
+
+// POST /api/ai/detect-food
+// Analyze a photo and return detected food items
+router.post('/detect-food', requireAuth, [
+  body('image').isString().withMessage('Image data is required')
+], async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    }
+
+    const { image } = req.body;
+
+    const detectedItems = await detectFoodItems(image);
+
+    res.json({
+      items: detectedItems,
+      count: detectedItems.length
+    });
+  } catch (error) {
+    console.error('Food detection error:', error);
+    res.status(500).json({ error: 'Failed to detect food items' });
   }
 });
 

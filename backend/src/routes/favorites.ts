@@ -164,4 +164,98 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// POST /api/favorites/:id/made-it
+// Track that a user made this recipe
+router.post('/:id/made-it', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Find the saved recipe and verify ownership
+    const saved = await prisma.userSavedRecipe.findFirst({
+      where: { id, userId: req.user!.userId }
+    });
+    
+    if (!saved) {
+      return res.status(404).json({ error: 'Saved recipe not found' });
+    }
+    
+    // Increment timesMade and set lastMadeAt
+    const updated = await prisma.userSavedRecipe.update({
+      where: { id },
+      data: {
+        timesMade: { increment: 1 },
+        lastMadeAt: new Date()
+      }
+    });
+    
+    // Also increment the recipe's makeCount
+    await prisma.recipe.update({
+      where: { id: saved.recipeId },
+      data: { makeCount: { increment: 1 } }
+    });
+    
+    res.json({ 
+      success: true,
+      timesMade: updated.timesMade,
+      lastMadeAt: updated.lastMadeAt
+    });
+  } catch (error) {
+    console.error('Made it error:', error);
+    res.status(500).json({ error: 'Failed to track recipe' });
+  }
+});
+
+// POST /api/favorites/by-recipe/:recipeId/made-it
+// Track that a user made a recipe (lookup by recipe ID, auto-save if needed)
+router.post('/by-recipe/:recipeId/made-it', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { recipeId } = req.params;
+    
+    // Find or create saved recipe
+    let saved = await prisma.userSavedRecipe.findFirst({
+      where: { recipeId, userId: req.user!.userId }
+    });
+    
+    if (!saved) {
+      // Auto-save the recipe first
+      saved = await prisma.userSavedRecipe.create({
+        data: {
+          userId: req.user!.userId,
+          recipeId,
+          timesMade: 0
+        }
+      });
+      
+      await prisma.recipe.update({
+        where: { id: recipeId },
+        data: { saveCount: { increment: 1 } }
+      });
+    }
+    
+    // Increment timesMade
+    const updated = await prisma.userSavedRecipe.update({
+      where: { id: saved.id },
+      data: {
+        timesMade: { increment: 1 },
+        lastMadeAt: new Date()
+      }
+    });
+    
+    await prisma.recipe.update({
+      where: { id: recipeId },
+      data: { makeCount: { increment: 1 } }
+    });
+    
+    res.json({
+      success: true,
+      timesMade: updated.timesMade,
+      lastMadeAt: updated.lastMadeAt,
+      savedRecipeId: updated.id
+    });
+  } catch (error) {
+    console.error('Made it error:', error);
+    res.status(500).json({ error: 'Failed to track recipe' });
+  }
+});
+
 export default router;

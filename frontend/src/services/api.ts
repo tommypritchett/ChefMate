@@ -138,6 +138,11 @@ export const aiApi = {
     const response = await api.get('/ai/inventory-suggestions');
     return response.data;
   },
+
+  detectFood: async (imageBase64: string): Promise<{ items: string[]; count: number }> => {
+    const response = await api.post('/ai/detect-food', { image: imageBase64 });
+    return response.data;
+  },
 };
 
 // Favorites API
@@ -180,6 +185,11 @@ export const favoritesApi = {
 
   unsaveRecipe: async (id: string): Promise<void> => {
     await api.delete(`/favorites/${id}`);
+  },
+
+  madeIt: async (recipeId: string): Promise<{ success: boolean; timesMade: number; lastMadeAt: string }> => {
+    const response = await api.post(`/favorites/by-recipe/${recipeId}/made-it`);
+    return response.data;
   },
 };
 

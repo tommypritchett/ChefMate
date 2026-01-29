@@ -88,19 +88,10 @@ const RecipeDetailPage: React.FC = () => {
     
     setIsMakingIt(true);
     try {
-      // First save to favorites if not saved
-      if (!isSaved) {
-        await favoritesApi.saveRecipe({
-          recipeId: recipe.id,
-          notes: ''
-        });
-        setIsSaved(true);
-      }
-      
-      // Update the timesMade count
-      // Note: This would need a backend endpoint to track properly
-      setTimesMade(prev => prev + 1);
-      toast.success(`Nice! You've made this ${timesMade + 1} time${timesMade + 1 > 1 ? 's' : ''}! 🎉`, {
+      const result = await favoritesApi.madeIt(recipe.id);
+      setTimesMade(result.timesMade);
+      setIsSaved(true); // Auto-saved when marking as made
+      toast.success(`Nice! You've made this ${result.timesMade} time${result.timesMade > 1 ? 's' : ''}! 🎉`, {
         duration: 3000,
       });
     } catch (err) {
