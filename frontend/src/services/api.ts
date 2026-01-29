@@ -133,6 +133,11 @@ export const aiApi = {
     });
     return response.data;
   },
+
+  getInventorySuggestions: async (): Promise<{ suggestions: string[]; expiringItemsCount?: number; expiringItems?: string[] }> => {
+    const response = await api.get('/ai/inventory-suggestions');
+    return response.data;
+  },
 };
 
 // Favorites API

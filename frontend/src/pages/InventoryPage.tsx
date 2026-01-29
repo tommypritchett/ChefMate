@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Package, Plus, Camera, X, Trash2, Sparkles } from 'lucide-react';
-import { inventoryApi } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
+import { Package, Plus, Camera, X, Trash2, Sparkles, Loader, AlertTriangle } from 'lucide-react';
+import { inventoryApi, aiApi } from '../services/api';
 
 interface InventoryItem {
   id: string;
@@ -17,6 +18,11 @@ const InventoryPage: React.FC = () => {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [newItem, setNewItem] = useState({
     name: '',
     category: 'protein',
@@ -93,6 +99,64 @@ const InventoryPage: React.FC = () => {
     return items.filter(item => item.storageLocation === location);
   };
 
+  // Photo capture handlers
+  const handlePhotoCapture = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCapturedPhoto(reader.result as string);
+        setShowPhotoModal(true);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePhotoSubmit = async () => {
+    if (!capturedPhoto) return;
+    
+    // For now, show a message that AI processing would happen here
+    toast.success('Photo captured! AI item detection coming soon.', { icon: '📸' });
+    setShowPhotoModal(false);
+    setCapturedPhoto(null);
+    
+    // TODO: Send to AI endpoint for item detection
+    // const detectedItems = await aiApi.detectItemsFromPhoto(capturedPhoto);
+  };
+
+  // AI suggestions handler
+  const handleGetSuggestions = async () => {
+    setLoadingSuggestions(true);
+    try {
+      const response = await aiApi.getInventorySuggestions();
+      setAiSuggestions(response.suggestions || []);
+      if (response.suggestions?.length > 0) {
+        toast.success('Got recipe suggestions!', { icon: '🤖' });
+      }
+    } catch (error) {
+      console.error('Failed to get suggestions:', error);
+      toast.error('Failed to get AI suggestions');
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // Get items expiring soon (within 3 days)
+  const getExpiringItems = () => {
+    const threeDaysFromNow = new Date();
+    threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+    
+    return items.filter(item => {
+      if (!item.expiresAt) return false;
+      const expDate = new Date(item.expiresAt);
+      return expDate <= threeDaysFromNow && !item.isExpired;
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
@@ -105,7 +169,18 @@ const InventoryPage: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2 mt-4 lg:mt-0">
-          <button className="btn btn-secondary">
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button 
+            className="btn btn-secondary"
+            onClick={handlePhotoCapture}
+          >
             <Camera className="w-4 h-4 mr-2" />
             Scan Photo
           </button>
@@ -178,41 +253,75 @@ const InventoryPage: React.FC = () => {
         })}
       </div>
 
+      {/* Expiring Items Warning */}
+      {getExpiringItems().length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-medium text-yellow-800">Items Expiring Soon</h3>
+            <p className="text-sm text-yellow-700 mt-1">
+              {getExpiringItems().map(item => item.name).join(', ')}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* AI Recipe Suggestions */}
       {items.length > 0 && (
         <div className="card p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">🤖 AI Recipe Suggestions</h3>
-              <p className="text-sm text-gray-600">Based on what's in your {getItemsByLocation('fridge').length > 0 ? 'fridge' : getItemsByLocation('freezer').length > 0 ? 'freezer' : 'pantry'}</p>
+              <p className="text-sm text-gray-600">Based on what's in your inventory</p>
             </div>
-            <button className="btn btn-primary btn-sm">
-              <Sparkles className="w-4 h-4 mr-1" />
+            <button 
+              className="btn btn-primary btn-sm"
+              onClick={handleGetSuggestions}
+              disabled={loadingSuggestions}
+            >
+              {loadingSuggestions ? (
+                <Loader className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-1" />
+              )}
               Get Suggestions
             </button>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Quick Suggestion Cards */}
-            {[
-              { title: "Quick Protein Bowl", ingredients: getItemsByLocation('fridge').slice(0, 3), time: "15 min" },
-              { title: "Healthy Stir Fry", ingredients: getItemsByLocation('fridge').slice(0, 2), time: "20 min" },
-              { title: "Meal Prep Special", ingredients: [...getItemsByLocation('fridge').slice(0, 2), ...getItemsByLocation('pantry').slice(0, 1)], time: "30 min" }
-            ].filter(suggestion => suggestion.ingredients.length > 0).map((suggestion, i) => (
-              <div key={i} className="bg-gradient-to-br from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-100">
-                <h4 className="font-medium text-blue-900 mb-2">{suggestion.title}</h4>
-                <div className="text-xs text-blue-700 mb-2">
-                  Using: {suggestion.ingredients.map(item => item.name).join(', ')}
+            {/* AI-generated suggestions */}
+            {aiSuggestions.length > 0 ? (
+              aiSuggestions.map((suggestion, i) => (
+                <div key={i} className="bg-gradient-to-br from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-100">
+                  <h4 className="font-medium text-blue-900">{suggestion}</h4>
+                  <div className="flex items-center justify-between mt-3">
+                    <span className="text-xs text-blue-600">✨ AI Suggested</span>
+                    <button className="btn btn-xs btn-secondary">Find Recipe</button>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-blue-600">⏱️ {suggestion.time}</span>
-                  <button className="btn btn-xs btn-secondary">View Recipe</button>
+              ))
+            ) : (
+              /* Default static suggestions */
+              [
+                { title: "Quick Protein Bowl", ingredients: getItemsByLocation('fridge').slice(0, 3), time: "15 min" },
+                { title: "Healthy Stir Fry", ingredients: getItemsByLocation('fridge').slice(0, 2), time: "20 min" },
+                { title: "Meal Prep Special", ingredients: [...getItemsByLocation('fridge').slice(0, 2), ...getItemsByLocation('pantry').slice(0, 1)], time: "30 min" }
+              ].filter(suggestion => suggestion.ingredients.length > 0).map((suggestion, i) => (
+                <div key={i} className="bg-gradient-to-br from-gray-50 to-gray-100 p-4 rounded-lg border border-gray-200">
+                  <h4 className="font-medium text-gray-800 mb-2">{suggestion.title}</h4>
+                  <div className="text-xs text-gray-600 mb-2">
+                    Using: {suggestion.ingredients.map(item => item.name).join(', ')}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">⏱️ {suggestion.time}</span>
+                    <button className="btn btn-xs btn-secondary">View Recipe</button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
           
-          {getItemsByLocation('fridge').length === 0 && getItemsByLocation('freezer').length === 0 && getItemsByLocation('pantry').length === 0 && (
+          {items.length === 0 && (
             <div className="text-center py-4 text-gray-500">
               <p className="text-sm">Add some ingredients to get personalized recipe suggestions!</p>
             </div>
@@ -369,6 +478,67 @@ const InventoryPage: React.FC = () => {
                 className="btn btn-primary flex-1"
               >
                 Add Item
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Capture Modal */}
+      {showPhotoModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">📸 Add Items from Photo</h3>
+              <button 
+                onClick={() => {
+                  setShowPhotoModal(false);
+                  setCapturedPhoto(null);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              {capturedPhoto && (
+                <div className="mb-4">
+                  <img 
+                    src={capturedPhoto} 
+                    alt="Captured" 
+                    className="w-full rounded-lg"
+                  />
+                </div>
+              )}
+              
+              <p className="text-sm text-gray-600 mb-4">
+                Take a photo of your groceries or fridge contents. AI will detect items and add them to your inventory.
+              </p>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-blue-700">
+                  <strong>Coming Soon:</strong> AI-powered item detection will automatically identify food items in your photos!
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2 p-4 border-t">
+              <button 
+                onClick={() => {
+                  setShowPhotoModal(false);
+                  setCapturedPhoto(null);
+                }}
+                className="btn btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handlePhotoSubmit}
+                className="btn btn-primary flex-1"
+              >
+                <Camera className="w-4 h-4 mr-2" />
+                Process Photo
               </button>
             </div>
           </div>

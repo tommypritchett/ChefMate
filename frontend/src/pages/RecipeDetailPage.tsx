@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { Clock, Users, Heart, ShoppingCart, ArrowLeft, Loader, ChefHat, Bookmark } from 'lucide-react';
 import { recipesApi, favoritesApi, shoppingApi } from '../services/api';
 import { Recipe } from '../types';
@@ -45,7 +46,7 @@ const RecipeDetailPage: React.FC = () => {
       setIsSaved(true);
     } catch (err) {
       console.error('Failed to save recipe:', err);
-      alert('Failed to save recipe. Please make sure you are logged in.');
+      toast.error('Please log in to save recipes');
     } finally {
       setIsSaving(false);
     }
@@ -56,7 +57,7 @@ const RecipeDetailPage: React.FC = () => {
     
     setIsAddingToCart(true);
     try {
-      // Create a new shopping list with the recipe ingredients
+      // Create a new shopping list - backend auto-populates ingredients from recipe
       const list = await shoppingApi.createList({
         name: `${recipe.title} Ingredients`,
         description: `Shopping list for ${recipe.title}`,
@@ -64,20 +65,17 @@ const RecipeDetailPage: React.FC = () => {
         sourceRecipeId: recipe.id
       });
       
-      // Add each ingredient as an item
-      const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
-      for (const ingredient of ingredients) {
-        await shoppingApi.addItem(list.list.id, {
-          name: ingredient.name,
-          quantity: ingredient.amount,
-          unit: ingredient.unit
-        });
-      }
-      
-      alert('Ingredients added to shopping list!');
+      const itemCount = list.list?.items?.length || 0;
+      toast.success(
+        `Added ${itemCount} ingredients to shopping list!`,
+        { 
+          icon: '🛒',
+          duration: 4000,
+        }
+      );
     } catch (err) {
       console.error('Failed to add to shopping list:', err);
-      alert('Failed to create shopping list. Please make sure you are logged in.');
+      toast.error('Please log in to create shopping lists');
     } finally {
       setIsAddingToCart(false);
     }

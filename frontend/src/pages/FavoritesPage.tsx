@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { Heart, FolderPlus, X, Folder, Plus, Trash2, Loader } from 'lucide-react';
 import { favoritesApi } from '../services/api';
 
@@ -95,7 +96,7 @@ const FavoritesPage: React.FC = () => {
       setShowNewFolderModal(false);
     } catch (error) {
       console.error('Failed to create folder:', error);
-      alert('Failed to create folder. Please make sure you are logged in.');
+      toast.error('Please log in to create folders');
     } finally {
       setIsCreating(false);
     }

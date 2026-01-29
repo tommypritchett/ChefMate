@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { Settings, CreditCard, Loader, Check } from 'lucide-react';
 import { authApi } from '../services/api';
@@ -65,7 +66,7 @@ const ProfilePage: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error('Failed to save preferences:', error);
-      alert('Failed to save preferences. Please try again.');
+      toast.error('Failed to save preferences');
     } finally {
       setIsSaving(false);
     }

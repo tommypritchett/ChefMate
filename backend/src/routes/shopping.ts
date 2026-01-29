@@ -29,7 +29,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 // POST /api/shopping-lists
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { name, description, sourceType, sourceRecipeId } = req.body;
+    const { name, description, sourceType, sourceRecipeId, items } = req.body;
     
     // Handle mock recipes by not setting sourceRecipeId foreign key
     const listData: any = {
@@ -48,7 +48,51 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       data: listData
     });
     
-    res.status(201).json({ list });
+    // Auto-populate items from recipe if sourceRecipeId provided
+    if (sourceRecipeId && !sourceRecipeId.startsWith('mock-')) {
+      const recipe = await prisma.recipe.findUnique({
+        where: { id: sourceRecipeId }
+      });
+      
+      if (recipe && recipe.ingredients) {
+        const ingredients = typeof recipe.ingredients === 'string' 
+          ? JSON.parse(recipe.ingredients) 
+          : recipe.ingredients;
+        
+        if (Array.isArray(ingredients) && ingredients.length > 0) {
+          await prisma.shoppingListItem.createMany({
+            data: ingredients.map((ing: any) => ({
+              shoppingListId: list.id,
+              name: ing.name,
+              quantity: ing.amount || null,
+              unit: ing.unit || null,
+              category: null
+            }))
+          });
+        }
+      }
+    }
+    
+    // Also handle manually passed items array
+    if (items && Array.isArray(items) && items.length > 0) {
+      await prisma.shoppingListItem.createMany({
+        data: items.map((item: any) => ({
+          shoppingListId: list.id,
+          name: item.name,
+          quantity: item.quantity || null,
+          unit: item.unit || null,
+          category: item.category || null
+        }))
+      });
+    }
+    
+    // Fetch the complete list with items
+    const completeList = await prisma.shoppingList.findUnique({
+      where: { id: list.id },
+      include: { items: true }
+    });
+    
+    res.status(201).json({ list: completeList });
   } catch (error) {
     console.error('Create shopping list error:', error);
     res.status(500).json({ error: 'Failed to create shopping list' });

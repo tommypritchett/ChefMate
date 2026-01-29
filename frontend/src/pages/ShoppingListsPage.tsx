@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { ShoppingCart, Plus, ExternalLink, X, Trash2, Check, Loader, Package, ChevronDown } from 'lucide-react';
 import { shoppingApi } from '../services/api';
 
@@ -92,7 +93,7 @@ const ShoppingListsPage: React.FC = () => {
       setShowNewListModal(false);
     } catch (error) {
       console.error('Failed to create list:', error);
-      alert('Failed to create shopping list. Please make sure you are logged in.');
+      toast.error('Please log in to create shopping lists');
     }
   };
 
@@ -109,7 +110,7 @@ const ShoppingListsPage: React.FC = () => {
       setNewItemName('');
     } catch (error) {
       console.error('Failed to add item:', error);
-      alert('Failed to add item. Please try again.');
+      toast.error('Failed to add item');
     }
   };
 
@@ -152,7 +153,7 @@ const ShoppingListsPage: React.FC = () => {
       setLists(lists.filter(list => list.id !== listId));
     } catch (error) {
       console.error('Failed to delete list:', error);
-      alert('Failed to delete shopping list.');
+      toast.error('Failed to delete list');
     }
   };
 
@@ -164,7 +165,7 @@ const ShoppingListsPage: React.FC = () => {
       setTimeout(() => setPurchaseSuccess(null), 3000);
     } catch (error) {
       console.error('Failed to purchase item:', error);
-      alert('Failed to add item to inventory.');
+      toast.error('Failed to add to inventory');
     }
   };
 
@@ -177,7 +178,7 @@ const ShoppingListsPage: React.FC = () => {
       setTimeout(() => setPurchaseSuccess(null), 3000);
     } catch (error) {
       console.error('Failed to purchase items:', error);
-      alert('Failed to add items to inventory.');
+      toast.error('Failed to add items to inventory');
     } finally {
       setIsPurchasing(false);
     }
@@ -328,15 +329,21 @@ const ShoppingListsPage: React.FC = () => {
       {/* Store Links */}
       <div className="card p-6">
         <h3 className="text-lg font-semibold mb-4">Shop Online</h3>
+        <p className="text-sm text-gray-500 mb-4">Order groceries from your favorite stores</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {['Instacart', 'Walmart', 'Target', 'Amazon Fresh'].map((store) => (
+          {[
+            { name: 'Instacart', icon: '🛒' },
+            { name: 'Walmart', icon: '🏪' },
+            { name: 'Target', icon: '🎯' },
+            { name: 'Amazon Fresh', icon: '📦' }
+          ].map((store) => (
             <button
-              key={store}
-              onClick={() => console.log(`Navigate to ${store}`)}
-              className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              key={store.name}
+              onClick={() => toast('Store integration coming soon!', { icon: store.icon })}
+              className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors relative"
             >
-              <span className="font-medium">{store}</span>
-              <ExternalLink className="w-4 h-4 text-gray-400" />
+              <span className="font-medium">{store.name}</span>
+              <span className="absolute -top-2 -right-2 bg-yellow-400 text-yellow-900 text-xs px-1.5 py-0.5 rounded-full">Soon</span>
             </button>
           ))}
         </div>
