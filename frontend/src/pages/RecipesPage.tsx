@@ -52,13 +52,18 @@ const RecipesPage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const { user } = useAuthStore();
   
-  // Get user's dietary preferences
+  // Get user's dietary preferences (handle possible double-stringification)
   const userPreferences = useMemo(() => {
     if (user?.preferences) {
       try {
-        const prefs = typeof user.preferences === 'string' 
-          ? JSON.parse(user.preferences) 
-          : user.preferences;
+        let prefs = user.preferences;
+        // Handle string (may be double-stringified)
+        if (typeof prefs === 'string') {
+          prefs = JSON.parse(prefs);
+          if (typeof prefs === 'string') {
+            prefs = JSON.parse(prefs); // Handle double-stringified
+          }
+        }
         return prefs.dietaryPreferences || [];
       } catch (e) {
         return [];
@@ -136,16 +141,31 @@ const RecipesPage: React.FC = () => {
     }
   }, [searchParams]);
   
-  // Load real recipes from database
+  // Load recipes - filter by user preferences when set
   useEffect(() => {
     loadRecipes();
-  }, []);
+  }, [userPreferences]);
   
   const loadRecipes = async () => {
     try {
       setLoadingRecipes(true);
-      const response = await recipesApi.getRecipes({ limit: 100 });
-      setDbRecipes(response.recipes || []);
+      // If user has preferences, fetch matching recipes first via tag filter
+      const params: any = { limit: 100 };
+      if (userPreferences.length > 0) {
+        params.tags = userPreferences.join(',');
+      }
+      const response = await recipesApi.getRecipes(params);
+      
+      // If filtering by tags, also load ALL recipes so user can browse everything
+      if (userPreferences.length > 0) {
+        const allResponse = await recipesApi.getRecipes({ limit: 100 });
+        const matchingIds = new Set((response.recipes || []).map((r: any) => r.id));
+        const otherRecipes = (allResponse.recipes || []).filter((r: any) => !matchingIds.has(r.id));
+        // Matching first, then others
+        setDbRecipes([...(response.recipes || []), ...otherRecipes]);
+      } else {
+        setDbRecipes(response.recipes || []);
+      }
     } catch (error) {
       console.error('Failed to load recipes:', error);
     } finally {
@@ -290,14 +310,25 @@ const RecipesPage: React.FC = () => {
           )}
         </div>
       ) : (
+        <>
+        {/* Show section headers when user has preferences */}
+        {userPreferences.length > 0 && matchingCount > 0 && (
+          <h2 className="text-lg font-semibold text-gray-800 mb-2">
+            ✨ Matching Your Preferences ({matchingCount})
+          </h2>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredRecipes.map((recipe) => {
-            const isMatch = userPreferences.length > 0 && recipe.dietaryTags?.some(tag =>
-              userPreferences.some((pref: string) =>
+          {filteredRecipes.filter(r => {
+            if (userPreferences.length === 0) return true;
+            const tags = r.dietaryTags || [];
+            return userPreferences.some((pref: string) => 
+              tags.some((tag: string) => 
                 tag.toLowerCase().includes(pref.toLowerCase()) ||
                 pref.toLowerCase().includes(tag.toLowerCase())
               )
             );
+          }).map((recipe) => {
+            const isMatch = true;
             
             return (
               <Link 
@@ -357,6 +388,62 @@ const RecipesPage: React.FC = () => {
             );
           })}
         </div>
+
+        {/* Other Recipes section - only when user has preferences */}
+        {userPreferences.length > 0 && filteredRecipes.filter(r => {
+          const tags = r.dietaryTags || [];
+          return !userPreferences.some((pref: string) => 
+            tags.some((tag: string) => 
+              tag.toLowerCase().includes(pref.toLowerCase()) ||
+              pref.toLowerCase().includes(tag.toLowerCase())
+            )
+          );
+        }).length > 0 && (
+          <>
+            <h2 className="text-lg font-semibold text-gray-500 mt-8 mb-2">
+              Other Recipes
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-75">
+              {filteredRecipes.filter(r => {
+                const tags = r.dietaryTags || [];
+                return !userPreferences.some((pref: string) => 
+                  tags.some((tag: string) => 
+                    tag.toLowerCase().includes(pref.toLowerCase()) ||
+                    pref.toLowerCase().includes(tag.toLowerCase())
+                  )
+                );
+              }).map((recipe) => (
+                <Link 
+                  key={recipe.id} 
+                  to={`/recipes/${recipe.id}`}
+                  className="card overflow-hidden hover:shadow-lg transition-all"
+                >
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 h-40 flex items-center justify-center">
+                    {recipe.imageUrl ? (
+                      <img src={recipe.imageUrl} alt={recipe.title} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-6xl">{getRecipeEmoji(recipe)}</span>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold text-lg text-gray-900 line-clamp-2">{recipe.title}</h3>
+                    {recipe.brand && (
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                        {recipe.brand}
+                      </span>
+                    )}
+                    <p className="text-gray-600 text-sm mt-2 line-clamp-2">{recipe.description}</p>
+                    <div className="flex items-center justify-between text-sm text-gray-500 mt-3">
+                      <span>🔥 {recipe.nutrition?.calories || '—'} cal</span>
+                      <span className="capitalize">{recipe.difficulty || 'Medium'}</span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
+        </>
       )}
     </div>
   );

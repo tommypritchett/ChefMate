@@ -53,8 +53,9 @@ const ProfilePage: React.FC = () => {
         updatedAt: new Date().toISOString()
       };
       
+      // Send as object - backend handles JSON.stringify
       const response = await authApi.updateProfile({
-        preferences: JSON.stringify(newPreferences)
+        preferences: newPreferences
       });
       
       // Update local user state
@@ -63,6 +64,7 @@ const ProfilePage: React.FC = () => {
       }
       
       setSaveSuccess(true);
+      toast.success('Preferences saved! Recipes will be filtered.', { icon: '✅' });
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error('Failed to save preferences:', error);

@@ -80,7 +80,7 @@ const ShoppingListsPage: React.FC = () => {
     if (!newListName.trim()) return;
     
     try {
-      await shoppingApi.createList({
+      const result = await shoppingApi.createList({
         name: newListName,
         description: newListDescription,
         sourceType: 'manual'
@@ -88,6 +88,28 @@ const ShoppingListsPage: React.FC = () => {
       
       // Reload lists from backend
       await loadShoppingLists();
+      
+      // Auto-open the new list detail view
+      if (result.list) {
+        const mappedList = {
+          id: result.list.id,
+          name: result.list.name,
+          description: result.list.description,
+          createdAt: result.list.createdAt,
+          isActive: result.list.isActive,
+          items: (result.list.items || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            isCompleted: item.isChecked || false,
+            category: item.category
+          }))
+        };
+        setSelectedList(mappedList as any);
+      }
+      
+      toast.success(`"${newListName}" created!`, { icon: '📝' });
       setNewListName('');
       setNewListDescription('');
       setShowNewListModal(false);
