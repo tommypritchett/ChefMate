@@ -14,6 +14,7 @@ interface AuthState {
   logout: () => void;
   loadUser: () => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
+  setUser: (user: User) => void;
   setLoading: (loading: boolean) => void;
 }
 
@@ -151,6 +152,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setLoading: (loading: boolean) => {
     set({ isLoading: loading });
+  },
+
+  setUser: (user: User) => {
+    localStorage.setItem('chefmate_user', JSON.stringify(user));
+    set({ user });
   },
 }));
 

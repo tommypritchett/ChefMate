@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { AuthResponse, User, Recipe, RecipeCard } from '../types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 // Create axios instance
 const api = axios.create({
@@ -80,6 +80,26 @@ export const recipesApi = {
 
   getRecipe: async (id: string): Promise<{ recipe: Recipe }> => {
     const response = await api.get(`/recipes/${id}`);
+    return response.data;
+  },
+
+  createRecipe: async (data: {
+    title: string;
+    description?: string;
+    brand?: string;
+    originalItemName?: string;
+    ingredients: any[];
+    instructions: any[];
+    prepTimeMinutes?: number;
+    cookTimeMinutes?: number;
+    servings?: number;
+    difficulty?: string;
+    nutrition?: any;
+    originalNutrition?: any;
+    dietaryTags?: string[];
+    isAiGenerated?: boolean;
+  }): Promise<{ recipe: Recipe }> => {
+    const response = await api.post('/recipes', data);
     return response.data;
   },
 
@@ -233,6 +253,23 @@ export const shoppingApi = {
 
   deleteItem: async (listId: string, itemId: string): Promise<void> => {
     await api.delete(`/shopping-lists/${listId}/items/${itemId}`);
+  },
+
+  // Purchase item and add to inventory
+  purchaseItem: async (listId: string, itemId: string, data?: {
+    storageLocation?: string;
+    category?: string;
+  }): Promise<{ success: boolean; message: string; inventoryItem: any }> => {
+    const response = await api.post(`/shopping-lists/${listId}/items/${itemId}/purchase`, data || {});
+    return response.data;
+  },
+
+  // Purchase all unchecked items and add to inventory
+  purchaseAll: async (listId: string, data?: {
+    storageLocation?: string;
+  }): Promise<{ success: boolean; message: string; count: number; inventoryItems: any[] }> => {
+    const response = await api.post(`/shopping-lists/${listId}/purchase-all`, data || {});
+    return response.data;
   },
 };
 

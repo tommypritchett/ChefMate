@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Plus, ExternalLink, X, Trash2, Check, Loader } from 'lucide-react';
+import { ShoppingCart, Plus, ExternalLink, X, Trash2, Check, Loader, Package, ChevronDown } from 'lucide-react';
 import { shoppingApi } from '../services/api';
 
 interface ShoppingList {
@@ -28,6 +28,8 @@ const ShoppingListsPage: React.FC = () => {
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
   const [newItemName, setNewItemName] = useState('');
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [purchaseSuccess, setPurchaseSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     loadShoppingLists();
@@ -153,6 +155,33 @@ const ShoppingListsPage: React.FC = () => {
       alert('Failed to delete shopping list.');
     }
   };
+
+  const handlePurchaseItem = async (listId: string, itemId: string, storageLocation: string = 'fridge') => {
+    try {
+      const result = await shoppingApi.purchaseItem(listId, itemId, { storageLocation });
+      setPurchaseSuccess(result.message);
+      await loadShoppingLists();
+      setTimeout(() => setPurchaseSuccess(null), 3000);
+    } catch (error) {
+      console.error('Failed to purchase item:', error);
+      alert('Failed to add item to inventory.');
+    }
+  };
+
+  const handlePurchaseAll = async (listId: string, storageLocation: string = 'fridge') => {
+    setIsPurchasing(true);
+    try {
+      const result = await shoppingApi.purchaseAll(listId, { storageLocation });
+      setPurchaseSuccess(result.message);
+      await loadShoppingLists();
+      setTimeout(() => setPurchaseSuccess(null), 3000);
+    } catch (error) {
+      console.error('Failed to purchase items:', error);
+      alert('Failed to add items to inventory.');
+    } finally {
+      setIsPurchasing(false);
+    }
+  };
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
@@ -172,6 +201,14 @@ const ShoppingListsPage: React.FC = () => {
           New List
         </button>
       </div>
+
+      {/* Success Message */}
+      {purchaseSuccess && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center">
+          <Check className="w-5 h-5 mr-2" />
+          {purchaseSuccess}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-8">Loading...</div>
@@ -267,8 +304,19 @@ const ShoppingListsPage: React.FC = () => {
                   >
                     View Details
                   </button>
-                  <button className="btn btn-primary btn-sm flex-1">
-                    Shop Now
+                  <button 
+                    onClick={() => handlePurchaseAll(list.id)}
+                    disabled={isPurchasing || list.items.filter(i => !i.isCompleted).length === 0}
+                    className="btn btn-primary btn-sm flex-1"
+                  >
+                    {isPurchasing ? (
+                      <Loader className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <>
+                        <Package className="w-3 h-3 mr-1" />
+                        Add to Inventory
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -385,21 +433,39 @@ const ShoppingListsPage: React.FC = () => {
                 </button>
               </div>
 
+              {/* Purchase All Button */}
+              {selectedList.items.filter(i => !i.isCompleted).length > 0 && (
+                <button
+                  onClick={() => handlePurchaseAll(selectedList.id)}
+                  disabled={isPurchasing}
+                  className="btn btn-primary w-full mb-4"
+                >
+                  {isPurchasing ? (
+                    <Loader className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Package className="w-4 h-4 mr-2" />
+                  )}
+                  Mark All Purchased & Add to Inventory
+                </button>
+              )}
+
               <div className="space-y-3">
                 {selectedList.items.map((item) => (
                   <div 
                     key={item.id} 
                     className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
-                    onClick={() => toggleItemCompleted(selectedList.id, item.id)}
                   >
-                    <button className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                      item.isCompleted 
-                        ? 'bg-green-500 border-green-500 text-white' 
-                        : 'border-gray-300 hover:border-green-400'
-                    }`}>
+                    <button 
+                      onClick={() => toggleItemCompleted(selectedList.id, item.id)}
+                      className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                        item.isCompleted 
+                          ? 'bg-green-500 border-green-500 text-white' 
+                          : 'border-gray-300 hover:border-green-400'
+                      }`}
+                    >
                       {item.isCompleted && <Check className="w-3 h-3" />}
                     </button>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <span className={item.isCompleted ? 'line-through text-gray-500' : 'text-gray-800'}>
                         {item.name}
                       </span>
@@ -410,9 +476,21 @@ const ShoppingListsPage: React.FC = () => {
                       )}
                     </div>
                     {item.category && (
-                      <span className="text-xs bg-white px-2 py-1 rounded">
+                      <span className="text-xs bg-white px-2 py-1 rounded flex-shrink-0">
                         {item.category}
                       </span>
+                    )}
+                    {!item.isCompleted && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePurchaseItem(selectedList.id, item.id);
+                        }}
+                        className="btn btn-xs btn-secondary flex-shrink-0"
+                        title="Add to Inventory"
+                      >
+                        <Package className="w-3 h-3" />
+                      </button>
                     )}
                   </div>
                 ))}

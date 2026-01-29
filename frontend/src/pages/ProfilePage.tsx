@@ -1,9 +1,75 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { Settings, CreditCard } from 'lucide-react';
+import { Settings, CreditCard, Loader, Check } from 'lucide-react';
+import { authApi } from '../services/api';
+
+const DIETARY_OPTIONS = [
+  { id: 'high-protein', label: 'High Protein', description: 'Focus on protein-rich meals' },
+  { id: 'low-carb', label: 'Low Carb', description: 'Reduced carbohydrate intake' },
+  { id: 'vegetarian', label: 'Vegetarian', description: 'No meat' },
+  { id: 'vegan', label: 'Vegan', description: 'No animal products' },
+  { id: 'gluten-free', label: 'Gluten-Free', description: 'No gluten' },
+  { id: 'dairy-free', label: 'Dairy-Free', description: 'No dairy products' },
+  { id: 'keto', label: 'Keto', description: 'Very low carb, high fat' },
+  { id: 'low-sodium', label: 'Low Sodium', description: 'Reduced salt intake' },
+];
 
 const ProfilePage: React.FC = () => {
-  const { user, logout } = useAuthStore();
+  const { user, logout, setUser } = useAuthStore();
+  const [dietaryPreferences, setDietaryPreferences] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Load existing preferences
+  useEffect(() => {
+    if (user?.preferences) {
+      try {
+        const prefs = typeof user.preferences === 'string' 
+          ? JSON.parse(user.preferences) 
+          : user.preferences;
+        setDietaryPreferences(prefs.dietaryPreferences || []);
+      } catch (e) {
+        console.error('Failed to parse preferences:', e);
+      }
+    }
+  }, [user]);
+
+  const togglePreference = (prefId: string) => {
+    setDietaryPreferences(prev => 
+      prev.includes(prefId) 
+        ? prev.filter(p => p !== prefId)
+        : [...prev, prefId]
+    );
+    setSaveSuccess(false);
+  };
+
+  const savePreferences = async () => {
+    setIsSaving(true);
+    setSaveSuccess(false);
+    try {
+      const newPreferences = {
+        dietaryPreferences,
+        updatedAt: new Date().toISOString()
+      };
+      
+      const response = await authApi.updateProfile({
+        preferences: JSON.stringify(newPreferences)
+      });
+      
+      // Update local user state
+      if (response.user) {
+        setUser(response.user);
+      }
+      
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error('Failed to save preferences:', error);
+      alert('Failed to save preferences. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -12,7 +78,7 @@ const ProfilePage: React.FC = () => {
           Profile Settings
         </h1>
         <p className="text-gray-600 mt-2">
-          Manage your account and preferences
+          Manage your account and meal preferences
         </p>
       </div>
 
@@ -67,30 +133,67 @@ const ProfilePage: React.FC = () => {
                 />
               </div>
             </div>
-
-            <div className="mt-6">
-              <button className="btn btn-primary mr-3">
-                Update Profile
-              </button>
-              <button className="btn btn-secondary">
-                Change Password
-              </button>
-            </div>
           </div>
 
-          {/* Dietary Preferences */}
+          {/* Dietary Preferences - Now Functional! */}
           <div className="card p-6">
-            <h3 className="text-lg font-semibold mb-4">
-              Dietary Preferences
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {['Vegetarian', 'Vegan', 'Gluten-Free', 'Dairy-Free', 'Keto', 'High-Protein'].map((pref) => (
-                <label key={pref} className="flex items-center">
-                  <input type="checkbox" className="rounded mr-2" />
-                  <span className="text-sm">{pref}</span>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">🍽️ Meal Preferences</h3>
+                <p className="text-sm text-gray-600">Select your dietary preferences to get personalized recipe recommendations</p>
+              </div>
+              {saveSuccess && (
+                <span className="flex items-center text-green-600 text-sm">
+                  <Check className="w-4 h-4 mr-1" />
+                  Saved!
+                </span>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+              {DIETARY_OPTIONS.map((option) => (
+                <label 
+                  key={option.id} 
+                  className={`flex items-start p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                    dietaryPreferences.includes(option.id)
+                      ? 'border-primary bg-primary bg-opacity-5'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input 
+                    type="checkbox" 
+                    className="rounded mt-1 mr-3"
+                    checked={dietaryPreferences.includes(option.id)}
+                    onChange={() => togglePreference(option.id)}
+                  />
+                  <div>
+                    <span className="font-medium text-gray-900">{option.label}</span>
+                    <p className="text-xs text-gray-500">{option.description}</p>
+                  </div>
                 </label>
               ))}
             </div>
+
+            <button 
+              onClick={savePreferences}
+              disabled={isSaving}
+              className="btn btn-primary"
+            >
+              {isSaving ? (
+                <>
+                  <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Preferences'
+              )}
+            </button>
+
+            {dietaryPreferences.length > 0 && (
+              <p className="text-sm text-gray-600 mt-4">
+                ✨ Recipes will be filtered to match: <strong>{dietaryPreferences.join(', ')}</strong>
+              </p>
+            )}
           </div>
         </div>
 
@@ -104,7 +207,7 @@ const ProfilePage: React.FC = () => {
             </div>
             <div className="mb-4">
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                Free Plan
+                {user?.subscriptionTier === 'premium' ? 'Premium' : 'Free Plan'}
               </span>
             </div>
             <button className="btn btn-primary w-full">

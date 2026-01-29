@@ -38,5 +38,8 @@
   },
   "devDependencies": {
     "@types/cors": "^2.8.19"
+  },
+  "prisma": {
+    "seed": "npx ts-node prisma/seed.ts"
   }
 }

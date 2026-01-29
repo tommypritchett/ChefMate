@@ -161,4 +161,126 @@ router.delete('/:listId/items/:itemId', requireAuth, async (req: AuthenticatedRe
   }
 });
 
+// POST /api/shopping-lists/:listId/items/:itemId/purchase
+// Mark item as purchased AND add to inventory
+router.post('/:listId/items/:itemId/purchase', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { listId, itemId } = req.params;
+    const { storageLocation = 'fridge', category } = req.body;
+    
+    // Verify ownership
+    const list = await prisma.shoppingList.findFirst({
+      where: { id: listId, userId: req.user!.userId }
+    });
+    
+    if (!list) {
+      return res.status(404).json({ error: 'Shopping list not found' });
+    }
+    
+    // Get the item
+    const item = await prisma.shoppingListItem.findUnique({
+      where: { id: itemId }
+    });
+    
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    
+    // Mark as checked
+    await prisma.shoppingListItem.update({
+      where: { id: itemId },
+      data: { 
+        isChecked: true,
+        checkedAt: new Date()
+      }
+    });
+    
+    // Add to inventory
+    const inventoryItem = await prisma.inventoryItem.create({
+      data: {
+        userId: req.user!.userId,
+        name: item.name,
+        quantity: item.quantity || 1,
+        unit: item.unit || 'pieces',
+        category: category || item.category || 'other',
+        storageLocation,
+        purchasedAt: new Date()
+      }
+    });
+    
+    res.json({ 
+      success: true, 
+      message: `${item.name} added to inventory`,
+      inventoryItem 
+    });
+  } catch (error) {
+    console.error('Purchase item error:', error);
+    res.status(500).json({ error: 'Failed to purchase item' });
+  }
+});
+
+// POST /api/shopping-lists/:listId/purchase-all
+// Mark all unchecked items as purchased AND add to inventory
+router.post('/:listId/purchase-all', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { listId } = req.params;
+    const { storageLocation = 'fridge' } = req.body;
+    
+    // Verify ownership and get list with items
+    const list = await prisma.shoppingList.findFirst({
+      where: { id: listId, userId: req.user!.userId },
+      include: { items: true }
+    });
+    
+    if (!list) {
+      return res.status(404).json({ error: 'Shopping list not found' });
+    }
+    
+    const uncheckedItems = list.items.filter(item => !item.isChecked);
+    
+    if (uncheckedItems.length === 0) {
+      return res.json({ success: true, message: 'No items to purchase', count: 0 });
+    }
+    
+    // Mark all as checked
+    await prisma.shoppingListItem.updateMany({
+      where: { 
+        shoppingListId: listId,
+        isChecked: false
+      },
+      data: { 
+        isChecked: true,
+        checkedAt: new Date()
+      }
+    });
+    
+    // Add all to inventory
+    const inventoryItems = await Promise.all(
+      uncheckedItems.map(item => 
+        prisma.inventoryItem.create({
+          data: {
+            userId: req.user!.userId,
+            name: item.name,
+            quantity: item.quantity || 1,
+            unit: item.unit || 'pieces',
+            category: item.category || 'other',
+            storageLocation,
+            purchasedAt: new Date()
+          }
+        })
+      )
+    );
+    
+    res.json({ 
+      success: true, 
+      message: `${inventoryItems.length} items added to inventory`,
+      count: inventoryItems.length,
+      inventoryItems 
+    });
+  } catch (error) {
+    console.error('Purchase all items error:', error);
+    res.status(500).json({ error: 'Failed to purchase items' });
+  }
+});
+
 export default router;

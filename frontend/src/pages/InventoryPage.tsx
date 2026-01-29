@@ -244,21 +244,21 @@ const InventoryPage: React.FC = () => {
 
       {/* Add Item Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-            {/* Modal Header - Sticky */}
-            <div className="sticky top-0 bg-white border-b p-6 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white rounded-t-2xl sm:rounded-lg w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col sm:m-4">
+            {/* Modal Header */}
+            <div className="flex-shrink-0 bg-white border-b p-4 sm:p-6 flex items-center justify-between rounded-t-2xl sm:rounded-t-lg">
               <h3 className="text-lg font-semibold">Add Food Item</h3>
               <button 
                 onClick={() => setShowAddModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 p-2"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal Content - Scrollable */}
-            <div className="p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Item Name</label>
                 <input
@@ -355,8 +355,8 @@ const InventoryPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Modal Footer - Sticky */}
-            <div className="sticky bottom-0 bg-white border-t p-6 flex gap-2">
+            {/* Modal Footer */}
+            <div className="flex-shrink-0 bg-white border-t p-4 sm:p-6 flex gap-2">
               <button 
                 onClick={() => setShowAddModal(false)}
                 className="btn btn-secondary flex-1"

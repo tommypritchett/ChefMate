@@ -1,117 +1,348 @@
-import React from 'react';
-import { useParams } from 'react-router-dom';
-import { Clock, Users, Heart, ShoppingCart } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { Clock, Users, Heart, ShoppingCart, ArrowLeft, Loader, ChefHat, Bookmark } from 'lucide-react';
+import { recipesApi, favoritesApi, shoppingApi } from '../services/api';
+import { Recipe } from '../types';
 
 const RecipeDetailPage: React.FC = () => {
-  const { id } = useParams();
-  console.log('Recipe ID:', id); // Keep id usage
+  const { id } = useParams<{ id: string }>();
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+
+  useEffect(() => {
+    if (id) {
+      loadRecipe(id);
+    }
+  }, [id]);
+
+  const loadRecipe = async (recipeId: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await recipesApi.getRecipe(recipeId);
+      setRecipe(response.recipe);
+    } catch (err: any) {
+      console.error('Failed to load recipe:', err);
+      setError('Recipe not found or failed to load.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveRecipe = async () => {
+    if (!recipe) return;
+    
+    setIsSaving(true);
+    try {
+      await favoritesApi.saveRecipe({
+        recipeId: recipe.id,
+        notes: ''
+      });
+      setIsSaved(true);
+    } catch (err) {
+      console.error('Failed to save recipe:', err);
+      alert('Failed to save recipe. Please make sure you are logged in.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddToShoppingList = async () => {
+    if (!recipe) return;
+    
+    setIsAddingToCart(true);
+    try {
+      // Create a new shopping list with the recipe ingredients
+      const list = await shoppingApi.createList({
+        name: `${recipe.title} Ingredients`,
+        description: `Shopping list for ${recipe.title}`,
+        sourceType: 'recipe',
+        sourceRecipeId: recipe.id
+      });
+      
+      // Add each ingredient as an item
+      const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+      for (const ingredient of ingredients) {
+        await shoppingApi.addItem(list.list.id, {
+          name: ingredient.name,
+          quantity: ingredient.amount,
+          unit: ingredient.unit
+        });
+      }
+      
+      alert('Ingredients added to shopping list!');
+    } catch (err) {
+      console.error('Failed to add to shopping list:', err);
+      alert('Failed to create shopping list. Please make sure you are logged in.');
+    } finally {
+      setIsAddingToCart(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error || !recipe) {
+    return (
+      <div className="card p-12 text-center">
+        <ChefHat className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-600 mb-2">Recipe Not Found</h2>
+        <p className="text-gray-500 mb-6">{error || 'This recipe could not be loaded.'}</p>
+        <Link to="/recipes" className="btn btn-primary">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Recipes
+        </Link>
+      </div>
+    );
+  }
+
+  const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+  const instructions = Array.isArray(recipe.instructions) ? recipe.instructions : [];
+  const nutrition = recipe.nutrition && typeof recipe.nutrition === 'object' ? recipe.nutrition : null;
+  const originalNutrition = recipe.originalNutrition && typeof recipe.originalNutrition === 'object' ? recipe.originalNutrition : null;
 
   return (
     <div className="space-y-8">
+      {/* Back Button */}
+      <Link to="/recipes" className="inline-flex items-center text-gray-600 hover:text-primary">
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back to Recipes
+      </Link>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Recipe Image */}
         <div className="lg:col-span-2">
-          <div className="bg-gray-200 rounded-lg h-96 flex items-center justify-center">
-            <p className="text-gray-500">Recipe Image</p>
+          <div className="bg-gradient-to-br from-orange-100 to-red-100 rounded-lg h-80 sm:h-96 flex items-center justify-center overflow-hidden">
+            {recipe.imageUrl ? (
+              <img 
+                src={recipe.imageUrl} 
+                alt={recipe.title}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-8xl">🍽️</span>
+            )}
           </div>
+          
+          {recipe.isAiGenerated && (
+            <div className="mt-3 inline-block bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm">
+              ✨ AI Generated Recipe
+            </div>
+          )}
         </div>
 
         {/* Recipe Info */}
         <div className="space-y-6">
           <div>
-            <h1 className="text-3xl font-display font-bold text-gray-900 mb-2">
-              High Protein Quesarito
+            <h1 className="text-2xl sm:text-3xl font-display font-bold text-gray-900 mb-2">
+              {recipe.title}
             </h1>
+            {recipe.brand && (
+              <p className="text-primary font-medium mb-2">
+                Healthier version of {recipe.brand} original
+              </p>
+            )}
             <p className="text-gray-600">
-              A healthier take on Taco Bell's Quesarito with lean ground turkey and whole wheat tortillas.
+              {recipe.description}
             </p>
           </div>
 
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <Clock className="w-6 h-6 mx-auto text-gray-400 mb-1" />
-              <div className="text-sm font-medium">35 min</div>
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <Clock className="w-5 h-5 mx-auto text-gray-400 mb-1" />
+              <div className="text-sm font-medium">
+                {(recipe.prepTimeMinutes || 0) + (recipe.cookTimeMinutes || 0)} min
+              </div>
             </div>
-            <div className="text-center">
-              <Users className="w-6 h-6 mx-auto text-gray-400 mb-1" />
-              <div className="text-sm font-medium">4 servings</div>
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <Users className="w-5 h-5 mx-auto text-gray-400 mb-1" />
+              <div className="text-sm font-medium">{recipe.servings} servings</div>
             </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-green-600 mb-1">520</div>
-              <div className="text-sm font-medium">calories</div>
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <div className="text-lg font-bold text-green-600 mb-1">
+                {nutrition?.calories || '—'}
+              </div>
+              <div className="text-xs font-medium text-gray-500">calories</div>
             </div>
+          </div>
+
+          {/* Difficulty */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Difficulty:</span>
+            <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${
+              recipe.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
+              recipe.difficulty === 'hard' ? 'bg-red-100 text-red-700' :
+              'bg-yellow-100 text-yellow-700'
+            }`}>
+              {recipe.difficulty || 'Medium'}
+            </span>
           </div>
 
           {/* Actions */}
           <div className="space-y-3">
-            <button className="btn btn-primary w-full">
-              <Heart className="w-4 h-4 mr-2" />
-              Save to Favorites
+            <button 
+              onClick={handleSaveRecipe}
+              disabled={isSaved || isSaving}
+              className={`btn w-full ${isSaved ? 'btn-secondary' : 'btn-primary'}`}
+            >
+              {isSaving ? (
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+              ) : isSaved ? (
+                <Bookmark className="w-4 h-4 mr-2" />
+              ) : (
+                <Heart className="w-4 h-4 mr-2" />
+              )}
+              {isSaved ? 'Saved!' : 'Save to Favorites'}
             </button>
-            <button className="btn btn-secondary w-full">
-              <ShoppingCart className="w-4 h-4 mr-2" />
+            <button 
+              onClick={handleAddToShoppingList}
+              disabled={isAddingToCart}
+              className="btn btn-secondary w-full"
+            >
+              {isAddingToCart ? (
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <ShoppingCart className="w-4 h-4 mr-2" />
+              )}
               Add to Shopping List
             </button>
           </div>
 
           {/* Nutrition Comparison */}
-          <div className="card p-4">
-            <h3 className="font-semibold mb-3">vs Original</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>Calories</span>
-                <span className="text-green-600">-130</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Protein</span>
-                <span className="text-green-600">+17g</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Sodium</span>
-                <span className="text-green-600">-520mg</span>
+          {nutrition && originalNutrition && (
+            <div className="card p-4">
+              <h3 className="font-semibold mb-3">vs Original</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Calories</span>
+                  <span className={originalNutrition.calories > nutrition.calories ? 'text-green-600' : 'text-red-600'}>
+                    {originalNutrition.calories > nutrition.calories ? '-' : '+'}
+                    {Math.abs(originalNutrition.calories - nutrition.calories)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Protein</span>
+                  <span className={nutrition.protein > originalNutrition.protein ? 'text-green-600' : 'text-red-600'}>
+                    {nutrition.protein > originalNutrition.protein ? '+' : '-'}
+                    {Math.abs(nutrition.protein - originalNutrition.protein)}g
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Fat</span>
+                  <span className={originalNutrition.fat > nutrition.fat ? 'text-green-600' : 'text-red-600'}>
+                    {originalNutrition.fat > nutrition.fat ? '-' : '+'}
+                    {Math.abs(originalNutrition.fat - nutrition.fat)}g
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Dietary Tags */}
+          {recipe.dietaryTags && recipe.dietaryTags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {recipe.dietaryTags.map((tag: string, i: number) => (
+                <span key={i} className="bg-green-50 text-green-700 px-2 py-1 rounded-full text-xs">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Full Nutrition */}
+      {nutrition && (
+        <div className="card p-6">
+          <h2 className="text-xl font-semibold mb-4">Nutrition per Serving</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <div className="text-2xl font-bold text-gray-900">{nutrition.calories}</div>
+              <div className="text-xs text-gray-500">Calories</div>
+            </div>
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{nutrition.protein}g</div>
+              <div className="text-xs text-gray-500">Protein</div>
+            </div>
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600">{nutrition.carbs}g</div>
+              <div className="text-xs text-gray-500">Carbs</div>
+            </div>
+            <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <div className="text-2xl font-bold text-red-600">{nutrition.fat}g</div>
+              <div className="text-xs text-gray-500">Fat</div>
+            </div>
+            {nutrition.fiber && (
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">{nutrition.fiber}g</div>
+                <div className="text-xs text-gray-500">Fiber</div>
+              </div>
+            )}
+            {nutrition.sodium && (
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-gray-600">{nutrition.sodium}mg</div>
+                <div className="text-xs text-gray-500">Sodium</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Ingredients & Instructions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="card p-6">
           <h2 className="text-xl font-semibold mb-4">Ingredients</h2>
-          <ul className="space-y-2">
-            <li className="flex items-center">
-              <input type="checkbox" className="mr-3" />
-              <span>1 lb ground turkey (93/7 lean)</span>
-            </li>
-            <li className="flex items-center">
-              <input type="checkbox" className="mr-3" />
-              <span>4 whole wheat large tortillas</span>
-            </li>
-            <li className="flex items-center">
-              <input type="checkbox" className="mr-3" />
-              <span>1 cup reduced-fat cheddar cheese</span>
-            </li>
-          </ul>
+          {ingredients.length === 0 ? (
+            <p className="text-gray-500">No ingredients listed.</p>
+          ) : (
+            <ul className="space-y-3">
+              {ingredients.map((ingredient: any, index: number) => (
+                <li key={index} className="flex items-start gap-3">
+                  <input type="checkbox" className="mt-1 rounded" />
+                  <span className="flex-1">
+                    <span className="font-medium">{ingredient.amount} {ingredient.unit}</span>
+                    {' '}{ingredient.name}
+                    {ingredient.notes && (
+                      <span className="text-gray-500 text-sm"> ({ingredient.notes})</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="card p-6">
           <h2 className="text-xl font-semibold mb-4">Instructions</h2>
-          <ol className="space-y-4">
-            <li className="flex">
-              <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 mt-0.5 flex-shrink-0">
-                1
-              </span>
-              <span>Cook ground turkey in a large skillet over medium heat until browned and cooked through.</span>
-            </li>
-            <li className="flex">
-              <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3 mt-0.5 flex-shrink-0">
-                2
-              </span>
-              <span>Season turkey with taco seasoning and add black beans. Cook for 2 minutes.</span>
-            </li>
-          </ol>
+          {instructions.length === 0 ? (
+            <p className="text-gray-500">No instructions listed.</p>
+          ) : (
+            <ol className="space-y-4">
+              {instructions.map((instruction: any, index: number) => (
+                <li key={index} className="flex gap-4">
+                  <span className="bg-primary text-white rounded-full w-7 h-7 flex items-center justify-center text-sm flex-shrink-0">
+                    {instruction.step || index + 1}
+                  </span>
+                  <div className="flex-1">
+                    <p>{instruction.text}</p>
+                    {instruction.time && (
+                      <p className="text-sm text-gray-500 mt-1">⏱️ {instruction.time} min</p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
       </div>
     </div>

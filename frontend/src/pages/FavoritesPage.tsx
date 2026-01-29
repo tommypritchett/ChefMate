@@ -10,34 +10,49 @@ interface FolderType {
   recipes: Array<{id: string, title: string, brand?: string, image: string}>;
 }
 
+interface SavedRecipeType {
+  id: string;
+  recipeId: string;
+  personalNotes?: string;
+  rating?: number;
+  savedAt: string;
+  recipe: {
+    id: string;
+    title: string;
+    description?: string;
+    brand?: string;
+    imageUrl?: string;
+    prepTimeMinutes?: number;
+    cookTimeMinutes?: number;
+    difficulty?: string;
+  };
+}
+
 const FavoritesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderDescription, setNewFolderDescription] = useState('');
   const [folders, setFolders] = useState<FolderType[]>([]);
+  const [savedRecipes, setSavedRecipes] = useState<SavedRecipeType[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<FolderType | null>(null);
   const [showAddRecipeModal, setShowAddRecipeModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-
-  // Sample recipes that can be added to folders
-  const availableRecipes = [
-    { id: 'mock-1', title: 'Protein-Packed Big Mac', brand: "McDonald's", image: '🍔' },
-    { id: 'mock-2', title: 'Crispy Baked KFC Chicken', brand: 'KFC', image: '🍗' },
-    { id: 'mock-3', title: 'Healthy Crunchwrap Supreme', brand: 'Taco Bell', image: '🌯' },
-    { id: 'mock-4', title: 'Greek Yogurt Chicken Tikka', brand: 'Crock Pot', image: '🍛' },
-    { id: 'mock-5', title: 'Turkey & Sweet Potato Chili', brand: 'Crock Pot', image: '🍲' }
-  ];
+  const [activeTab, setActiveTab] = useState<'all' | 'folders'>('all');
 
   useEffect(() => {
-    loadFolders();
+    loadData();
   }, []);
 
-  const loadFolders = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const response = await favoritesApi.getFolders();
-      const mappedFolders = (response.folders || []).map((f: any) => ({
+      const [foldersResponse, favoritesResponse] = await Promise.all([
+        favoritesApi.getFolders(),
+        favoritesApi.getFavorites()
+      ]);
+      
+      const mappedFolders = (foldersResponse.folders || []).map((f: any) => ({
         id: f.id,
         name: f.name,
         description: f.description,
@@ -45,11 +60,22 @@ const FavoritesPage: React.FC = () => {
         recipes: []
       }));
       setFolders(mappedFolders);
+      setSavedRecipes(favoritesResponse.savedRecipes || []);
     } catch (error) {
-      console.error('Failed to load folders:', error);
+      console.error('Failed to load favorites:', error);
       setFolders([]);
+      setSavedRecipes([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUnsaveRecipe = async (savedRecipeId: string) => {
+    try {
+      await favoritesApi.unsaveRecipe(savedRecipeId);
+      setSavedRecipes(savedRecipes.filter(r => r.id !== savedRecipeId));
+    } catch (error) {
+      console.error('Failed to unsave recipe:', error);
     }
   };
   
@@ -63,7 +89,7 @@ const FavoritesPage: React.FC = () => {
         description: newFolderDescription
       });
       
-      await loadFolders();
+      await loadData();
       setNewFolderName('');
       setNewFolderDescription('');
       setShowNewFolderModal(false);
@@ -76,14 +102,21 @@ const FavoritesPage: React.FC = () => {
   };
 
   const addRecipeToFolder = (recipeId: string) => {
-    const recipe = availableRecipes.find(r => r.id === recipeId);
-    if (!recipe || !selectedFolder) return;
+    const savedRecipe = savedRecipes.find(r => r.recipe.id === recipeId);
+    if (!savedRecipe || !selectedFolder) return;
+
+    const recipeForFolder = {
+      id: savedRecipe.recipe.id,
+      title: savedRecipe.recipe.title,
+      brand: savedRecipe.recipe.brand,
+      image: '🍽️'
+    };
 
     setFolders(folders.map(folder => 
       folder.id === selectedFolder.id
         ? {
             ...folder,
-            recipes: [...folder.recipes, recipe],
+            recipes: [...folder.recipes, recipeForFolder],
             recipeCount: folder.recipes.length + 1
           }
         : folder
@@ -92,7 +125,7 @@ const FavoritesPage: React.FC = () => {
     // Update selected folder state
     setSelectedFolder({
       ...selectedFolder,
-      recipes: [...selectedFolder.recipes, recipe],
+      recipes: [...selectedFolder.recipes, recipeForFolder],
       recipeCount: selectedFolder.recipes.length + 1
     });
 
@@ -135,23 +168,127 @@ const FavoritesPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Folders Display */}
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+            activeTab === 'all' 
+              ? 'border-primary text-primary' 
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          All Saved ({savedRecipes.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('folders')}
+          className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+            activeTab === 'folders' 
+              ? 'border-primary text-primary' 
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Folders ({folders.length})
+        </button>
+      </div>
+
+      {/* Content */}
       {loading ? (
         <div className="card p-12 text-center">
           <Loader className="w-8 h-8 mx-auto animate-spin text-primary mb-4" />
-          <p className="text-gray-500">Loading folders...</p>
+          <p className="text-gray-500">Loading favorites...</p>
         </div>
-      ) : folders.length === 0 ? (
-        /* Empty State */
-        <div className="card p-12 text-center">
-          <Heart className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <h2 className="text-xl font-semibold text-gray-600 mb-2">
-            No saved recipes yet
-          </h2>
-          <p className="text-gray-500 mb-6">
-            Start saving recipes you love or create folders to organize them
-          </p>
-          <div className="flex gap-3 justify-center">
+      ) : activeTab === 'all' ? (
+        /* All Saved Recipes */
+        savedRecipes.length === 0 ? (
+          <div className="card p-12 text-center">
+            <Heart className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-600 mb-2">
+              No saved recipes yet
+            </h2>
+            <p className="text-gray-500 mb-6">
+              Save recipes from the AI Generator or Recipe Browser
+            </p>
+            <div className="flex gap-3 justify-center flex-wrap">
+              <a href="/recipes?ai=true" className="btn btn-primary">
+                Generate AI Recipe
+              </a>
+              <a href="/recipes" className="btn btn-secondary">
+                Browse Recipes
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {savedRecipes.map((saved) => (
+              <div key={saved.id} className="card overflow-hidden hover:shadow-lg transition-shadow">
+                <div className="bg-gradient-to-br from-orange-100 to-red-100 h-40 flex items-center justify-center">
+                  {saved.recipe.imageUrl ? (
+                    <img 
+                      src={saved.recipe.imageUrl} 
+                      alt={saved.recipe.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-5xl">🍽️</span>
+                  )}
+                </div>
+                <div className="p-4">
+                  <h3 className="font-semibold text-lg text-gray-900 mb-1">
+                    {saved.recipe.title}
+                  </h3>
+                  {saved.recipe.brand && (
+                    <p className="text-sm text-primary mb-2">{saved.recipe.brand}</p>
+                  )}
+                  {saved.recipe.description && (
+                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                      {saved.recipe.description}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
+                    <span>
+                      {saved.recipe.prepTimeMinutes && saved.recipe.cookTimeMinutes
+                        ? `${saved.recipe.prepTimeMinutes + saved.recipe.cookTimeMinutes} min`
+                        : 'Time varies'}
+                    </span>
+                    <span className="capitalize">{saved.recipe.difficulty || 'Medium'}</span>
+                  </div>
+                  {saved.personalNotes && (
+                    <p className="text-xs text-gray-500 italic mb-3 bg-gray-50 p-2 rounded">
+                      📝 {saved.personalNotes}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <a 
+                      href={`/recipes/${saved.recipe.id}`}
+                      className="btn btn-primary btn-sm flex-1"
+                    >
+                      View Recipe
+                    </a>
+                    <button 
+                      onClick={() => handleUnsaveRecipe(saved.id)}
+                      className="btn btn-secondary btn-sm"
+                      title="Remove from saved"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        /* Folders Tab */
+        folders.length === 0 ? (
+          <div className="card p-12 text-center">
+            <Folder className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-600 mb-2">
+              No folders yet
+            </h2>
+            <p className="text-gray-500 mb-6">
+              Create folders to organize your saved recipes
+            </p>
             <button 
               onClick={() => setShowNewFolderModal(true)}
               className="btn btn-primary"
@@ -159,40 +296,36 @@ const FavoritesPage: React.FC = () => {
               <FolderPlus className="w-4 h-4 mr-2" />
               Create Folder
             </button>
-            <a href="/recipes" className="btn btn-secondary">
-              Browse Recipes
-            </a>
           </div>
-        </div>
-      ) : (
-        /* Folders Grid */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {folders.map((folder) => (
-            <div key={folder.id} className="card p-6 hover:shadow-lg transition-shadow cursor-pointer">
-              <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-primary bg-opacity-10 rounded-lg flex items-center justify-center mr-4">
-                  <Folder className="w-6 h-6 text-primary" />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {folders.map((folder) => (
+              <div key={folder.id} className="card p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                <div className="flex items-center mb-4">
+                  <div className="w-12 h-12 bg-primary bg-opacity-10 rounded-lg flex items-center justify-center mr-4">
+                    <Folder className="w-6 h-6 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg text-gray-900">{folder.name}</h3>
+                    <p className="text-sm text-gray-500">{folder.recipeCount} recipes</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-lg text-gray-900">{folder.name}</h3>
-                  <p className="text-sm text-gray-500">{folder.recipeCount} recipes</p>
+                {folder.description && (
+                  <p className="text-gray-600 text-sm mb-4">{folder.description}</p>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-gray-400">Created recently</span>
+                  <button 
+                    onClick={() => setSelectedFolder(folder)}
+                    className="btn btn-sm btn-secondary"
+                  >
+                    Open
+                  </button>
                 </div>
               </div>
-              {folder.description && (
-                <p className="text-gray-600 text-sm mb-4">{folder.description}</p>
-              )}
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-400">Created recently</span>
-                <button 
-                  onClick={() => setSelectedFolder(folder)}
-                  className="btn btn-sm btn-secondary"
-                >
-                  Open
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )
       )}
 
       {/* New Folder Modal */}
@@ -358,20 +491,24 @@ const FavoritesPage: React.FC = () => {
 
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {availableRecipes
-                  .filter(recipe => !selectedFolder.recipes.some((r: any) => r.id === recipe.id))
-                  .map((recipe) => (
+                {savedRecipes
+                  .filter(saved => !selectedFolder.recipes.some((r: any) => r.id === saved.recipe.id))
+                  .map((saved) => (
                     <div 
-                      key={recipe.id} 
+                      key={saved.id} 
                       className="card p-4 hover:shadow-lg transition-shadow cursor-pointer border-2 border-gray-200 hover:border-primary"
-                      onClick={() => addRecipeToFolder(recipe.id)}
+                      onClick={() => addRecipeToFolder(saved.recipe.id)}
                     >
                       <div className="bg-gradient-to-br from-orange-100 to-red-100 rounded-lg h-24 mb-3 flex items-center justify-center">
-                        <span className="text-3xl">{recipe.image}</span>
+                        {saved.recipe.imageUrl ? (
+                          <img src={saved.recipe.imageUrl} alt={saved.recipe.title} className="w-full h-full object-cover rounded-lg" />
+                        ) : (
+                          <span className="text-3xl">🍽️</span>
+                        )}
                       </div>
-                      <h4 className="font-medium text-gray-900 mb-1">{recipe.title}</h4>
-                      {recipe.brand && (
-                        <p className="text-xs text-primary">{recipe.brand}</p>
+                      <h4 className="font-medium text-gray-900 mb-1">{saved.recipe.title}</h4>
+                      {saved.recipe.brand && (
+                        <p className="text-xs text-primary">{saved.recipe.brand}</p>
                       )}
                       <div className="mt-3">
                         <button className="btn btn-primary btn-sm w-full">
@@ -383,9 +520,9 @@ const FavoritesPage: React.FC = () => {
                   ))}
               </div>
               
-              {availableRecipes.filter(recipe => !selectedFolder.recipes.some((r: any) => r.id === recipe.id)).length === 0 && (
+              {savedRecipes.filter(saved => !selectedFolder.recipes.some((r: any) => r.id === saved.recipe.id)).length === 0 && (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">All available recipes have been added to this folder!</p>
+                  <p className="text-gray-500">{savedRecipes.length === 0 ? 'Save some recipes first to add them to folders!' : 'All saved recipes have been added to this folder!'}</p>
                 </div>
               )}
             </div>

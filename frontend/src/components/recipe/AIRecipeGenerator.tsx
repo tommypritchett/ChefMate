@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Clock, Users, ChefHat, Loader, Heart, ShoppingCart, Bookmark } from 'lucide-react';
-import { aiApi, favoritesApi, shoppingApi } from '../../services/api';
+import { aiApi, favoritesApi, shoppingApi, recipesApi } from '../../services/api';
 import { Recipe } from '../../types';
 import { generateMockRecipe } from '../../services/mockRecipes';
 
@@ -37,58 +37,52 @@ const AIRecipeGenerator: React.FC = () => {
     setError(null);
 
     try {
-      // Use mock recipes for testing to save AI tokens
-      const useMockData = true; // Set to false to use real AI
+      let recipe: Recipe;
       
-      if (useMockData) {
-        // Simulate AI thinking time
-        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
-        
-        const mockRecipe = generateMockRecipe(prompt.trim());
-        
-        // Create a recipe object that matches the expected format
-        const recipe: Recipe = {
-          id: 'mock-' + Date.now(),
-          title: mockRecipe.title,
-          slug: mockRecipe.title.toLowerCase().replace(/\s+/g, '-'),
-          description: mockRecipe.description,
-          brand: mockRecipe.brand,
-          category: null,
-          originalItemName: mockRecipe.originalItem,
-          ingredients: mockRecipe.ingredients,
-          instructions: mockRecipe.instructions,
-          prepTimeMinutes: mockRecipe.prepTime,
-          cookTimeMinutes: mockRecipe.cookTime,
-          totalTimeMinutes: mockRecipe.prepTime + mockRecipe.cookTime,
-          servings: mockRecipe.servings,
-          difficulty: mockRecipe.difficulty,
-          nutrition: mockRecipe.nutrition,
-          originalNutrition: mockRecipe.originalNutrition,
-          dietaryTags: mockRecipe.dietaryTags,
-          isAiGenerated: true,
-          imageUrl: null,
-          imageUrls: [],
-          viewCount: 0,
-          saveCount: 0,
-          makeCount: 0,
-          averageRating: null,
-          isPublished: true,
-          isFeatured: false,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-        
-        setGeneratedRecipe(recipe);
-      } else {
-        // Use real AI API
+      try {
+        // Try real AI API first
         const result = await aiApi.generateRecipe({
           prompt: prompt.trim(),
           servings,
           dietaryRestrictions,
         });
-
-        setGeneratedRecipe(result.recipe);
+        recipe = result.recipe;
+      } catch (aiError: any) {
+        // If AI fails (no API key, etc.), use mock data but save to database
+        console.log('AI API unavailable, using mock data:', aiError.message);
+        
+        // Simulate AI thinking time
+        await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1500));
+        
+        const mockRecipe = generateMockRecipe(prompt.trim());
+        
+        // Save mock recipe to database so it gets a real ID
+        const saveResult = await recipesApi.createRecipe({
+          title: mockRecipe.title,
+          description: mockRecipe.description,
+          brand: mockRecipe.brand,
+          originalItemName: mockRecipe.originalItem,
+          ingredients: mockRecipe.ingredients,
+          instructions: mockRecipe.instructions,
+          prepTimeMinutes: mockRecipe.prepTime,
+          cookTimeMinutes: mockRecipe.cookTime,
+          servings: mockRecipe.servings,
+          difficulty: mockRecipe.difficulty,
+          nutrition: mockRecipe.nutrition,
+          originalNutrition: mockRecipe.originalNutrition,
+          dietaryTags: mockRecipe.dietaryTags,
+          isAiGenerated: true
+        });
+        
+        recipe = {
+          ...saveResult.recipe,
+          tips: mockRecipe.tips,
+          substitutions: mockRecipe.substitutions
+        } as Recipe;
       }
+      
+      setGeneratedRecipe(recipe);
+      setIsSaved(false); // Reset saved state for new recipe
     } catch (err: any) {
       console.error('Recipe generation error:', err);
       
