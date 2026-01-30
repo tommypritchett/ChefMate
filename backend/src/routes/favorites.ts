@@ -94,8 +94,13 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
             imageUrl: true,
             prepTimeMinutes: true,
             cookTimeMinutes: true,
+            totalTimeMinutes: true,
             difficulty: true,
-            averageRating: true
+            averageRating: true,
+            nutrition: true,
+            dietaryTags: true,
+            category: true,
+            servings: true
           }
         },
         folder: true
@@ -137,6 +142,16 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       return;
     }
     
+    // Check if already saved
+    const existing = await prisma.userSavedRecipe.findFirst({
+      where: { userId: req.user!.userId, recipeId },
+      include: { recipe: true, folder: true }
+    });
+
+    if (existing) {
+      return res.status(200).json({ savedRecipe: existing, alreadySaved: true });
+    }
+
     const savedRecipe = await prisma.userSavedRecipe.create({
       data: {
         userId: req.user!.userId,
@@ -161,6 +176,35 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     console.error('Save recipe error:', error);
     res.status(500).json({ error: 'Failed to save recipe' });
+  }
+});
+
+// DELETE /api/favorites/by-recipe/:recipeId
+// Unsave a recipe by its recipe ID
+router.delete('/by-recipe/:recipeId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { recipeId } = req.params;
+    
+    const saved = await prisma.userSavedRecipe.findFirst({
+      where: { recipeId, userId: req.user!.userId }
+    });
+    
+    if (!saved) {
+      return res.status(404).json({ error: 'Recipe not saved' });
+    }
+    
+    await prisma.userSavedRecipe.delete({ where: { id: saved.id } });
+    
+    // Decrement save count
+    await prisma.recipe.update({
+      where: { id: recipeId },
+      data: { saveCount: { decrement: 1 } }
+    });
+    
+    res.json({ success: true, removedId: saved.id });
+  } catch (error) {
+    console.error('Unsave recipe error:', error);
+    res.status(500).json({ error: 'Failed to unsave recipe' });
   }
 });
 
