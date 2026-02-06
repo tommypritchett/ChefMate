@@ -249,6 +249,37 @@ router.post('/:id/made-it', requireAuth, async (req: AuthenticatedRequest, res) 
   }
 });
 
+// DELETE /api/favorites/:id
+// Delete a saved recipe by its saved recipe ID
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verify ownership and existence
+    const saved = await prisma.userSavedRecipe.findFirst({
+      where: { id, userId: req.user!.userId }
+    });
+    
+    if (!saved) {
+      return res.status(404).json({ error: 'Saved recipe not found' });
+    }
+    
+    // Delete the saved recipe
+    await prisma.userSavedRecipe.delete({ where: { id } });
+    
+    // Decrement save count on recipe
+    await prisma.recipe.update({
+      where: { id: saved.recipeId },
+      data: { saveCount: { decrement: 1 } }
+    });
+    
+    res.json({ success: true, removedId: id });
+  } catch (error) {
+    console.error('Delete saved recipe error:', error);
+    res.status(500).json({ error: 'Failed to delete saved recipe' });
+  }
+});
+
 // POST /api/favorites/by-recipe/:recipeId/made-it
 // Track that a user made a recipe (lookup by recipe ID, auto-save if needed)
 router.post('/by-recipe/:recipeId/made-it', requireAuth, async (req: AuthenticatedRequest, res) => {

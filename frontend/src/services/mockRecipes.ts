@@ -177,16 +177,45 @@ export const mockRecipes = [
 ];
 
 export const generateMockRecipe = (prompt: string) => {
-  // Determine which mock recipe to return based on the prompt
-  if (prompt.toLowerCase().includes('big mac') || prompt.toLowerCase().includes('mcdonald')) {
+  const promptLower = prompt.toLowerCase();
+  
+  // Check for specific fast food matches
+  if (promptLower.includes('big mac') || promptLower.includes('mcdonald')) {
     return mockRecipes[0];
-  } else if (prompt.toLowerCase().includes('kfc') || prompt.toLowerCase().includes('chicken')) {
+  } else if (promptLower.includes('kfc') || promptLower.includes('chicken') || promptLower.includes('fried')) {
     return mockRecipes[1];
   } else {
-    // Return a modified version of the first recipe for other prompts
+    // Create a more customized recipe based on the prompt
     const baseRecipe = { ...mockRecipes[0] };
-    baseRecipe.title = `Protein-Enhanced ${prompt}`;
-    baseRecipe.description = `A healthier version of ${prompt} featuring Greek yogurt, lean proteins, and whole grain ingredients for better nutrition without sacrificing taste.`;
+    
+    // Extract key terms from prompt to customize the recipe
+    if (promptLower.includes('pizza')) {
+      baseRecipe.title = `Protein-Loaded Cauliflower Crust ${prompt}`;
+      baseRecipe.description = `A healthier take on ${prompt} using cauliflower crust, lean proteins, and Greek yogurt-based sauce for a guilt-free pizza experience.`;
+      baseRecipe.brand = "Pizza Hut";
+      baseRecipe.originalItem = prompt;
+    } else if (promptLower.includes('taco') || promptLower.includes('burrito')) {
+      baseRecipe.title = `Greek Yogurt ${prompt} Bowl`;
+      baseRecipe.description = `Transform ${prompt} into a protein-packed bowl with Greek yogurt crema, lean ground turkey, and fresh vegetables.`;
+      baseRecipe.brand = "Taco Bell";
+      baseRecipe.originalItem = prompt;
+    } else if (promptLower.includes('sandwich') || promptLower.includes('sub')) {
+      baseRecipe.title = `Whole Grain ${prompt}`;
+      baseRecipe.description = `Elevated ${prompt} with lean proteins, whole grain bread, and Greek yogurt-based spreads for maximum nutrition.`;
+      baseRecipe.brand = "Subway";
+      baseRecipe.originalItem = prompt;
+    } else if (promptLower.includes('pasta')) {
+      baseRecipe.title = `Protein Pasta ${prompt}`;
+      baseRecipe.description = `High-protein version of ${prompt} using chickpea pasta and Greek yogurt alfredo for better nutrition.`;
+      baseRecipe.brand = "Olive Garden";
+      baseRecipe.originalItem = prompt;
+    } else {
+      // Generic healthy version
+      baseRecipe.title = `Healthy ${prompt}`;
+      baseRecipe.description = `A nutritious remake of ${prompt} featuring Greek yogurt, lean proteins, and whole grain ingredients for better health without sacrificing taste.`;
+      baseRecipe.originalItem = prompt;
+    }
+    
     return baseRecipe;
   }
 };

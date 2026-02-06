@@ -85,6 +85,12 @@ model Recipe {
   metaDescription   String?
   metaKeywords      String? // JSON string array
   
+  // Cost comparison
+  estimatedCostPerServing Float?   // cost in USD to make one serving at home
+  originalPrice           Float?   // what the fast food item costs at the restaurant
+  costSavingsPercent      Float?   // calculated savings percentage
+  ingredientCosts         String?  // JSON string with per-ingredient cost breakdown
+  
   // Status
   isPublished       Boolean @default(true)
   isFeatured        Boolean @default(false)

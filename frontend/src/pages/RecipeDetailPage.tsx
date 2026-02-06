@@ -195,6 +195,72 @@ const RecipeDetailPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Cost Comparison */}
+          {recipe.estimatedCostPerServing && recipe.originalPrice && recipe.costSavingsPercent && (
+            <div className="card p-4 bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                💰 Cost Comparison
+              </h3>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">🏠 Home-cooked (per serving)</span>
+                  <span className="text-lg font-bold text-green-600">
+                    ${recipe.estimatedCostPerServing.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700">🍔 {recipe.brand || 'Restaurant'}</span>
+                  <span className="text-lg font-medium text-gray-800">
+                    ${recipe.originalPrice.toFixed(2)}
+                  </span>
+                </div>
+                <div className="border-t border-green-200 pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-green-800">Your Savings</span>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-700">
+                        ${(recipe.originalPrice - recipe.estimatedCostPerServing).toFixed(2)}
+                      </div>
+                      <div className="text-sm font-medium text-green-600">
+                        ({recipe.costSavingsPercent}% less)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Ingredient cost breakdown */}
+              {recipe.ingredientCosts && (
+                <div className="mt-4 pt-3 border-t border-green-200">
+                  <details className="group">
+                    <summary className="cursor-pointer text-sm text-green-700 hover:text-green-800 font-medium">
+                      📋 View ingredient cost breakdown
+                    </summary>
+                    <div className="mt-3 space-y-1 text-xs text-gray-600">
+                      {(() => {
+                        try {
+                          const costs = typeof recipe.ingredientCosts === 'string' 
+                            ? JSON.parse(recipe.ingredientCosts) 
+                            : recipe.ingredientCosts;
+                          return costs.breakdown?.map((item: string, index: number) => (
+                            <div key={index} className="pl-2 border-l-2 border-green-200">
+                              {item}
+                            </div>
+                          ));
+                        } catch (e) {
+                          return <div className="text-gray-500">Cost breakdown unavailable</div>;
+                        }
+                      })()}
+                      <div className="pt-2 text-green-600 font-medium">
+                        💡 Tip: You'll have leftovers for more meals!
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Difficulty */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600">Difficulty:</span>

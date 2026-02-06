@@ -19,6 +19,10 @@ interface DBRecipe {
   servings?: number | null;
   nutrition?: { calories: number; protein: number; carbs: number; fat: number } | null;
   dietaryTags?: string[] | null;
+  estimatedCostPerServing?: number | null;
+  originalPrice?: number | null;
+  costSavingsPercent?: number | null;
+  ingredientCosts?: string | null;
 }
 
 const BRAND_EMOJIS: Record<string, string> = {
@@ -371,6 +375,21 @@ const RecipesPage: React.FC = () => {
                       {recipe.difficulty || 'Medium'}
                     </span>
                   </div>
+                  
+                  {/* Cost Comparison */}
+                  {recipe.estimatedCostPerServing && recipe.originalPrice && recipe.costSavingsPercent && (
+                    <div className="mt-3 p-2 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">
+                          🏠 ${recipe.estimatedCostPerServing.toFixed(2)}/serving vs 🍔 ${recipe.originalPrice.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="text-xs font-semibold text-green-700 mt-1">
+                        💰 Save {recipe.costSavingsPercent}%
+                      </div>
+                    </div>
+                  )}
+                  
                   {recipe.dietaryTags && recipe.dietaryTags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-3">
                       {recipe.dietaryTags.slice(0, 3).map((tag: string, i: number) => (
@@ -437,6 +456,20 @@ const RecipesPage: React.FC = () => {
                       <span>🔥 {recipe.nutrition?.calories || '—'} cal</span>
                       <span className="capitalize">{recipe.difficulty || 'Medium'}</span>
                     </div>
+                    
+                    {/* Cost Comparison */}
+                    {recipe.estimatedCostPerServing && recipe.originalPrice && recipe.costSavingsPercent && (
+                      <div className="mt-3 p-2 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium text-gray-700">
+                            🏠 ${recipe.estimatedCostPerServing.toFixed(2)}/serving vs 🍔 ${recipe.originalPrice.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="text-xs font-semibold text-green-700 mt-1">
+                          💰 Save {recipe.costSavingsPercent}%
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </Link>
               ))}

@@ -58,7 +58,10 @@ const InventoryPage: React.FC = () => {
   };
 
   const handleAddItem = async () => {
-    if (!newItem.name.trim()) return;
+    if (!newItem.name.trim()) {
+      toast.error('Please enter an item name');
+      return;
+    }
     
     try {
       const itemData = {
@@ -72,6 +75,12 @@ const InventoryPage: React.FC = () => {
 
       await inventoryApi.addItem(itemData);
       await loadInventory();
+      
+      // Success feedback
+      toast.success(`Added ${newItem.name} to your ${newItem.storageLocation}!`, {
+        icon: '✅'
+      });
+      
       setShowAddModal(false);
       setNewItem({
         name: '',
@@ -81,8 +90,9 @@ const InventoryPage: React.FC = () => {
         unit: 'pieces',
         expiresAt: ''
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to add item:', error);
+      toast.error(error.response?.data?.error || 'Failed to add item. Please try again.');
     }
   };
 
@@ -389,10 +399,10 @@ const InventoryPage: React.FC = () => {
 
       {/* Add Item Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className="bg-white rounded-t-2xl sm:rounded-lg w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col sm:m-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[95vh] flex flex-col my-auto shadow-2xl">
             {/* Modal Header */}
-            <div className="flex-shrink-0 bg-white border-b p-4 sm:p-6 flex items-center justify-between rounded-t-2xl sm:rounded-t-lg">
+            <div className="flex-shrink-0 bg-white border-b p-6 flex items-center justify-between rounded-t-lg">
               <h3 className="text-lg font-semibold">Add Food Item</h3>
               <button 
                 onClick={() => setShowAddModal(false)}
@@ -403,7 +413,7 @@ const InventoryPage: React.FC = () => {
             </div>
 
             {/* Modal Content - Scrollable */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Item Name</label>
                 <input
@@ -501,7 +511,7 @@ const InventoryPage: React.FC = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex-shrink-0 bg-white border-t p-4 sm:p-6 flex gap-2">
+            <div className="flex-shrink-0 bg-white border-t p-6 flex gap-2">
               <button 
                 onClick={() => setShowAddModal(false)}
                 className="btn btn-secondary flex-1"
@@ -629,6 +639,15 @@ const InventoryPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Floating Action Button for Mobile */}
+      <button
+        onClick={() => setShowAddModal(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-primary text-white rounded-full shadow-lg lg:hidden z-40 flex items-center justify-center hover:bg-primary-600 transition-colors"
+        title="Add Food Item"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
     </div>
   );
 };

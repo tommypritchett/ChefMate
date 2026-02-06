@@ -90,13 +90,18 @@ const FavoritesPage: React.FC = () => {
         description: newFolderDescription
       });
       
+      // Success feedback
+      toast.success(`Created folder "${newFolderName}"!`, {
+        icon: '📁'
+      });
+      
       await loadData();
       setNewFolderName('');
       setNewFolderDescription('');
       setShowNewFolderModal(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create folder:', error);
-      toast.error('Please log in to create folders');
+      toast.error(error.response?.data?.error || 'Failed to create folder. Please try again.');
     } finally {
       setIsCreating(false);
     }
@@ -151,7 +156,7 @@ const FavoritesPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-gray-900">
             Saved Recipes
@@ -160,13 +165,15 @@ const FavoritesPage: React.FC = () => {
             Your favorite recipes organized in folders
           </p>
         </div>
-        <button 
-          onClick={() => setShowNewFolderModal(true)}
-          className="btn btn-primary mt-4 lg:mt-0"
-        >
-          <FolderPlus className="w-4 h-4 mr-2" />
-          New Folder
-        </button>
+        <div className="flex gap-2 flex-shrink-0">
+          <button 
+            onClick={() => setShowNewFolderModal(true)}
+            className="btn btn-primary flex items-center gap-2 whitespace-nowrap shadow-lg"
+          >
+            <FolderPlus className="w-5 h-5" />
+            New Folder
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -331,8 +338,8 @@ const FavoritesPage: React.FC = () => {
 
       {/* New Folder Modal */}
       {showNewFolderModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto my-auto shadow-2xl">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-lg font-semibold">Create New Folder</h3>
@@ -530,6 +537,15 @@ const FavoritesPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Floating Action Button for Mobile */}
+      <button
+        onClick={() => setShowNewFolderModal(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-primary text-white rounded-full shadow-lg lg:hidden z-40 flex items-center justify-center hover:bg-primary-600 transition-colors"
+        title="Create New Folder"
+      >
+        <FolderPlus className="w-6 h-6" />
+      </button>
     </div>
   );
 };

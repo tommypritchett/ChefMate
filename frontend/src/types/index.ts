@@ -71,6 +71,10 @@ export interface Recipe {
   saveCount: number;
   makeCount: number;
   averageRating: number | null;
+  estimatedCostPerServing: number | null;
+  originalPrice: number | null;
+  costSavingsPercent: number | null;
+  ingredientCosts: any | null;
   isPublished: boolean;
   isFeatured: boolean;
   createdAt: Date;
@@ -94,6 +98,10 @@ export interface RecipeCard {
   saveCount: number;
   nutrition: NutritionInfo | null;
   dietaryTags: string[];
+  estimatedCostPerServing: number | null;
+  originalPrice: number | null;
+  costSavingsPercent: number | null;
+  ingredientCosts: any | null;
   createdAt: Date;
 }
 
