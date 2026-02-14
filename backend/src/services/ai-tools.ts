@@ -813,14 +813,46 @@ async function generateShoppingList(args: Record<string, any>, userId: string) {
   const inventory = await prisma.inventoryItem.findMany({
     where: { userId },
   });
-  const inventoryMap = new Map(
-    inventory.map((i) => [i.name.toLowerCase(), i])
-  );
+  const inventoryItems = inventory.map((i) => ({
+    ...i,
+    nameLower: i.name.toLowerCase(),
+    nameWords: i.name.toLowerCase().split(/[\s,\-\/]+/).filter(Boolean),
+  }));
 
-  // Diff: needed minus what user already has
+  // Fuzzy match: check if needed ingredient matches any inventory item
+  function findInventoryMatch(neededName: string) {
+    const neededLower = neededName.toLowerCase();
+    const neededWords = neededLower.split(/[\s,\-\/]+/).filter(Boolean);
+
+    // 1. Exact match
+    const exact = inventoryItems.find(i => i.nameLower === neededLower);
+    if (exact) return exact;
+
+    // 2. Substring match (either direction)
+    const substring = inventoryItems.find(i =>
+      i.nameLower.includes(neededLower) || neededLower.includes(i.nameLower)
+    );
+    if (substring) return substring;
+
+    // 3. Word overlap: if any significant word matches (skip common words)
+    const skipWords = new Set(['of', 'the', 'a', 'an', 'to', 'for', 'and', 'or', 'with', 'fresh', 'dried', 'ground', 'whole', 'chopped', 'sliced', 'diced', 'minced', 'large', 'small', 'medium']);
+    const significantNeeded = neededWords.filter(w => !skipWords.has(w) && w.length > 2);
+    if (significantNeeded.length > 0) {
+      const wordMatch = inventoryItems.find(i =>
+        significantNeeded.some(nw =>
+          i.nameWords.some((iw: string) => iw.includes(nw) || nw.includes(iw))
+        )
+      );
+      if (wordMatch) return wordMatch;
+    }
+
+    return null;
+  }
+
+  // Diff: needed minus what user already has (fuzzy matching)
   const shoppingItems: any[] = [];
-  for (const [key, item] of needed) {
-    const have = inventoryMap.get(key);
+  for (const [_key, item] of needed) {
+    const have = findInventoryMatch(item.name);
     if (!have || (have.quantity && have.quantity < item.totalAmount)) {
       shoppingItems.push({
         name: item.name,
