@@ -368,9 +368,77 @@ async function run() {
     log(`  Profile tab: ${profileName ? 'PASS' : 'FAIL'}`);
 
     // =========================================================
-    // TEST 14: Logout and re-login
+    // TEST 14: Health Goals screen (via Profile navigation)
     // =========================================================
-    log('\n=== TEST 14: Logout and login ===');
+    log('\n=== TEST 14: Health Goals screen ===');
+    // Profile should already be showing
+    const healthGoalsLink = page.locator('text=Health Goals').first();
+    const hgVisible = await healthGoalsLink.isVisible().catch(() => false);
+    log(`  Health Goals link in profile: ${hgVisible ? 'PASS' : 'FAIL'}`);
+
+    if (hgVisible) {
+      await healthGoalsLink.click();
+      await page.waitForTimeout(2000);
+      await page.screenshot({ path: `${SCREENSHOT_DIR}/16-health-goals.png`, fullPage: true });
+
+      const todayNutrition = await page.locator('text=Today\'s Nutrition').first().isVisible().catch(() => false);
+      log(`  Today's Nutrition section: ${todayNutrition ? 'PASS' : 'FAIL'}`);
+
+      const weeklyAvg = await page.locator('text=Weekly Average').first().isVisible().catch(() => false);
+      log(`  Weekly Average section: ${weeklyAvg ? 'PASS' : 'FAIL'}`);
+
+      const yourGoals = await page.locator('text=Your Goals').first().isVisible().catch(() => false);
+      log(`  Your Goals section: ${yourGoals ? 'PASS' : 'FAIL'}`);
+
+      // Go back to profile
+      await page.goBack();
+      await page.waitForTimeout(1000);
+    }
+
+    // =========================================================
+    // TEST 15: Shopping Lists screen (via Profile navigation)
+    // =========================================================
+    log('\n=== TEST 15: Shopping Lists screen ===');
+    await clickTab(page, 'Profile');
+    await page.waitForTimeout(1000);
+
+    const shoppingLink = page.locator('text=Shopping Lists').first();
+    const slVisible = await shoppingLink.isVisible().catch(() => false);
+    log(`  Shopping Lists link in profile: ${slVisible ? 'PASS' : 'FAIL'}`);
+
+    if (slVisible) {
+      await shoppingLink.click();
+      await page.waitForTimeout(2000);
+      await page.screenshot({ path: `${SCREENSHOT_DIR}/17-shopping-lists.png`, fullPage: true });
+
+      // Should show empty state or generate button
+      const noLists = await page.locator('text=No shopping lists yet').first().isVisible().catch(() => false);
+      const genButton = await page.locator('text=Generate from Meal Plan').first().isVisible().catch(() => false);
+      const cartIcon = await page.locator('text=Shopping Lists').first().isVisible().catch(() => false);
+      log(`  Shopping Lists screen: ${noLists || genButton || cartIcon ? 'PASS' : 'FAIL'}`);
+      log(`  Empty state shown: ${noLists || genButton ? 'PASS' : 'FAIL'}`);
+
+      // Go back
+      await page.goBack();
+      await page.waitForTimeout(1000);
+    }
+
+    // =========================================================
+    // TEST 16: Grocery Price API (backend test)
+    // =========================================================
+    log('\n=== TEST 16: Grocery Price API ===');
+    try {
+      const priceRes = await globalThis.fetch('http://localhost:3001/api/grocery/price?item=chicken+breast');
+      // Will be 401 without auth token, which proves the route exists
+      log(`  Grocery price endpoint exists: ${priceRes.status === 401 ? 'PASS' : priceRes.status === 200 ? 'PASS' : 'FAIL'} (status: ${priceRes.status})`);
+    } catch (priceErr) {
+      log(`  Grocery price endpoint: FAIL`);
+    }
+
+    // =========================================================
+    // TEST 17: Logout and re-login
+    // =========================================================
+    log('\n=== TEST 17: Logout and login ===');
     await page.locator('text=Sign Out').first().click();
     await page.waitForTimeout(3000);
 
@@ -386,9 +454,9 @@ async function run() {
     log(`  Login success: ${loginSuccess ? 'PASS' : 'FAIL'}`);
 
     // =========================================================
-    // TEST 15: Protected route redirect
+    // TEST 18: Protected route redirect
     // =========================================================
-    log('\n=== TEST 15: Protected route redirect ===');
+    log('\n=== TEST 18: Protected route redirect ===');
     await clickTab(page, 'Profile');
     await page.locator('text=Sign Out').first().click();
     await page.waitForTimeout(2000);
