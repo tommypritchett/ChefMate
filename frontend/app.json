@@ -15,7 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chefmate.app"
+      "bundleIdentifier": "com.chefmate.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ChefMate uses your camera to scan food items for inventory management.",
+        "NSPhotoLibraryUsageDescription": "ChefMate accesses your photo library to add food images."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +27,8 @@
         "backgroundColor": "#10b981"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.chefmate.app"
+      "package": "com.chefmate.app",
+      "permissions": ["CAMERA", "NOTIFICATIONS"]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -32,7 +37,20 @@
     "plugins": [
       "expo-secure-store",
       "expo-font",
-      "expo-router"
-    ]
+      "expo-router",
+      "expo-image",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#10b981"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
+    }
   }
 }
