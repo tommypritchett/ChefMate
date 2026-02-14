@@ -21,6 +21,8 @@ export default function ShoppingScreen() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
+  const [showCreateList, setShowCreateList] = useState(false);
+  const [newListName, setNewListName] = useState('');
   const [newItemName, setNewItemName] = useState('');
   const [newItemQty, setNewItemQty] = useState('');
   const [newItemUnit, setNewItemUnit] = useState('');
@@ -144,6 +146,22 @@ export default function ShoppingScreen() {
     }
   };
 
+  const handleCreateList = async () => {
+    if (!newListName.trim()) return;
+    try {
+      const { list } = await shoppingApi.createList({
+        name: newListName.trim(),
+        sourceType: 'manual',
+        items: [],
+      });
+      setShowCreateList(false);
+      setNewListName('');
+      fetchLists();
+    } catch (err) {
+      console.error('Failed to create list:', err);
+    }
+  };
+
   const handleDeleteList = (listId: string, name: string) => {
     Alert.alert('Delete List', `Delete "${name}"?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -210,26 +228,30 @@ export default function ShoppingScreen() {
       </View>
 
       {/* List selector */}
-      {lists.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="bg-white border-b border-gray-200">
-          <View className="flex-row px-3 py-2 gap-2">
-            {lists.map((list: any) => (
-              <TouchableOpacity
-                key={list.id}
-                className={`px-4 py-1.5 rounded-full ${
-                  activeList?.id === list.id ? 'bg-primary-500' : 'bg-gray-100'
-                }`}
-                onPress={() => setActiveList(list)}
-                onLongPress={() => handleDeleteList(list.id, list.name)}
-              >
-                <Text className={`text-sm ${activeList?.id === list.id ? 'text-white font-medium' : 'text-gray-600'}`}>
-                  {list.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-      )}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="bg-white border-b border-gray-200">
+        <View className="flex-row px-3 py-2 gap-2">
+          {lists.map((list: any) => (
+            <TouchableOpacity
+              key={list.id}
+              className={`px-4 py-1.5 rounded-full ${
+                activeList?.id === list.id ? 'bg-primary-500' : 'bg-gray-100'
+              }`}
+              onPress={() => setActiveList(list)}
+              onLongPress={() => handleDeleteList(list.id, list.name)}
+            >
+              <Text className={`text-sm ${activeList?.id === list.id ? 'text-white font-medium' : 'text-gray-600'}`}>
+                {list.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            className="px-3 py-1.5 rounded-full bg-gray-100 border border-dashed border-gray-300"
+            onPress={() => setShowCreateList(true)}
+          >
+            <Ionicons name="add" size={16} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       {!activeList ? (
         <View className="flex-1 items-center justify-center px-6">
@@ -327,6 +349,32 @@ export default function ShoppingScreen() {
           </ScrollView>
         </>
       )}
+
+      {/* Create List Modal */}
+      <Modal visible={showCreateList} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCreateList(false)}>
+        <View className="flex-1 bg-gray-50">
+          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+            <TouchableOpacity onPress={() => setShowCreateList(false)}>
+              <Text className="text-gray-500">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="text-lg font-semibold text-gray-800">New List</Text>
+            <TouchableOpacity onPress={handleCreateList} disabled={!newListName.trim()}>
+              <Text className={`font-medium ${newListName.trim() ? 'text-primary-500' : 'text-gray-300'}`}>Create</Text>
+            </TouchableOpacity>
+          </View>
+          <View className="px-4 pt-4">
+            <Text className="text-sm font-medium text-gray-700 mb-1">List Name *</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+              placeholder="e.g. Weekly Groceries"
+              placeholderTextColor="#9ca3af"
+              value={newListName}
+              onChangeText={setNewListName}
+              autoFocus
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Add Item Modal */}
       <Modal visible={showAddItem} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddItem(false)}>

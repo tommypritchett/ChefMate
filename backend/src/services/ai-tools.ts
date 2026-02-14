@@ -163,15 +163,66 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: 'generate_shopping_list',
       description:
-        "Generate a shopping list by comparing the active meal plan's ingredients against the user's current inventory. Use when the user asks for a shopping list or what they need to buy.",
+        "Generate a shopping list by comparing ingredients against the user's current inventory. Can work from a meal plan OR a single recipe. Use when the user asks for a shopping list, what they need to buy, or what ingredients they're missing for a recipe.",
       parameters: {
         type: 'object',
         properties: {
           mealPlanId: {
             type: 'string',
-            description: 'Specific meal plan ID. If omitted, uses the most recent active plan.',
+            description: 'Specific meal plan ID to generate list from.',
+          },
+          recipeId: {
+            type: 'string',
+            description: 'Single recipe ID to generate missing ingredients for.',
+          },
+          listName: {
+            type: 'string',
+            description: 'Name for the shopping list (e.g. "Weekly Groceries", "Taco Night")',
+          },
+          saveToDB: {
+            type: 'boolean',
+            description: 'If true, saves the list to the database for later reference (default false)',
           },
         },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'manage_shopping_list',
+      description:
+        'Add items to, check items off, or view existing shopping lists. Use when the user wants to add something to their shopping list, mark items as bought, or see their current lists.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            enum: ['view_lists', 'add_item', 'check_item', 'create_list'],
+            description: 'The action to perform',
+          },
+          listId: {
+            type: 'string',
+            description: 'Shopping list ID (for add_item or check_item)',
+          },
+          listName: {
+            type: 'string',
+            description: 'Name for a new list (for create_list)',
+          },
+          itemName: {
+            type: 'string',
+            description: 'Item name to add or check off',
+          },
+          quantity: {
+            type: 'number',
+            description: 'Quantity for add_item',
+          },
+          unit: {
+            type: 'string',
+            description: 'Unit for add_item (e.g. lbs, oz, count)',
+          },
+        },
+        required: ['action'],
       },
     },
   },
@@ -268,6 +319,8 @@ export async function executeTool(
       return addMealToPlan(args, userId);
     case 'generate_shopping_list':
       return generateShoppingList(args, userId);
+    case 'manage_shopping_list':
+      return manageShoppingList(args, userId);
     case 'log_meal':
       return logMeal(args, userId);
     case 'get_recipe_detail':
@@ -841,89 +894,26 @@ async function addMealToPlan(args: Record<string, any>, userId: string) {
   };
 }
 
-async function generateShoppingList(args: Record<string, any>, userId: string) {
-  const { mealPlanId } = args;
-
-  // Find plan
-  let plan: any;
-  if (mealPlanId) {
-    plan = await prisma.mealPlan.findFirst({
-      where: { id: mealPlanId, userId },
-      include: {
-        slots: { include: { recipe: { select: { ingredients: true } } } },
-      },
-    });
-  } else {
-    plan = await prisma.mealPlan.findFirst({
-      where: { userId, isActive: true },
-      orderBy: { startDate: 'desc' },
-      include: {
-        slots: { include: { recipe: { select: { ingredients: true } } } },
-      },
-    });
-  }
-
-  if (!plan) {
-    return {
-      result: {
-        items: [],
-        message: "No active meal plan found. Create a meal plan first, then I can generate a shopping list from it.",
-      },
-    };
-  }
-
-  // Collect needed ingredients from recipes
-  const needed: Map<string, { name: string; totalAmount: number; unit: string }> = new Map();
-  for (const slot of plan.slots) {
-    if (!slot.recipe?.ingredients) continue;
-    let ingredients: any[];
-    try {
-      ingredients = JSON.parse(slot.recipe.ingredients);
-    } catch {
-      continue;
-    }
-    for (const ing of ingredients) {
-      if (ing.isOptional) continue;
-      const key = ing.name.toLowerCase();
-      const existing = needed.get(key);
-      if (existing) {
-        existing.totalAmount += ing.amount || 1;
-      } else {
-        needed.set(key, {
-          name: ing.name,
-          totalAmount: ing.amount || 1,
-          unit: ing.unit || '',
-        });
-      }
-    }
-  }
-
-  // Get current inventory
-  const inventory = await prisma.inventoryItem.findMany({
-    where: { userId },
-  });
+// Shared fuzzy inventory matching
+function buildInventoryMatcher(inventory: any[]) {
   const inventoryItems = inventory.map((i) => ({
     ...i,
     nameLower: i.name.toLowerCase(),
     nameWords: i.name.toLowerCase().split(/[\s,\-\/]+/).filter(Boolean),
   }));
 
-  // Fuzzy match: check if needed ingredient matches any inventory item
-  function findInventoryMatch(neededName: string) {
+  return function findInventoryMatch(neededName: string) {
     const neededLower = neededName.toLowerCase();
     const neededWords = neededLower.split(/[\s,\-\/]+/).filter(Boolean);
 
-    // 1. Exact match
     const exact = inventoryItems.find(i => i.nameLower === neededLower);
     if (exact) return exact;
 
-    // 2. Substring match (either direction)
     const substring = inventoryItems.find(i =>
       i.nameLower.includes(neededLower) || neededLower.includes(i.nameLower)
     );
     if (substring) return substring;
 
-    // 3. Word overlap: if any significant word matches (skip common words)
     const skipWords = new Set(['of', 'the', 'a', 'an', 'to', 'for', 'and', 'or', 'with', 'fresh', 'dried', 'ground', 'whole', 'chopped', 'sliced', 'diced', 'minced', 'large', 'small', 'medium']);
     const significantNeeded = neededWords.filter(w => !skipWords.has(w) && w.length > 2);
     if (significantNeeded.length > 0) {
@@ -936,12 +926,106 @@ async function generateShoppingList(args: Record<string, any>, userId: string) {
     }
 
     return null;
+  };
+}
+
+async function generateShoppingList(args: Record<string, any>, userId: string) {
+  const { mealPlanId, recipeId, listName, saveToDB } = args;
+
+  // Collect needed ingredients
+  const needed: Map<string, { name: string; totalAmount: number; unit: string }> = new Map();
+  let sourceName = '';
+
+  if (recipeId) {
+    // Single-recipe mode
+    const recipe = await prisma.recipe.findFirst({
+      where: { id: recipeId },
+      select: { title: true, ingredients: true },
+    });
+
+    if (!recipe) {
+      return { result: { items: [], message: 'Recipe not found.' } };
+    }
+
+    sourceName = recipe.title;
+    let ingredients: any[];
+    try {
+      ingredients = JSON.parse(recipe.ingredients);
+    } catch {
+      ingredients = [];
+    }
+    for (const ing of ingredients) {
+      if (ing.isOptional) continue;
+      const key = ing.name.toLowerCase();
+      needed.set(key, {
+        name: ing.name,
+        totalAmount: ing.amount || 1,
+        unit: ing.unit || '',
+      });
+    }
+  } else {
+    // Meal plan mode
+    let plan: any;
+    if (mealPlanId) {
+      plan = await prisma.mealPlan.findFirst({
+        where: { id: mealPlanId, userId },
+        include: {
+          slots: { include: { recipe: { select: { ingredients: true } } } },
+        },
+      });
+    } else {
+      plan = await prisma.mealPlan.findFirst({
+        where: { userId, isActive: true },
+        orderBy: { startDate: 'desc' },
+        include: {
+          slots: { include: { recipe: { select: { ingredients: true } } } },
+        },
+      });
+    }
+
+    if (!plan) {
+      return {
+        result: {
+          items: [],
+          message: "No active meal plan found. You can generate a shopping list from a specific recipe by providing a recipeId, or create a meal plan first.",
+        },
+      };
+    }
+
+    sourceName = plan.name;
+    for (const slot of plan.slots) {
+      if (!slot.recipe?.ingredients) continue;
+      let ingredients: any[];
+      try {
+        ingredients = JSON.parse(slot.recipe.ingredients);
+      } catch {
+        continue;
+      }
+      for (const ing of ingredients) {
+        if (ing.isOptional) continue;
+        const key = ing.name.toLowerCase();
+        const existing = needed.get(key);
+        if (existing) {
+          existing.totalAmount += ing.amount || 1;
+        } else {
+          needed.set(key, {
+            name: ing.name,
+            totalAmount: ing.amount || 1,
+            unit: ing.unit || '',
+          });
+        }
+      }
+    }
   }
 
-  // Diff: needed minus what user already has (fuzzy matching)
+  // Get current inventory and build fuzzy matcher
+  const inventory = await prisma.inventoryItem.findMany({ where: { userId } });
+  const findMatch = buildInventoryMatcher(inventory);
+
+  // Diff: needed minus what user already has
   const shoppingItems: any[] = [];
   for (const [_key, item] of needed) {
-    const have = findInventoryMatch(item.name);
+    const have = findMatch(item.name);
     if (!have || (have.quantity && have.quantity < item.totalAmount)) {
       shoppingItems.push({
         name: item.name,
@@ -952,18 +1036,168 @@ async function generateShoppingList(args: Record<string, any>, userId: string) {
     }
   }
 
+  // Optionally save to DB
+  let savedList: any = null;
+  if (saveToDB && shoppingItems.length > 0) {
+    savedList = await prisma.shoppingList.create({
+      data: {
+        userId,
+        name: listName || `Shopping for ${sourceName}`,
+        sourceType: recipeId ? 'recipe' : 'meal_plan',
+        sourceRecipeId: recipeId || undefined,
+        items: {
+          create: shoppingItems.map(item => ({
+            name: item.name,
+            quantity: item.neededAmount,
+            unit: item.unit,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+  }
+
   return {
     result: {
-      planName: plan.name,
+      sourceName,
       items: shoppingItems,
       totalItems: shoppingItems.length,
+      savedListId: savedList?.id,
       message:
         shoppingItems.length === 0
           ? 'You already have everything you need!'
-          : `You need ${shoppingItems.length} items for your "${plan.name}" meal plan.`,
+          : `You need ${shoppingItems.length} items for "${sourceName}".${savedList ? ' List saved!' : ''}`,
     },
-    metadata: { type: 'shopping_list' },
+    metadata: { type: 'shopping_list', listId: savedList?.id },
   };
+}
+
+async function manageShoppingList(args: Record<string, any>, userId: string) {
+  const { action, listId, listName, itemName, quantity, unit } = args;
+
+  switch (action) {
+    case 'view_lists': {
+      const lists = await prisma.shoppingList.findMany({
+        where: { userId, isActive: true },
+        include: { items: true },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+
+      return {
+        result: {
+          lists: lists.map(l => ({
+            id: l.id,
+            name: l.name,
+            itemCount: l.items.length,
+            checkedCount: l.items.filter(i => i.isChecked).length,
+            createdAt: l.createdAt,
+          })),
+          message: lists.length === 0
+            ? "You don't have any shopping lists yet."
+            : `You have ${lists.length} shopping list(s).`,
+        },
+      };
+    }
+
+    case 'create_list': {
+      const list = await prisma.shoppingList.create({
+        data: {
+          userId,
+          name: listName || 'Shopping List',
+          sourceType: 'manual',
+        },
+      });
+      return {
+        result: {
+          list: { id: list.id, name: list.name },
+          message: `Created shopping list "${list.name}".`,
+        },
+        metadata: { type: 'shopping_list', listId: list.id },
+      };
+    }
+
+    case 'add_item': {
+      if (!listId) {
+        // Find or create default list
+        let list = await prisma.shoppingList.findFirst({
+          where: { userId, isActive: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (!list) {
+          list = await prisma.shoppingList.create({
+            data: { userId, name: 'Shopping List', sourceType: 'manual' },
+          });
+        }
+
+        const item = await prisma.shoppingListItem.create({
+          data: {
+            shoppingListId: list.id,
+            name: itemName || 'item',
+            quantity: quantity || null,
+            unit: unit || null,
+          },
+        });
+        return {
+          result: {
+            item: { id: item.id, name: item.name, quantity: item.quantity, unit: item.unit },
+            listName: list.name,
+            message: `Added "${item.name}" to "${list.name}".`,
+          },
+          metadata: { type: 'shopping_list', listId: list.id },
+        };
+      }
+
+      const item = await prisma.shoppingListItem.create({
+        data: {
+          shoppingListId: listId,
+          name: itemName || 'item',
+          quantity: quantity || null,
+          unit: unit || null,
+        },
+      });
+      return {
+        result: {
+          item: { id: item.id, name: item.name, quantity: item.quantity, unit: item.unit },
+          message: `Added "${item.name}" to the list.`,
+        },
+        metadata: { type: 'shopping_list', listId },
+      };
+    }
+
+    case 'check_item': {
+      if (!itemName) {
+        return { result: { error: 'Please specify which item to check off.' } };
+      }
+
+      // Find the item by name in user's lists
+      const matchItem = await prisma.shoppingListItem.findFirst({
+        where: {
+          shoppingList: { userId, isActive: true },
+          name: { contains: itemName.toLowerCase() },
+          isChecked: false,
+        },
+      });
+
+      if (!matchItem) {
+        return { result: { message: `Couldn't find "${itemName}" in your shopping lists.` } };
+      }
+
+      await prisma.shoppingListItem.update({
+        where: { id: matchItem.id },
+        data: { isChecked: true, checkedAt: new Date() },
+      });
+
+      return {
+        result: {
+          message: `Checked off "${matchItem.name}".`,
+        },
+      };
+    }
+
+    default:
+      return { result: { error: `Unknown action: ${action}` } };
+  }
 }
 
 async function logMeal(args: Record<string, any>, userId: string) {
