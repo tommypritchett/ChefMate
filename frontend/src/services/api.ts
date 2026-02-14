@@ -293,8 +293,59 @@ export const shoppingApi = {
     description?: string;
     sourceType?: string;
     sourceRecipeId?: string;
+    items?: { name: string; quantity?: number; unit?: string; category?: string }[];
   }): Promise<{ list: any }> => {
     const response = await api.post('/shopping-lists', data);
+    return response.data;
+  },
+
+  deleteList: async (id: string): Promise<void> => {
+    await api.delete(`/shopping-lists/${id}`);
+  },
+
+  addItem: async (listId: string, data: { name: string; quantity?: number; unit?: string; category?: string }): Promise<{ item: any }> => {
+    const response = await api.post(`/shopping-lists/${listId}/items`, data);
+    return response.data;
+  },
+
+  toggleItem: async (listId: string, itemId: string, isChecked: boolean): Promise<{ item: any }> => {
+    const response = await api.patch(`/shopping-lists/${listId}/items/${itemId}`, { isChecked });
+    return response.data;
+  },
+
+  deleteItem: async (listId: string, itemId: string): Promise<void> => {
+    await api.delete(`/shopping-lists/${listId}/items/${itemId}`);
+  },
+
+  purchaseAll: async (listId: string): Promise<any> => {
+    const response = await api.post(`/shopping-lists/${listId}/purchase-all`);
+    return response.data;
+  },
+};
+
+// Health Goals API
+export const healthGoalsApi = {
+  getGoals: async (): Promise<{ goals: any[] }> => {
+    const response = await api.get('/health-goals');
+    return response.data;
+  },
+
+  createGoal: async (data: { goalType: string; targetValue: number; unit?: string; targetDate?: string }): Promise<{ goal: any }> => {
+    const response = await api.post('/health-goals', data);
+    return response.data;
+  },
+
+  updateGoal: async (id: string, data: any): Promise<{ goal: any }> => {
+    const response = await api.patch(`/health-goals/${id}`, data);
+    return response.data;
+  },
+
+  deleteGoal: async (id: string): Promise<void> => {
+    await api.delete(`/health-goals/${id}`);
+  },
+
+  getProgress: async (): Promise<{ goals: any[]; dailyTotals: any; weeklyAvg: any; mealCount: number }> => {
+    const response = await api.get('/health-goals/progress');
     return response.data;
   },
 };
@@ -317,6 +368,19 @@ export const nutritionApi = {
     fat?: number;
   }): Promise<{ mealLog: any }> => {
     const response = await api.post('/nutrition/log-meal', data);
+    return response.data;
+  },
+};
+
+// Grocery API
+export const groceryApi = {
+  getPrice: async (item: string): Promise<any> => {
+    const response = await api.get('/grocery/price', { params: { item } });
+    return response.data;
+  },
+
+  comparePrices: async (items: string[]): Promise<{ items: any[]; storeTotals: Record<string, number> }> => {
+    const response = await api.post('/grocery/compare', { items });
     return response.data;
   },
 };

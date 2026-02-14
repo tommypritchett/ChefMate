@@ -73,10 +73,6 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res) => {
           saveCount: true,
           nutrition: true,
           dietaryTags: true,
-          estimatedCostPerServing: true,
-          originalPrice: true,
-          costSavingsPercent: true,
-          ingredientCosts: true,
           createdAt: true
         }
       }),
@@ -88,7 +84,7 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res) => {
       ...recipe,
       nutrition: recipe.nutrition ? JSON.parse(recipe.nutrition) : null,
       dietaryTags: recipe.dietaryTags ? JSON.parse(recipe.dietaryTags) : [],
-      ingredientCosts: recipe.ingredientCosts ? JSON.parse(recipe.ingredientCosts) : null
+      ingredientCosts: null
     }));
 
     res.json({
@@ -141,7 +137,7 @@ router.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res) => {
       dietaryTags: recipe.dietaryTags ? JSON.parse(recipe.dietaryTags) : [],
       imageUrls: recipe.imageUrls ? JSON.parse(recipe.imageUrls) : [],
       metaKeywords: recipe.metaKeywords ? JSON.parse(recipe.metaKeywords) : [],
-      ingredientCosts: recipe.ingredientCosts ? JSON.parse(recipe.ingredientCosts) : null
+      ingredientCosts: null
     };
 
     res.json({ recipe: recipeWithParsedData });

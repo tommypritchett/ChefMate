@@ -13,6 +13,8 @@ import shoppingRoutes from './routes/shopping';
 import nutritionRoutes from './routes/nutrition';
 import conversationRoutes from './routes/conversations';
 import mealPlanRoutes from './routes/mealplans';
+import healthGoalRoutes from './routes/health-goals';
+import groceryRoutes from './routes/grocery';
 
 // Load environment variables
 dotenv.config();
@@ -47,6 +49,8 @@ app.use('/api/shopping-lists', shoppingRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/meal-plans', mealPlanRoutes);
+app.use('/api/health-goals', healthGoalRoutes);
+app.use('/api/grocery', groceryRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

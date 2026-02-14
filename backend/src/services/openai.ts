@@ -642,6 +642,13 @@ export const generateInventoryBasedSuggestions = async (
   ];
 };
 
+// Stub for food detection (requires GPT-4o vision API)
+export const detectFoodItems = async (imageBase64: string): Promise<string[]> => {
+  // In production, this would use GPT-4o vision to identify food items in a photo
+  // For now, return mock detection results
+  return ['chicken', 'broccoli', 'rice', 'soy sauce'];
+};
+
 // Fallback recipe
 const generateFallbackRecipe = (prompt: string): GeneratedRecipe => ({
   title: `Healthy ${prompt} Recipe`,
