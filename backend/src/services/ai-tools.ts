@@ -270,16 +270,31 @@ async function searchRecipes(args: Record<string, any>, _userId: string) {
   }
   if (query) {
     const q = query.toLowerCase();
+    // Search across title, description, brand, ingredients (JSON string), and dietaryTags (JSON string)
     where.OR = [
       { title: { contains: q } },
       { description: { contains: q } },
       { brand: { contains: q } },
+      { ingredients: { contains: q } },
+      { dietaryTags: { contains: q } },
     ];
+
+    // Also search by individual words for multi-word queries like "healthy chicken dinner"
+    const words = q.split(/\s+/).filter((w: string) => w.length > 2);
+    if (words.length > 1) {
+      for (const word of words) {
+        where.OR.push(
+          { title: { contains: word } },
+          { ingredients: { contains: word } },
+          { dietaryTags: { contains: word } },
+        );
+      }
+    }
   }
 
   const recipes = await prisma.recipe.findMany({
     where,
-    take: Math.min(limit, 10),
+    take: Math.min(limit, 10) * 3, // Fetch more to allow dedup + re-ranking
     orderBy: { averageRating: 'desc' },
     select: {
       id: true,
@@ -296,11 +311,62 @@ async function searchRecipes(args: Record<string, any>, _userId: string) {
       averageRating: true,
       nutrition: true,
       dietaryTags: true,
+      ingredients: true,
     },
   });
 
-  const parsed = recipes.map((r) => ({
-    ...r,
+  // Deduplicate (OR queries can return duplicates)
+  const seen = new Set<string>();
+  const unique = recipes.filter(r => {
+    if (seen.has(r.id)) return false;
+    seen.add(r.id);
+    return true;
+  });
+
+  // Re-rank by relevance if there's a query
+  let ranked = unique;
+  if (query) {
+    const q = query.toLowerCase();
+    const words = q.split(/\s+/).filter((w: string) => w.length > 2);
+    ranked = unique.map(r => {
+      let score = 0;
+      const titleLower = r.title.toLowerCase();
+      const descLower = (r.description || '').toLowerCase();
+      const ingredientsLower = (r.ingredients || '').toLowerCase();
+
+      // Exact query in title = highest relevance
+      if (titleLower.includes(q)) score += 10;
+      // Exact query in description
+      if (descLower.includes(q)) score += 5;
+      // Exact query in ingredients
+      if (ingredientsLower.includes(q)) score += 7;
+
+      // Individual word matches
+      for (const word of words) {
+        if (titleLower.includes(word)) score += 3;
+        if (ingredientsLower.includes(word)) score += 2;
+        if (descLower.includes(word)) score += 1;
+      }
+
+      return { ...r, _score: score };
+    }).sort((a, b) => b._score - a._score);
+  }
+
+  const finalRecipes = ranked.slice(0, Math.min(limit, 10));
+
+  const parsed = finalRecipes.map((r) => ({
+    id: r.id,
+    title: r.title,
+    slug: r.slug,
+    description: r.description,
+    brand: r.brand,
+    category: r.category,
+    imageUrl: r.imageUrl,
+    prepTimeMinutes: r.prepTimeMinutes,
+    cookTimeMinutes: r.cookTimeMinutes,
+    difficulty: r.difficulty,
+    servings: r.servings,
+    averageRating: r.averageRating,
     nutrition: r.nutrition ? JSON.parse(r.nutrition) : null,
     dietaryTags: r.dietaryTags ? JSON.parse(r.dietaryTags) : [],
   }));
