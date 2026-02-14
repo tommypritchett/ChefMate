@@ -348,6 +348,11 @@ export const healthGoalsApi = {
     const response = await api.get('/health-goals/progress');
     return response.data;
   },
+
+  scoreRecipes: async (): Promise<{ recipes: any[]; goalTypes: string[] }> => {
+    const response = await api.get('/health-goals/score-recipes');
+    return response.data;
+  },
 };
 
 // Nutrition API

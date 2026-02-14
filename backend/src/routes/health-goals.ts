@@ -139,4 +139,149 @@ router.get('/progress', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// GET /api/health-goals/score-recipes — score recipes against active goals
+router.get('/score-recipes', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const goals = await prisma.healthGoal.findMany({
+      where: { userId: req.user!.userId, isActive: true },
+    });
+
+    if (goals.length === 0) {
+      return res.json({ recipes: [], message: 'Set up health goals first to get personalized recipe scoring.' });
+    }
+
+    const recipes = await prisma.recipe.findMany({
+      where: { isPublished: true },
+      take: 50,
+      orderBy: { averageRating: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        category: true,
+        nutrition: true,
+        dietaryTags: true,
+        difficulty: true,
+        prepTimeMinutes: true,
+        cookTimeMinutes: true,
+        servings: true,
+      },
+    });
+
+    // Score each recipe against goals
+    const scored = recipes.map(recipe => {
+      const nutrition = recipe.nutrition ? JSON.parse(recipe.nutrition) : {};
+      const tags: string[] = recipe.dietaryTags ? JSON.parse(recipe.dietaryTags) : [];
+      let score = 0;
+      const reasons: string[] = [];
+
+      for (const goal of goals) {
+        const { goalType, targetValue } = goal;
+
+        switch (goalType) {
+          case 'calories': {
+            const cal = nutrition.calories || 0;
+            if (cal <= targetValue) {
+              score += 3;
+              reasons.push(`${cal} cal (under ${targetValue} target)`);
+            } else {
+              score -= 1;
+            }
+            break;
+          }
+          case 'protein': {
+            const p = nutrition.protein || 0;
+            if (p >= targetValue) {
+              score += 3;
+              reasons.push(`${p}g protein (meets ${targetValue}g goal)`);
+            } else if (p >= targetValue * 0.7) {
+              score += 1;
+            }
+            break;
+          }
+          case 'carbs': {
+            const c = nutrition.carbs || 0;
+            if (c <= targetValue) {
+              score += 2;
+              reasons.push(`${c}g carbs (under ${targetValue}g limit)`);
+            } else {
+              score -= 1;
+            }
+            break;
+          }
+          case 'fat': {
+            const f = nutrition.fat || 0;
+            if (f <= targetValue) {
+              score += 2;
+              reasons.push(`${f}g fat (under ${targetValue}g limit)`);
+            } else {
+              score -= 1;
+            }
+            break;
+          }
+          // Diet-specific goals score by dietary tags
+          case 'keto': {
+            const c2 = nutrition.carbs || 0;
+            const f2 = nutrition.fat || 0;
+            if (c2 < 20 && f2 > 20) { score += 5; reasons.push('Keto-friendly'); }
+            if (tags.includes('keto') || tags.includes('low-carb')) { score += 3; reasons.push('Tagged keto'); }
+            break;
+          }
+          case 'vegetarian': {
+            if (tags.includes('vegetarian') || tags.includes('vegan')) { score += 5; reasons.push('Vegetarian'); }
+            break;
+          }
+          case 'vegan': {
+            if (tags.includes('vegan')) { score += 5; reasons.push('Vegan'); }
+            break;
+          }
+          case 'high-protein': {
+            const p2 = nutrition.protein || 0;
+            if (p2 >= 30) { score += 4; reasons.push(`${p2}g protein (high)`); }
+            else if (p2 >= 20) { score += 2; }
+            break;
+          }
+          case 'low-carb': {
+            const c3 = nutrition.carbs || 0;
+            if (c3 < 30) { score += 4; reasons.push(`${c3}g carbs (low)`); }
+            else if (c3 < 50) { score += 2; }
+            break;
+          }
+          case 'gluten-free': {
+            if (tags.includes('gluten-free')) { score += 5; reasons.push('Gluten-free'); }
+            break;
+          }
+          case 'dairy-free': {
+            if (tags.includes('dairy-free')) { score += 5; reasons.push('Dairy-free'); }
+            break;
+          }
+        }
+      }
+
+      return {
+        id: recipe.id,
+        title: recipe.title,
+        slug: recipe.slug,
+        category: recipe.category,
+        nutrition,
+        dietaryTags: tags,
+        difficulty: recipe.difficulty,
+        totalTime: (recipe.prepTimeMinutes || 0) + (recipe.cookTimeMinutes || 0),
+        score,
+        reasons,
+      };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+
+    res.json({
+      recipes: scored.slice(0, 20),
+      goalTypes: goals.map(g => g.goalType),
+    });
+  } catch (error) {
+    console.error('Score recipes error:', error);
+    res.status(500).json({ error: 'Failed to score recipes' });
+  }
+});
+
 export default router;

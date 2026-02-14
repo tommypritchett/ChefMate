@@ -13,13 +13,28 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { healthGoalsApi, nutritionApi } from '../src/services/api';
 
-const GOAL_TYPES = [
-  { key: 'calories', label: 'Calories', unit: 'kcal', icon: 'flame-outline', color: '#f59e0b' },
-  { key: 'protein', label: 'Protein', unit: 'g', icon: 'barbell-outline', color: '#3b82f6' },
-  { key: 'carbs', label: 'Carbs', unit: 'g', icon: 'leaf-outline', color: '#f97316' },
-  { key: 'fat', label: 'Fat', unit: 'g', icon: 'water-outline', color: '#ef4444' },
-  { key: 'weight', label: 'Weight', unit: 'lbs', icon: 'scale-outline', color: '#8b5cf6' },
-] as const;
+const GOAL_CATEGORIES = [
+  { label: 'Macros', goals: [
+    { key: 'calories', label: 'Calories', unit: 'kcal', icon: 'flame-outline', color: '#f59e0b', hasTarget: true },
+    { key: 'protein', label: 'Protein', unit: 'g', icon: 'barbell-outline', color: '#3b82f6', hasTarget: true },
+    { key: 'carbs', label: 'Carbs', unit: 'g', icon: 'leaf-outline', color: '#f97316', hasTarget: true },
+    { key: 'fat', label: 'Fat', unit: 'g', icon: 'water-outline', color: '#ef4444', hasTarget: true },
+    { key: 'weight', label: 'Weight', unit: 'lbs', icon: 'scale-outline', color: '#8b5cf6', hasTarget: true },
+  ]},
+  { label: 'Diet Type', goals: [
+    { key: 'high-protein', label: 'High Protein', unit: '', icon: 'barbell', color: '#3b82f6', hasTarget: false },
+    { key: 'low-carb', label: 'Low Carb', unit: '', icon: 'trending-down-outline', color: '#f97316', hasTarget: false },
+    { key: 'keto', label: 'Keto', unit: '', icon: 'flash-outline', color: '#8b5cf6', hasTarget: false },
+    { key: 'vegetarian', label: 'Vegetarian', unit: '', icon: 'leaf', color: '#10b981', hasTarget: false },
+    { key: 'vegan', label: 'Vegan', unit: '', icon: 'leaf', color: '#059669', hasTarget: false },
+  ]},
+  { label: 'Dietary Needs', goals: [
+    { key: 'gluten-free', label: 'Gluten Free', unit: '', icon: 'ban-outline', color: '#ec4899', hasTarget: false },
+    { key: 'dairy-free', label: 'Dairy Free', unit: '', icon: 'ban-outline', color: '#06b6d4', hasTarget: false },
+  ]},
+];
+
+const ALL_GOAL_TYPES = GOAL_CATEGORIES.flatMap(c => c.goals);
 
 export default function HealthGoalsScreen() {
   const [goals, setGoals] = useState<any[]>([]);
@@ -59,14 +74,14 @@ export default function HealthGoalsScreen() {
   }, []);
 
   const handleSaveGoal = async () => {
-    if (!targetValue.trim()) return;
+    const goalDef = ALL_GOAL_TYPES.find(g => g.key === selectedGoalType);
+    if (goalDef?.hasTarget && !targetValue.trim()) return;
     setSaving(true);
     try {
-      const goalDef = GOAL_TYPES.find(g => g.key === selectedGoalType);
       await healthGoalsApi.createGoal({
         goalType: selectedGoalType,
-        targetValue: parseFloat(targetValue),
-        unit: goalDef?.unit,
+        targetValue: goalDef?.hasTarget ? parseFloat(targetValue) : 1,
+        unit: goalDef?.unit || null,
       });
       setShowAddModal(false);
       setTargetValue('');
@@ -93,12 +108,14 @@ export default function HealthGoalsScreen() {
   };
 
   const getProgress = (goalType: string, target: number) => {
+    const macroTypes = ['calories', 'protein', 'carbs', 'fat'];
+    if (!macroTypes.includes(goalType)) return { current: 0, percent: 0, isMacro: false };
     const current =
       goalType === 'calories' ? todayTotals.calories :
       goalType === 'protein' ? todayTotals.protein :
       goalType === 'carbs' ? todayTotals.carbs :
       goalType === 'fat' ? todayTotals.fat : 0;
-    return { current, percent: target > 0 ? Math.min((current / target) * 100, 100) : 0 };
+    return { current, percent: target > 0 ? Math.min((current / target) * 100, 100) : 0, isMacro: true };
   };
 
   if (loading) {
@@ -177,8 +194,8 @@ export default function HealthGoalsScreen() {
           </View>
         ) : (
           goals.map((goal: any) => {
-            const def = GOAL_TYPES.find(g => g.key === goal.goalType);
-            const { current, percent } = getProgress(goal.goalType, goal.targetValue);
+            const def = ALL_GOAL_TYPES.find(g => g.key === goal.goalType);
+            const { current, percent, isMacro } = getProgress(goal.goalType, goal.targetValue);
 
             return (
               <View key={goal.id} className="mx-4 mb-3 bg-white rounded-xl p-4">
@@ -192,7 +209,7 @@ export default function HealthGoalsScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {goal.goalType !== 'weight' && (
+                {isMacro && goal.goalType !== 'weight' && (
                   <>
                     <View className="flex-row justify-between mb-1">
                       <Text className="text-xs text-gray-400">
@@ -219,6 +236,12 @@ export default function HealthGoalsScreen() {
                     Target: {goal.targetValue} {goal.unit}
                   </Text>
                 )}
+
+                {!isMacro && goal.goalType !== 'weight' && (
+                  <Text className="text-sm text-gray-500">
+                    Active — recipes will be filtered and scored for {def?.label || goal.goalType}
+                  </Text>
+                )}
               </View>
             );
           })
@@ -233,50 +256,56 @@ export default function HealthGoalsScreen() {
               <Text className="text-gray-500">Cancel</Text>
             </TouchableOpacity>
             <Text className="text-lg font-semibold text-gray-800">Add Goal</Text>
-            <TouchableOpacity onPress={handleSaveGoal} disabled={!targetValue.trim() || saving}>
-              <Text className={`font-medium ${targetValue.trim() ? 'text-primary-500' : 'text-gray-300'}`}>
+            <TouchableOpacity onPress={handleSaveGoal} disabled={saving || (ALL_GOAL_TYPES.find(g => g.key === selectedGoalType)?.hasTarget && !targetValue.trim())}>
+              <Text className={`font-medium ${saving ? 'text-gray-300' : 'text-primary-500'}`}>
                 {saving ? 'Saving...' : 'Save'}
               </Text>
             </TouchableOpacity>
           </View>
 
-          <View className="px-4 pt-4 gap-4">
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-2">Goal Type</Text>
-              <View className="gap-2">
-                {GOAL_TYPES.map(type => (
-                  <TouchableOpacity
-                    key={type.key}
-                    className={`flex-row items-center p-3 rounded-xl ${
-                      selectedGoalType === type.key ? 'bg-primary-50 border-2 border-primary-300' : 'bg-white border border-gray-200'
-                    }`}
-                    onPress={() => setSelectedGoalType(type.key)}
-                  >
-                    <Ionicons name={type.icon as any} size={20} color={type.color} />
-                    <Text className="text-sm text-gray-800 ml-3 flex-1">{type.label}</Text>
-                    <Text className="text-xs text-gray-400">{type.unit}</Text>
-                    {selectedGoalType === type.key && (
-                      <Ionicons name="checkmark-circle" size={20} color="#10b981" className="ml-2" />
-                    )}
-                  </TouchableOpacity>
-                ))}
+          <ScrollView className="px-4 pt-4" contentContainerStyle={{ paddingBottom: 30 }}>
+            {GOAL_CATEGORIES.map(cat => (
+              <View key={cat.label} className="mb-4">
+                <Text className="text-xs font-semibold text-gray-400 uppercase mb-2">{cat.label}</Text>
+                <View className="gap-2">
+                  {cat.goals.map(type => (
+                    <TouchableOpacity
+                      key={type.key}
+                      className={`flex-row items-center p-3 rounded-xl ${
+                        selectedGoalType === type.key ? 'bg-primary-50 border-2 border-primary-300' : 'bg-white border border-gray-200'
+                      }`}
+                      onPress={() => setSelectedGoalType(type.key)}
+                    >
+                      <Ionicons name={type.icon as any} size={20} color={type.color} />
+                      <Text className="text-sm text-gray-800 ml-3 flex-1">{type.label}</Text>
+                      {type.unit ? (
+                        <Text className="text-xs text-gray-400">{type.unit}</Text>
+                      ) : null}
+                      {selectedGoalType === type.key && (
+                        <Ionicons name="checkmark-circle" size={20} color="#10b981" style={{ marginLeft: 8 }} />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
+            ))}
 
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">
-                Daily Target ({GOAL_TYPES.find(g => g.key === selectedGoalType)?.unit})
-              </Text>
-              <TextInput
-                className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                placeholder={selectedGoalType === 'calories' ? 'e.g. 2000' : selectedGoalType === 'weight' ? 'e.g. 160' : 'e.g. 150'}
-                placeholderTextColor="#9ca3af"
-                value={targetValue}
-                onChangeText={setTargetValue}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
+            {ALL_GOAL_TYPES.find(g => g.key === selectedGoalType)?.hasTarget && (
+              <View className="mt-2">
+                <Text className="text-sm font-medium text-gray-700 mb-1">
+                  Daily Target ({ALL_GOAL_TYPES.find(g => g.key === selectedGoalType)?.unit})
+                </Text>
+                <TextInput
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                  placeholder={selectedGoalType === 'calories' ? 'e.g. 2000' : selectedGoalType === 'weight' ? 'e.g. 160' : 'e.g. 150'}
+                  placeholderTextColor="#9ca3af"
+                  value={targetValue}
+                  onChangeText={setTargetValue}
+                  keyboardType="numeric"
+                />
+              </View>
+            )}
+          </ScrollView>
         </View>
       </Modal>
     </View>
