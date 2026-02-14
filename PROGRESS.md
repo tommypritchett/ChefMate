@@ -1,6 +1,8 @@
 # ChefMate — Progress Tracker
 
-## Current Status: Phase 5 in progress
+## Current Status: All 5 phases complete ✅
+
+**Final E2E: 53/53 tests passing, 0 failures, 0 console errors**
 
 ---
 
@@ -31,7 +33,6 @@
 - Recipe detail: nutrition breakdown, ingredients, instructions, save/favorite
 - Inventory: grouped by fridge/freezer/pantry, add/delete, expiry warnings
 - Meal plan: weekly calendar, slot assignment, week navigation
-- 45/45 E2E tests passing
 
 ## Phase 4: Grocery Integration & Health Goals ✅
 **Completed:** Feb 14, 2026
@@ -43,23 +44,22 @@
 - Grocery API: single item lookup + bulk price comparison
 - Push notification service: expo-notifications with expiry alerts and meal reminders
 - Backend notification service: expiring item detection
-- 53/53 E2E tests passing
 
 **Notes:**
-- Grocery prices use mock data. Kroger API requires application approval. Document: https://developer.kroger.com
-- Push notifications set up for local scheduling. Production would need Expo Push Notification service + backend cron job.
+- Grocery prices use mock data. Kroger API requires application approval: https://developer.kroger.com
+- Push notifications set up for local scheduling. Production needs Expo Push Notification service + backend cron job.
 - Deep links configured for Kroger (kroger://), Walmart, Meijer web URLs.
 
-## Phase 5: Polish & Launch Prep 🔄
-**In Progress**
+## Phase 5: Polish & Launch Prep ✅
+**Completed:** Feb 14, 2026
 
-### Planned:
-- [ ] Performance optimization (lazy loading, image caching)
-- [ ] Offline support basics
-- [ ] App Store assets prep
-- [ ] Bug fixes from test failures
-- [ ] Final E2E test sweep
-- [ ] Tag phase-5-complete
+- [x] Performance optimization: expo-image with memory-disk caching, FlatList tuning
+- [x] Offline support: AsyncStorage recipe cache, mutation queue with replay
+- [x] App Store assets: privacy policy, terms of service, app.json metadata
+- [x] EAS build configuration (development, preview, production profiles)
+- [x] iOS permissions (camera, photo library), Android permissions (camera, notifications)
+- [x] Final E2E test sweep: 53/53 passing
+- [x] Tagged phase-5-complete
 
 ---
 
@@ -72,9 +72,42 @@
 | Mock grocery prices | Kroger API requires approval, Walmart no public API |
 | Local notifications | No server infra needed for MVP |
 | NativeWind v4 | Tailwind-like syntax on React Native |
+| expo-image | Memory-disk caching, better performance than RN Image |
 
 ## External APIs Needed for Production
 - **OpenAI API key** — for GPT-4o function-calling (currently in fallback mode)
 - **Kroger API** — for real grocery prices (currently mock data)
 - **Expo Push Service** — for server-triggered push notifications
 - **PostgreSQL** — for production database (currently SQLite)
+
+## Architecture Overview
+
+```
+ChefMate/
+├── backend/               Express + Prisma + SQLite
+│   ├── src/routes/        13 API route files
+│   ├── src/services/      AI orchestration, grocery prices, notifications
+│   └── prisma/schema      14 models
+├── frontend/              Expo (React Native) + NativeWind
+│   ├── app/(auth)/        Login, Register screens
+│   ├── app/(tabs)/        5 main tabs (Chat, Recipes, MealPlan, Inventory, Profile)
+│   ├── app/recipes/       Recipe detail (dynamic route)
+│   ├── app/health-goals   Health goals screen
+│   ├── app/shopping       Shopping lists screen
+│   └── src/services/      API client, notifications, offline cache
+├── e2e-test.mjs           53 E2E tests (Playwright)
+└── legal/                 Privacy policy, Terms of service
+```
+
+## How to Run
+
+```bash
+# Backend
+cd backend && npm install && npx prisma db push && npx ts-node src/index.ts
+
+# Frontend
+cd frontend && npm install && npx expo start
+
+# E2E Tests
+node e2e-test.mjs
+```
