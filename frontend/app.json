@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "ChefMate",
+    "slug": "chefmate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "chefmate",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#10b981"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.chefmate.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#10b981"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.chefmate.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-font",
+      "expo-router"
+    ]
+  }
+}

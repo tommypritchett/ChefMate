@@ -1,17 +1,18 @@
 import { create } from 'zustand';
+import { router } from 'expo-router';
 import { User } from '../types';
-import { authApi } from '../services/api';
+import { authApi, tokenStorage, setUnauthorizedHandler } from '../services/api';
 
 interface AuthState {
   user: User | null;
   token: string | null;
-  isLoading: boolean;
+  isInitialized: boolean; // true after first loadUser completes
+  isLoading: boolean; // true during login/register API calls (does NOT unmount app)
   isAuthenticated: boolean;
-  
-  // Actions
+
   login: (email: string, password: string) => Promise<void>;
   register: (data: { email: string; password: string; firstName: string; lastName?: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loadUser: () => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
   setUser: (user: User) => void;
@@ -20,25 +21,27 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  token: localStorage.getItem('chefmate_token'),
+  token: null,
+  isInitialized: false,
   isLoading: false,
   isAuthenticated: false,
 
   login: async (email: string, password: string) => {
     try {
       set({ isLoading: true });
-      
+
       const response = await authApi.login({ email, password });
-      
-      localStorage.setItem('chefmate_token', response.token);
-      localStorage.setItem('chefmate_user', JSON.stringify(response.user));
-      
+
+      await tokenStorage.set(response.token);
+
       set({
         user: response.user,
         token: response.token,
         isAuthenticated: true,
         isLoading: false,
       });
+
+      router.replace('/(tabs)');
     } catch (error) {
       set({ isLoading: false });
       throw error;
@@ -48,106 +51,68 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   register: async (data) => {
     try {
       set({ isLoading: true });
-      
+
       const response = await authApi.register(data);
-      
-      localStorage.setItem('chefmate_token', response.token);
-      localStorage.setItem('chefmate_user', JSON.stringify(response.user));
-      
+
+      await tokenStorage.set(response.token);
+
       set({
         user: response.user,
         token: response.token,
         isAuthenticated: true,
         isLoading: false,
       });
+
+      router.replace('/(tabs)');
     } catch (error) {
       set({ isLoading: false });
       throw error;
     }
   },
 
-  logout: () => {
-    localStorage.removeItem('chefmate_token');
-    localStorage.removeItem('chefmate_user');
-    
+  logout: async () => {
+    await authApi.logout();
+
     set({
       user: null,
       token: null,
       isAuthenticated: false,
     });
 
-    // Call logout endpoint (fire and forget)
-    authApi.logout().catch(console.error);
+    router.replace('/(auth)/login');
   },
 
   loadUser: async () => {
-    const token = localStorage.getItem('chefmate_token');
-    const savedUser = localStorage.getItem('chefmate_user');
-    
+    const token = await tokenStorage.get();
+
     if (!token) {
-      set({ isAuthenticated: false });
+      set({ isAuthenticated: false, isInitialized: true });
       return;
     }
 
     try {
-      set({ isLoading: true });
-      
-      // Try to get fresh user data
       const response = await authApi.getMe();
-      
-      localStorage.setItem('chefmate_user', JSON.stringify(response.user));
-      
+
       set({
         user: response.user,
         token,
         isAuthenticated: true,
-        isLoading: false,
+        isInitialized: true,
       });
     } catch (error) {
-      // If API call fails but we have saved user data, use it
-      if (savedUser) {
-        try {
-          const user = JSON.parse(savedUser);
-          set({
-            user,
-            token,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } catch (parseError) {
-          // Saved data is corrupted, clear auth
-          localStorage.removeItem('chefmate_token');
-          localStorage.removeItem('chefmate_user');
-          set({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            isLoading: false,
-          });
-        }
-      } else {
-        // No saved data and API failed, clear auth
-        localStorage.removeItem('chefmate_token');
-        set({
-          user: null,
-          token: null,
-          isAuthenticated: false,
-          isLoading: false,
-        });
-      }
+      await tokenStorage.remove();
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isInitialized: true,
+      });
     }
   },
 
   updateUser: async (data) => {
-    try {
-      const response = await authApi.updateProfile(data);
-      
-      localStorage.setItem('chefmate_user', JSON.stringify(response.user));
-      
-      set({ user: response.user });
-    } catch (error) {
-      throw error;
-    }
+    const response = await authApi.updateProfile(data);
+    set({ user: response.user });
   },
 
   setLoading: (loading: boolean) => {
@@ -160,5 +125,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 }));
 
-// Initialize auth state on store creation
-useAuthStore.getState().loadUser();
+// Wire up 401 handler to auto-logout
+setUnauthorizedHandler(() => {
+  const store = useAuthStore.getState();
+  if (store.isAuthenticated) {
+    store.logout();
+  }
+});

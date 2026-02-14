@@ -1,11 +1,10 @@
 import express, { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { body, validationResult } from 'express-validator';
 import { generateRecipe, chatWithAssistant, generateInventoryBasedSuggestions, detectFoodItems } from '../services/openai';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Validation for recipe generation
 const validateGenerateRecipe = [

@@ -90,3 +90,26 @@ full-app-test.js
 
 # Prisma
 backend/prisma/migrations/dev.db*
+
+# Expo
+.expo/
+web-build/
+ios/
+android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+frontend/.expo/
+frontend/dist/
+frontend/web-build/
+frontend/ios/
+frontend/android/
+
+# EAS
+eas.json
+
+# Old frontend (pre-Expo)
+frontend-old/

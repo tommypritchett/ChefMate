@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
+import prisma from './lib/prisma';
 
 import authRoutes from './routes/auth';
 import recipeRoutes from './routes/recipes';
@@ -11,12 +11,13 @@ import inventoryRoutes from './routes/inventory';
 import favoritesRoutes from './routes/favorites';
 import shoppingRoutes from './routes/shopping';
 import nutritionRoutes from './routes/nutrition';
+import conversationRoutes from './routes/conversations';
+import mealPlanRoutes from './routes/mealplans';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const prisma = new PrismaClient();
 const port = process.env.PORT || 3001;
 
 // Middleware
@@ -24,9 +25,12 @@ app.use(helmet());
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'http://localhost:3002', 
     'http://localhost:3001',
-    process.env.APP_URL || 'http://localhost:3000'
+    'http://localhost:3002',
+    'http://localhost:8081',
+    'http://localhost:19000',
+    'http://localhost:19006',
+    process.env.APP_URL || 'http://localhost:8081'
   ],
   credentials: true,
 }));
@@ -41,6 +45,8 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/shopping-lists', shoppingRoutes);
 app.use('/api/nutrition', nutritionRoutes);
+app.use('/api/conversations', conversationRoutes);
+app.use('/api/meal-plans', mealPlanRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

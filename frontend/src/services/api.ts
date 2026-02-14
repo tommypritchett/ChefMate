@@ -1,34 +1,79 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { AuthResponse, User, Recipe, RecipeCard } from '../types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+const TOKEN_KEY = 'chefmate_token';
+
+// Platform-aware base URL
+const getBaseUrl = () => {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:3001/api';
+  }
+  // For iOS simulator, localhost works. For Android emulator, use 10.0.2.2
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3001/api';
+  }
+  return 'http://localhost:3001/api';
+};
+
+// Token storage - SecureStore on native, localStorage on web
+const tokenStorage = {
+  get: async (): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(TOKEN_KEY);
+    }
+    return await SecureStore.getItemAsync(TOKEN_KEY);
+  },
+  set: async (token: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(TOKEN_KEY, token);
+      return;
+    }
+    await SecureStore.setItemAsync(TOKEN_KEY, token);
+  },
+  remove: async (): Promise<void> => {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem(TOKEN_KEY);
+      return;
+    }
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  },
+};
+
+export { tokenStorage };
 
 // Create axios instance
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 15000,
 });
 
-// Add auth token to requests
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('chefmate_token');
+// Request interceptor - add auth token
+api.interceptors.request.use(async (config) => {
+  const token = await tokenStorage.get();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Handle auth errors
+// Response interceptor - handle 401
+let onUnauthorized: (() => void) | null = null;
+
+export const setUnauthorizedHandler = (handler: () => void) => {
+  onUnauthorized = handler;
+};
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('chefmate_token');
-      localStorage.removeItem('chefmate_user');
-      // Redirect to login or show auth modal
-      window.location.href = '/login';
+      await tokenStorage.remove();
+      onUnauthorized?.();
     }
     return Promise.reject(error);
   }
@@ -47,9 +92,10 @@ export const authApi = {
   },
 
   logout: async (): Promise<void> => {
-    await api.post('/auth/logout');
-    localStorage.removeItem('chefmate_token');
-    localStorage.removeItem('chefmate_user');
+    try {
+      await api.post('/auth/logout');
+    } catch {}
+    await tokenStorage.remove();
   },
 
   getMe: async (): Promise<{ user: User }> => {
@@ -83,26 +129,6 @@ export const recipesApi = {
     return response.data;
   },
 
-  createRecipe: async (data: {
-    title: string;
-    description?: string;
-    brand?: string;
-    originalItemName?: string;
-    ingredients: any[];
-    instructions: any[];
-    prepTimeMinutes?: number;
-    cookTimeMinutes?: number;
-    servings?: number;
-    difficulty?: string;
-    nutrition?: any;
-    originalNutrition?: any;
-    dietaryTags?: string[];
-    isAiGenerated?: boolean;
-  }): Promise<{ recipe: Recipe }> => {
-    const response = await api.post('/recipes', data);
-    return response.data;
-  },
-
   logView: async (id: string): Promise<void> => {
     await api.post(`/recipes/${id}/view`);
   },
@@ -133,41 +159,83 @@ export const aiApi = {
     });
     return response.data;
   },
+};
 
-  getInventorySuggestions: async (): Promise<{ suggestions: string[]; expiringItemsCount?: number; expiringItems?: string[] }> => {
-    const response = await api.get('/ai/inventory-suggestions');
+// Conversations API
+export const conversationsApi = {
+  getThreads: async (): Promise<{ threads: any[] }> => {
+    const response = await api.get('/conversations');
     return response.data;
   },
 
-  detectFood: async (imageBase64: string): Promise<{ items: string[]; count: number }> => {
-    const response = await api.post('/ai/detect-food', { image: imageBase64 });
+  createThread: async (title?: string): Promise<{ thread: any }> => {
+    const response = await api.post('/conversations', { title });
     return response.data;
+  },
+
+  getThread: async (id: string): Promise<{ thread: any }> => {
+    const response = await api.get(`/conversations/${id}`);
+    return response.data;
+  },
+
+  updateThread: async (id: string, data: { title?: string; isActive?: boolean }): Promise<{ thread: any }> => {
+    const response = await api.patch(`/conversations/${id}`, data);
+    return response.data;
+  },
+
+  deleteThread: async (id: string): Promise<void> => {
+    await api.delete(`/conversations/${id}`);
+  },
+
+  sendMessage: async (threadId: string, message: string, context?: any): Promise<{ userMessage: any; assistantMessage: any }> => {
+    const response = await api.post(`/conversations/${threadId}/messages`, { message, context });
+    return response.data;
+  },
+};
+
+// Meal Plans API
+export const mealPlansApi = {
+  getPlans: async (): Promise<{ plans: any[] }> => {
+    const response = await api.get('/meal-plans');
+    return response.data;
+  },
+
+  createPlan: async (data: { name: string; startDate: string; endDate: string; notes?: string }): Promise<{ plan: any }> => {
+    const response = await api.post('/meal-plans', data);
+    return response.data;
+  },
+
+  getPlan: async (id: string): Promise<{ plan: any }> => {
+    const response = await api.get(`/meal-plans/${id}`);
+    return response.data;
+  },
+
+  updatePlan: async (id: string, data: any): Promise<{ plan: any }> => {
+    const response = await api.patch(`/meal-plans/${id}`, data);
+    return response.data;
+  },
+
+  deletePlan: async (id: string): Promise<void> => {
+    await api.delete(`/meal-plans/${id}`);
+  },
+
+  addSlot: async (planId: string, data: { recipeId?: string; date: string; mealType: string; customName?: string; notes?: string }): Promise<{ slot: any }> => {
+    const response = await api.post(`/meal-plans/${planId}/slots`, data);
+    return response.data;
+  },
+
+  updateSlot: async (planId: string, slotId: string, data: any): Promise<{ slot: any }> => {
+    const response = await api.patch(`/meal-plans/${planId}/slots/${slotId}`, data);
+    return response.data;
+  },
+
+  deleteSlot: async (planId: string, slotId: string): Promise<void> => {
+    await api.delete(`/meal-plans/${planId}/slots/${slotId}`);
   },
 };
 
 // Favorites API
 export const favoritesApi = {
-  // Folders
-  getFolders: async (): Promise<{ folders: any[] }> => {
-    const response = await api.get('/favorites/folders');
-    return response.data;
-  },
-
-  createFolder: async (data: {
-    name: string;
-    description?: string;
-    icon?: string;
-    color?: string;
-  }): Promise<{ folder: any }> => {
-    const response = await api.post('/favorites/folders', data);
-    return response.data;
-  },
-
-  deleteFolder: async (id: string): Promise<void> => {
-    await api.delete(`/favorites/folders/${id}`);
-  },
-
-  // Saved Recipes
   getFavorites: async (): Promise<{ savedRecipes: any[] }> => {
     const response = await api.get('/favorites');
     return response.data;
@@ -186,11 +254,6 @@ export const favoritesApi = {
   unsaveRecipe: async (id: string): Promise<void> => {
     await api.delete(`/favorites/${id}`);
   },
-
-  madeIt: async (recipeId: string): Promise<{ success: boolean; timesMade: number; lastMadeAt: string }> => {
-    const response = await api.post(`/favorites/by-recipe/${recipeId}/made-it`);
-    return response.data;
-  },
 };
 
 // Inventory API
@@ -206,15 +269,10 @@ export const inventoryApi = {
     storageLocation: string;
     quantity?: number;
     unit?: string;
-    purchasedAt?: Date;
-    expiresAt?: Date;
+    purchasedAt?: string;
+    expiresAt?: string;
   }): Promise<{ item: any }> => {
     const response = await api.post('/inventory', data);
-    return response.data;
-  },
-
-  updateItem: async (id: string, data: any): Promise<{ item: any }> => {
-    const response = await api.patch(`/inventory/${id}`, data);
     return response.data;
   },
 
@@ -239,51 +297,26 @@ export const shoppingApi = {
     const response = await api.post('/shopping-lists', data);
     return response.data;
   },
+};
 
-  updateList: async (id: string, data: any): Promise<{ list: any }> => {
-    const response = await api.patch(`/shopping-lists/${id}`, data);
+// Nutrition API
+export const nutritionApi = {
+  getDailyNutrition: async (date: string): Promise<{ meals: any[]; totals: any }> => {
+    const response = await api.get(`/nutrition/daily/${date}`);
     return response.data;
   },
 
-  deleteList: async (id: string): Promise<void> => {
-    await api.delete(`/shopping-lists/${id}`);
-  },
-
-  addItem: async (listId: string, data: {
-    name: string;
-    quantity?: number;
-    unit?: string;
-    category?: string;
-  }): Promise<{ item: any }> => {
-    const response = await api.post(`/shopping-lists/${listId}/items`, data);
-    return response.data;
-  },
-
-  updateItem: async (listId: string, itemId: string, data: {
-    isChecked?: boolean;
-  }): Promise<{ item: any }> => {
-    const response = await api.patch(`/shopping-lists/${listId}/items/${itemId}`, data);
-    return response.data;
-  },
-
-  deleteItem: async (listId: string, itemId: string): Promise<void> => {
-    await api.delete(`/shopping-lists/${listId}/items/${itemId}`);
-  },
-
-  // Purchase item and add to inventory
-  purchaseItem: async (listId: string, itemId: string, data?: {
-    storageLocation?: string;
-    category?: string;
-  }): Promise<{ success: boolean; message: string; inventoryItem: any }> => {
-    const response = await api.post(`/shopping-lists/${listId}/items/${itemId}/purchase`, data || {});
-    return response.data;
-  },
-
-  // Purchase all unchecked items and add to inventory
-  purchaseAll: async (listId: string, data?: {
-    storageLocation?: string;
-  }): Promise<{ success: boolean; message: string; count: number; inventoryItems: any[] }> => {
-    const response = await api.post(`/shopping-lists/${listId}/purchase-all`, data || {});
+  logMeal: async (data: {
+    mealType: string;
+    mealDate: string;
+    recipeId?: string;
+    mealName?: string;
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+  }): Promise<{ mealLog: any }> => {
+    const response = await api.post('/nutrition/log-meal', data);
     return response.data;
   },
 };

@@ -1,9 +1,8 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma';
 import { requireAuth, optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // GET /api/recipes - List recipes with filters
 router.get('/', optionalAuth, async (req: AuthenticatedRequest, res) => {

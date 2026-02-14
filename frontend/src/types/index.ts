@@ -164,6 +164,73 @@ export interface ShoppingList {
   completedAt: Date | null;
 }
 
+// Conversation types
+export interface ConversationThread {
+  id: string;
+  userId: string;
+  title: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  messages?: ChatMessage[];
+  _count?: { messages: number };
+}
+
+export interface ChatMessage {
+  id: string;
+  userId: string;
+  threadId: string | null;
+  role: 'user' | 'assistant';
+  message: string;
+  contextType: string | null;
+  contextData: any;
+  generatedRecipeId: string | null;
+  tokensUsed: number | null;
+  createdAt: Date;
+}
+
+// Meal plan types
+export interface MealPlan {
+  id: string;
+  userId: string;
+  name: string;
+  startDate: Date;
+  endDate: Date;
+  isActive: boolean;
+  notes: string | null;
+  slots: MealPlanSlot[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MealPlanSlot {
+  id: string;
+  mealPlanId: string;
+  recipeId: string | null;
+  date: Date;
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  customName: string | null;
+  notes: string | null;
+  recipe?: Partial<Recipe> | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Health goal types
+export interface HealthGoal {
+  id: string;
+  userId: string;
+  goalType: 'calories' | 'protein' | 'carbs' | 'fat' | 'weight';
+  targetValue: number;
+  currentValue: number | null;
+  unit: string | null;
+  isActive: boolean;
+  startDate: Date;
+  targetDate: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // API Response types
 export interface PaginatedResponse<T> {
   data: T[];

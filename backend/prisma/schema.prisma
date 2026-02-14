@@ -27,15 +27,18 @@ model User {
   lastLoginAt           DateTime?
 
   // Relations
-  savedRecipes   UserSavedRecipe[]
-  folders        RecipeFolder[]
-  inventoryItems InventoryItem[]
-  shoppingLists  ShoppingList[]
-  mealLogs       MealLog[]
-  chatMessages   ChatMessage[]
-  notifications  Notification[]
-  payments       Payment[]
-  generatedRecipes Recipe[] @relation("GeneratedRecipes")
+  savedRecipes        UserSavedRecipe[]
+  folders             RecipeFolder[]
+  inventoryItems      InventoryItem[]
+  shoppingLists       ShoppingList[]
+  mealLogs            MealLog[]
+  chatMessages        ChatMessage[]
+  notifications       Notification[]
+  payments            Payment[]
+  generatedRecipes    Recipe[] @relation("GeneratedRecipes")
+  conversationThreads ConversationThread[]
+  mealPlans           MealPlan[]
+  healthGoals         HealthGoal[]
 
   @@map("users")
 }
@@ -48,7 +51,7 @@ model Recipe {
   brand             String? // e.g., "Taco Bell", "In-N-Out"
   category          String? // 'mexican', 'burgers', 'pizza', etc.
   originalItemName  String? // e.g., "Crunchwrap Supreme"
-  
+
   // Recipe content - stored as JSON strings
   ingredients       String // JSON string: [{name, amount, unit, notes}]
   instructions      String // JSON string: [{step_number, text, time_minutes}]
@@ -57,44 +60,38 @@ model Recipe {
   totalTimeMinutes  Int?
   servings          Int     @default(1)
   difficulty        String? // 'easy', 'medium', 'hard'
-  
+
   // Nutrition (per serving) - stored as JSON strings
   nutrition         String? // JSON string
   originalNutrition String? // JSON string for comparison
-  
+
   // Dietary tags - stored as JSON string
   dietaryTags       String? // JSON string: ['high-protein', 'vegan', 'gluten-free', etc.]
-  
+
   // AI-generated info
   isAiGenerated     Boolean @default(false)
   generatedByUserId String?
   generationPrompt  String?
   generatedBy       User?   @relation("GeneratedRecipes", fields: [generatedByUserId], references: [id])
-  
+
   // Images
   imageUrl          String?
   imageUrls         String? // JSON string array
-  
+
   // Stats
   viewCount         Int     @default(0)
   saveCount         Int     @default(0)
   makeCount         Int     @default(0)
   averageRating     Float?
-  
+
   // SEO
   metaDescription   String?
   metaKeywords      String? // JSON string array
-  
-  // Cost comparison
-  estimatedCostPerServing Float?   // cost in USD to make one serving at home
-  originalPrice           Float?   // what the fast food item costs at the restaurant
-  costSavingsPercent      Float?   // calculated savings percentage
-  ingredientCosts         String?  // JSON string with per-ingredient cost breakdown
-  
+
   // Status
   isPublished       Boolean @default(true)
   isFeatured        Boolean @default(false)
-  
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -104,6 +101,7 @@ model Recipe {
   mealLogs         MealLog[]
   chatMessages     ChatMessage[]
   notifications    Notification[]
+  mealPlanSlots    MealPlanSlot[]
 
   @@map("recipes")
 }
@@ -252,6 +250,7 @@ model MealLog {
 model ChatMessage {
   id                  String   @id @default(uuid())
   userId              String
+  threadId            String?
   role                String // 'user' or 'assistant'
   message             String
   contextType         String? // 'recipe_help', 'inventory', 'general', etc.
@@ -261,10 +260,81 @@ model ChatMessage {
   createdAt           DateTime @default(now())
 
   // Relations
-  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  generatedRecipe Recipe? @relation(fields: [generatedRecipeId], references: [id])
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedRecipe Recipe?             @relation(fields: [generatedRecipeId], references: [id])
+  thread          ConversationThread? @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@map("chat_messages")
+}
+
+model ConversationThread {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String   @default("New Conversation")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@map("conversation_threads")
+}
+
+model MealPlan {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slots MealPlanSlot[]
+
+  @@map("meal_plans")
+}
+
+model MealPlanSlot {
+  id         String   @id @default(uuid())
+  mealPlanId String
+  recipeId   String?
+  date       DateTime
+  mealType   String // 'breakfast', 'lunch', 'dinner', 'snack'
+  customName String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  mealPlan MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  recipe   Recipe?  @relation(fields: [recipeId], references: [id])
+
+  @@map("meal_plan_slots")
+}
+
+model HealthGoal {
+  id              String   @id @default(uuid())
+  userId          String
+  goalType        String // 'calories', 'protein', 'carbs', 'fat', 'weight'
+  targetValue     Float
+  currentValue    Float?
+  unit            String? // 'g', 'kcal', 'lbs', 'kg'
+  isActive        Boolean  @default(true)
+  startDate       DateTime @default(now())
+  targetDate      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("health_goals")
 }
 
 model Notification {

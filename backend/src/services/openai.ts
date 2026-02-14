@@ -1,16 +1,479 @@
 import OpenAI from 'openai';
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionToolMessageParam,
+} from 'openai/resources/chat/completions';
+import prisma from '../lib/prisma';
+import { toolDefinitions, executeTool } from './ai-tools';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const MAX_TOOL_ROUNDS = 5;
+
+// ─── System Prompt ──────────────────────────────────────────────────────────
+
+function buildSystemPrompt(context: UserContext): string {
+  let prompt = `You are ChefMate, a friendly AI cooking and nutrition assistant. You help users with:
+- Finding and suggesting recipes
+- Meal planning for the week
+- Managing their food inventory
+- Tracking nutrition and calories
+- Generating shopping lists
+- Cooking tips and technique guidance
+
+Be conversational, helpful, and concise. Use the available tools to look up real data instead of guessing. When showing recipes, include key details (cook time, calories, difficulty). When you mention recipes from the database, reference them by name.
+
+If the user asks something outside of food/cooking/nutrition, politely redirect the conversation.`;
+
+  if (context.preferences) {
+    prompt += `\n\nUser dietary preferences: ${context.preferences}`;
+  }
+  if (context.inventorySummary) {
+    prompt += `\n\nUser's current inventory summary: ${context.inventorySummary}`;
+  }
+
+  return prompt;
+}
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface UserContext {
+  preferences?: string;
+  inventorySummary?: string;
+}
+
+interface ChatOrchestrationResult {
+  content: string;
+  toolCalls: Array<{
+    name: string;
+    args: Record<string, any>;
+    result: any;
+  }>;
+  metadata: Record<string, any>;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
+// ─── Context Loader ─────────────────────────────────────────────────────────
+
+async function loadUserContext(userId: string): Promise<UserContext> {
+  const context: UserContext = {};
+
+  try {
+    // Load user preferences
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { preferences: true },
+    });
+
+    if (user?.preferences) {
+      context.preferences = user.preferences;
+    }
+
+    // Load inventory summary (just item names + expiry)
+    const items = await prisma.inventoryItem.findMany({
+      where: { userId },
+      select: { name: true, expiresAt: true, storageLocation: true },
+      take: 30,
+    });
+
+    if (items.length > 0) {
+      const now = new Date();
+      const threeDays = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+      const expiring = items.filter((i) => i.expiresAt && new Date(i.expiresAt) <= threeDays);
+
+      context.inventorySummary =
+        `${items.length} items` +
+        (expiring.length > 0
+          ? `. Expiring soon: ${expiring.map((i) => i.name).join(', ')}`
+          : '');
+    }
+  } catch (err) {
+    console.error('Error loading user context:', err);
+  }
+
+  return context;
+}
+
+// ─── Load Conversation History ──────────────────────────────────────────────
+
+async function loadThreadHistory(
+  threadId: string,
+  limit = 20
+): Promise<ChatCompletionMessageParam[]> {
+  const messages = await prisma.chatMessage.findMany({
+    where: { threadId },
+    orderBy: { createdAt: 'asc' },
+    take: limit,
+    select: { role: true, message: true },
+  });
+
+  return messages.map((m) => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.message,
+  }));
+}
+
+// ─── Main Chat Orchestration (non-streaming) ────────────────────────────────
+
+export async function chatOrchestrate(
+  userMessage: string,
+  userId: string,
+  threadId: string
+): Promise<ChatOrchestrationResult> {
+  // Load context + history
+  const [context, history] = await Promise.all([
+    loadUserContext(userId),
+    loadThreadHistory(threadId),
+  ]);
+
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: buildSystemPrompt(context) },
+    ...history,
+    { role: 'user', content: userMessage },
+  ];
+
+  const toolCallResults: ChatOrchestrationResult['toolCalls'] = [];
+  const allMetadata: Record<string, any> = {};
+
+  // Fallback mode when no API key
+  if (!process.env.OPENAI_API_KEY) {
+    return fallbackResponse(userMessage, userId);
+  }
+
+  let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+  // Tool execution loop
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      messages,
+      tools: toolDefinitions,
+      tool_choice: round === 0 ? 'auto' : 'auto',
+      temperature: 0.7,
+      max_tokens: 1000,
+    });
+
+    const choice = response.choices[0];
+    if (response.usage) {
+      totalUsage.promptTokens += response.usage.prompt_tokens;
+      totalUsage.completionTokens += response.usage.completion_tokens;
+      totalUsage.totalTokens += response.usage.total_tokens;
+    }
+
+    // If the model wants to call tools
+    if (choice.finish_reason === 'tool_calls' || choice.message.tool_calls?.length) {
+      // Add assistant message with tool calls
+      messages.push(choice.message);
+
+      // Execute each tool call
+      for (const toolCall of choice.message.tool_calls || []) {
+        const fn = (toolCall as any).function;
+        const fnName: string = fn.name;
+        let fnArgs: Record<string, any>;
+        try {
+          fnArgs = JSON.parse(fn.arguments);
+        } catch {
+          fnArgs = {};
+        }
+
+        console.log(`🔧 Executing tool: ${fnName}`, fnArgs);
+        const toolResult = await executeTool(fnName, fnArgs, userId);
+        console.log(`✅ Tool ${fnName} returned ${JSON.stringify(toolResult.result).length} chars`);
+
+        toolCallResults.push({
+          name: fnName,
+          args: fnArgs,
+          result: toolResult.result,
+        });
+
+        if (toolResult.metadata) {
+          Object.assign(allMetadata, toolResult.metadata);
+        }
+
+        // Feed tool result back to GPT
+        const toolMessage: ChatCompletionToolMessageParam = {
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(toolResult.result),
+        };
+        messages.push(toolMessage);
+      }
+
+      // Continue loop — GPT will process tool results and either call more tools or respond
+      continue;
+    }
+
+    // No tool calls — return final text response
+    return {
+      content: choice.message.content || "I'm not sure how to help with that. Could you rephrase?",
+      toolCalls: toolCallResults,
+      metadata: allMetadata,
+      usage: totalUsage,
+    };
+  }
+
+  // If we hit max rounds, return whatever we have
+  return {
+    content: "I've gathered the information. Let me know if you need anything else!",
+    toolCalls: toolCallResults,
+    metadata: allMetadata,
+    usage: totalUsage,
+  };
+}
+
+// ─── Streaming Chat Orchestration ───────────────────────────────────────────
+
+export async function chatOrchestrateStream(
+  userMessage: string,
+  userId: string,
+  threadId: string,
+  onToken: (token: string) => void,
+  onToolCall: (name: string, args: any) => void,
+  onToolResult: (name: string, result: any) => void
+): Promise<ChatOrchestrationResult> {
+  const [context, history] = await Promise.all([
+    loadUserContext(userId),
+    loadThreadHistory(threadId),
+  ]);
+
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: buildSystemPrompt(context) },
+    ...history,
+    { role: 'user', content: userMessage },
+  ];
+
+  const toolCallResults: ChatOrchestrationResult['toolCalls'] = [];
+  const allMetadata: Record<string, any> = {};
+
+  if (!process.env.OPENAI_API_KEY) {
+    const fallback = await fallbackResponse(userMessage, userId);
+    onToken(fallback.content);
+    return fallback;
+  }
+
+  let fullContent = '';
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const stream = await openai.chat.completions.create({
+      model: MODEL,
+      messages,
+      tools: toolDefinitions,
+      tool_choice: 'auto',
+      temperature: 0.7,
+      max_tokens: 1000,
+      stream: true,
+    });
+
+    // Accumulate streamed response
+    let currentContent = '';
+    const pendingToolCalls: Map<
+      number,
+      { id: string; name: string; argsStr: string }
+    > = new Map();
+    let finishReason: string | null = null;
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      finishReason = chunk.choices[0]?.finish_reason || finishReason;
+
+      // Stream content tokens
+      if (delta?.content) {
+        currentContent += delta.content;
+        onToken(delta.content);
+      }
+
+      // Accumulate tool calls
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const existing = pendingToolCalls.get(tc.index);
+          if (existing) {
+            if (tc.function?.arguments) existing.argsStr += tc.function.arguments;
+          } else {
+            pendingToolCalls.set(tc.index, {
+              id: tc.id || '',
+              name: tc.function?.name || '',
+              argsStr: tc.function?.arguments || '',
+            });
+          }
+        }
+      }
+    }
+
+    fullContent += currentContent;
+
+    // If there were tool calls, execute them
+    if (pendingToolCalls.size > 0) {
+      // Build assistant message with tool calls for the conversation
+      const assistantToolCalls = Array.from(pendingToolCalls.values()).map(
+        (tc, idx) => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: tc.argsStr },
+        })
+      );
+
+      messages.push({
+        role: 'assistant',
+        content: currentContent || null,
+        tool_calls: assistantToolCalls,
+      });
+
+      // Execute each tool
+      for (const tc of pendingToolCalls.values()) {
+        let fnArgs: Record<string, any>;
+        try {
+          fnArgs = JSON.parse(tc.argsStr);
+        } catch {
+          fnArgs = {};
+        }
+
+        console.log(`🔧 [stream] Executing tool: ${tc.name}`, fnArgs);
+        onToolCall(tc.name, fnArgs);
+
+        const toolResult = await executeTool(tc.name, fnArgs, userId);
+        console.log(`✅ [stream] Tool ${tc.name} done`);
+
+        toolCallResults.push({
+          name: tc.name,
+          args: fnArgs,
+          result: toolResult.result,
+        });
+
+        if (toolResult.metadata) {
+          Object.assign(allMetadata, toolResult.metadata);
+        }
+
+        onToolResult(tc.name, toolResult.result);
+
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(toolResult.result),
+        });
+      }
+
+      continue; // Next round — GPT processes tool results
+    }
+
+    // No tool calls — done
+    return {
+      content: fullContent || "I'm not sure how to help with that.",
+      toolCalls: toolCallResults,
+      metadata: allMetadata,
+    };
+  }
+
+  return {
+    content: fullContent || "I've gathered the information.",
+    toolCalls: toolCallResults,
+    metadata: allMetadata,
+  };
+}
+
+// ─── Fallback (no API key) ──────────────────────────────────────────────────
+
+async function fallbackResponse(
+  message: string,
+  userId: string
+): Promise<ChatOrchestrationResult> {
+  const lower = message.toLowerCase();
+  const toolCallResults: ChatOrchestrationResult['toolCalls'] = [];
+  const metadata: Record<string, any> = {};
+
+  // Try to handle common intents with tools
+  if (
+    lower.includes('recipe') ||
+    lower.includes('cook') ||
+    lower.includes('make') ||
+    lower.includes('eat')
+  ) {
+    const result = await executeTool(
+      'search_recipes',
+      { query: message, limit: 3 },
+      userId
+    );
+    toolCallResults.push({ name: 'search_recipes', args: { query: message }, result: result.result });
+    if (result.metadata) Object.assign(metadata, result.metadata);
+
+    const recipes = result.result.recipes || [];
+    if (recipes.length > 0) {
+      const list = recipes
+        .map(
+          (r: any) =>
+            `- **${r.title}** (${r.difficulty}, ${(r.prepTimeMinutes || 0) + (r.cookTimeMinutes || 0)} min)`
+        )
+        .join('\n');
+      return {
+        content: `Here are some recipes I found:\n\n${list}\n\n*Note: AI features are in demo mode. Configure an OpenAI API key for full conversational capabilities.*`,
+        toolCalls: toolCallResults,
+        metadata,
+      };
+    }
+  }
+
+  if (lower.includes('inventory') || lower.includes('fridge') || lower.includes('have')) {
+    const result = await executeTool('get_inventory', { includeExpiring: true }, userId);
+    toolCallResults.push({ name: 'get_inventory', args: {}, result: result.result });
+
+    const inv = result.result;
+    if (inv.totalItems > 0) {
+      return {
+        content: `You have ${inv.totalItems} items in your inventory.${
+          inv.expiringSoon?.length
+            ? ` ${inv.expiringSoon.length} item(s) expiring soon: ${inv.expiringSoon.map((i: any) => i.name).join(', ')}.`
+            : ''
+        }\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+        toolCalls: toolCallResults,
+        metadata,
+      };
+    }
+  }
+
+  if (lower.includes('meal plan') || lower.includes('plan')) {
+    const result = await executeTool('get_meal_plan', { weekOffset: 0 }, userId);
+    toolCallResults.push({ name: 'get_meal_plan', args: {}, result: result.result });
+
+    return {
+      content: result.result.plan
+        ? `Your current meal plan: **${result.result.plan.name}** with ${result.result.plan.slots.length} meals scheduled.`
+        : "You don't have a meal plan for this week yet. I can help you create one!\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*",
+      toolCalls: toolCallResults,
+      metadata,
+    };
+  }
+
+  if (lower.includes('nutrition') || lower.includes('calorie') || lower.includes('macro')) {
+    const result = await executeTool('get_nutrition_summary', { range: 'day' }, userId);
+    toolCallResults.push({ name: 'get_nutrition_summary', args: {}, result: result.result });
+
+    const totals = result.result.totals;
+    return {
+      content: `Today's nutrition: ${totals.calories} calories, ${totals.protein}g protein, ${totals.carbs}g carbs, ${totals.fat}g fat (${result.result.mealCount} meals logged).\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+      toolCalls: toolCallResults,
+      metadata,
+    };
+  }
+
+  return {
+    content:
+      "Hi! I'm ChefMate, your cooking assistant. I can help you find recipes, plan meals, manage your pantry inventory, and track nutrition.\n\nTry asking me:\n- \"What can I cook tonight?\"\n- \"Show me healthy chicken recipes\"\n- \"What's in my inventory?\"\n- \"Plan my meals for the week\"\n\n*AI is in demo mode. Configure an OpenAI API key for full conversational capabilities.*",
+    toolCalls: toolCallResults,
+    metadata,
+  };
+}
+
+// ─── Legacy Functions (kept for backward compatibility) ─────────────────────
+
 interface RecipeGenerationParams {
   prompt: string;
   servings?: number;
   dietaryRestrictions?: string[];
   availableIngredients?: string[];
-  maxTime?: number; // cooking time in minutes
+  maxTime?: number;
   difficulty?: 'easy' | 'medium' | 'hard';
 }
 
@@ -63,130 +526,71 @@ interface GeneratedRecipe {
 }
 
 export const generateRecipe = async (params: RecipeGenerationParams): Promise<GeneratedRecipe> => {
-  console.log('🔍 generateRecipe called with:', params.prompt);
-  console.log('🔑 API Key present:', !!process.env.OPENAI_API_KEY);
-  console.log('🔑 API Key prefix:', process.env.OPENAI_API_KEY?.substring(0, 10) + '...');
-  
   if (!process.env.OPENAI_API_KEY) {
-    console.log('❌ No API key found');
-    throw new Error('OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.');
+    throw new Error('OpenAI API key not configured.');
   }
 
-  const systemPrompt = `You are ChefMate, a professional chef and nutritionist specializing in creating healthier versions of popular fast food items. Your goal is to recreate beloved fast food flavors using wholesome ingredients and better cooking methods.
-
-Key principles:
-1. Maintain the essential flavors and textures that make the original appealing
-2. Significantly improve nutritional value (higher protein, more fiber, less sodium, better fats)
-3. Use whole food ingredients when possible
-4. Make recipes achievable for home cooks
-5. Provide accurate nutrition estimates
-6. Include helpful cooking tips and ingredient substitutions
-
-Always respond with valid JSON matching the exact schema provided. Be creative but realistic.`;
+  const systemPrompt = `You are ChefMate, a professional chef and nutritionist specializing in creating healthier versions of popular fast food items. Always respond with valid JSON matching the exact schema provided.`;
 
   const userPrompt = `Create a healthier version of: "${params.prompt}"
+Requirements: Servings: ${params.servings || 2}, Dietary: ${params.dietaryRestrictions?.join(', ') || 'none'}, Max time: ${params.maxTime || 45} min, Difficulty: ${params.difficulty || 'any'}
 
-Requirements:
-- Servings: ${params.servings || 2}
-- Dietary restrictions: ${params.dietaryRestrictions?.join(', ') || 'none'}
-- Available ingredients: ${params.availableIngredients?.join(', ') || 'any'}
-- Max cooking time: ${params.maxTime || 45} minutes
-- Difficulty level: ${params.difficulty || 'any'}
-
-Return a JSON object with this exact structure:
-{
-  "title": "Recipe name",
-  "description": "2-3 sentence description highlighting health benefits",
-  "brand": "Original restaurant/brand (if applicable)",
-  "originalItem": "Original menu item name (if applicable)", 
-  "prepTime": 15,
-  "cookTime": 20,
-  "servings": 2,
-  "difficulty": "easy",
-  "ingredients": [
-    {
-      "name": "ingredient name",
-      "amount": 1,
-      "unit": "cup",
-      "notes": "preparation notes",
-      "isOptional": false
-    }
-  ],
-  "instructions": [
-    {
-      "step": 1,
-      "text": "Detailed step instructions",
-      "time": 5,
-      "tips": "Helpful tips for this step"
-    }
-  ],
-  "nutrition": {
-    "calories": 450,
-    "protein": 35,
-    "carbs": 30,
-    "fat": 20,
-    "fiber": 8,
-    "sodium": 600,
-    "sugar": 5
-  },
-  "originalNutrition": {
-    "calories": 650,
-    "protein": 25,
-    "carbs": 45,
-    "fat": 40,
-    "fiber": 2,
-    "sodium": 1200,
-    "sugar": 12
-  },
-  "dietaryTags": ["high-protein", "whole-grain", "low-sodium"],
-  "tips": ["General cooking tips"],
-  "substitutions": [
-    {
-      "ingredient": "ingredient name",
-      "alternatives": ["substitute 1", "substitute 2"]
-    }
-  ]
-}`;
+Return JSON with: title, description, brand, originalItem, prepTime, cookTime, servings, difficulty, ingredients[], instructions[], nutrition{}, originalNutrition{}, dietaryTags[], tips[], substitutions[].`;
 
   try {
-    console.log('🤖 Making OpenAI API call...');
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: MODEL,
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
       ],
-      response_format: { type: "json_object" },
+      response_format: { type: 'json_object' },
       temperature: 0.7,
       max_tokens: 2000,
     });
 
-    console.log('✅ OpenAI API responded');
     const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No response content from OpenAI');
-    }
+    if (!content) throw new Error('No response from OpenAI');
 
-    console.log('📝 Parsing recipe JSON...');
     const recipe = JSON.parse(content) as GeneratedRecipe;
-    
-    // Validate required fields
     if (!recipe.title || !recipe.ingredients || !recipe.instructions) {
-      throw new Error('Invalid recipe structure returned from AI');
+      throw new Error('Invalid recipe structure');
     }
-
-    console.log('🎉 Recipe generated successfully!');
     return recipe;
   } catch (error) {
-    console.error('❌ OpenAI recipe generation error:', error);
-    
-    if (error instanceof Error && error.message.includes('API key not configured')) {
-      throw error;
-    }
-    
-    console.log('🔄 Using fallback recipe due to error');
-    // Return fallback recipe if AI fails
+    console.error('Recipe generation error:', error);
     return generateFallbackRecipe(params.prompt);
+  }
+};
+
+export const chatWithAssistant = async (
+  message: string,
+  context?: { type: string; data: any }
+): Promise<string> => {
+  if (!process.env.OPENAI_API_KEY) {
+    return "I'm ChefMate! AI features are in demo mode. Configure your OpenAI API key for full capabilities.";
+  }
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: `You are ChefMate's cooking assistant. Be friendly, concise, practical. ${
+            context ? `Context: ${context.type} - ${JSON.stringify(context.data)}` : ''
+          }`,
+        },
+        { role: 'user', content: message },
+      ],
+      temperature: 0.7,
+      max_tokens: 500,
+    });
+
+    return response.choices[0]?.message?.content || "I couldn't process your request.";
+  } catch (error) {
+    console.error('Chat error:', error);
+    return 'Sorry, something went wrong. Please try again.';
   }
 };
 
@@ -197,210 +601,67 @@ export const generateInventoryBasedSuggestions = async (
   if (!process.env.OPENAI_API_KEY) {
     return [
       'Quick stir-fry with available vegetables',
-      'Simple pasta with pantry ingredients', 
-      'Protein bowl with available items'
+      'Simple pasta with pantry ingredients',
+      'Protein bowl with available items',
     ];
   }
 
-  const prompt = `Based on these available ingredients: ${inventoryItems.join(', ')}
-${expiringItems ? `\nItems expiring soon: ${expiringItems.join(', ')}` : ''}
-
-Suggest 5 practical, healthy meal ideas that use these ingredients. Prioritize using items that are expiring soon. Format as a simple array of meal names.
-
-Return as JSON: ["meal 1", "meal 2", "meal 3", "meal 4", "meal 5"]`;
-
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: MODEL,
       messages: [
         {
-          role: "system",
-          content: "You are a helpful cooking assistant. Generate practical meal suggestions based on available ingredients."
+          role: 'system',
+          content: 'Generate practical meal suggestions as a JSON array.',
         },
-        { role: "user", content: prompt }
+        {
+          role: 'user',
+          content: `Ingredients: ${inventoryItems.join(', ')}${
+            expiringItems ? `\nExpiring: ${expiringItems.join(', ')}` : ''
+          }\n\nReturn: {"meals": ["meal1", ...]}`,
+        },
       ],
-      response_format: { type: "json_object" },
+      response_format: { type: 'json_object' },
       temperature: 0.8,
       max_tokens: 300,
     });
 
     const content = response.choices[0]?.message?.content;
     if (content) {
-      const suggestions = JSON.parse(content);
-      return suggestions.meals || suggestions;
+      const parsed = JSON.parse(content);
+      return parsed.meals || parsed;
     }
   } catch (error) {
     console.error('Inventory suggestions error:', error);
   }
 
-  // Fallback suggestions
   return [
     'Quick stir-fry with available vegetables',
     'Simple pasta with pantry ingredients',
     'Protein bowl with available items',
-    'Soup using expiring vegetables',
-    'Omelet with available ingredients'
   ];
 };
 
-export const chatWithAssistant = async (
-  message: string,
-  context?: {
-    type: string;
-    data: any;
-  }
-): Promise<string> => {
-  if (!process.env.OPENAI_API_KEY) {
-    return "I'm here to help with cooking questions! To enable AI features, please configure your OpenAI API key.";
-  }
-
-  const systemPrompt = `You are ChefMate's cooking assistant. You help users with:
-- Recipe questions and modifications
-- Cooking techniques and tips
-- Ingredient substitutions
-- Meal planning advice
-- Nutritional guidance
-- Kitchen troubleshooting
-
-Be friendly, concise, and practical. Always consider food safety. If you don't know something, say so.
-
-${context ? `Context: ${context.type} - ${JSON.stringify(context.data)}` : ''}`;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message }
-      ],
-      temperature: 0.7,
-      max_tokens: 500,
-    });
-
-    return response.choices[0]?.message?.content || "I'm sorry, I couldn't process your request right now.";
-  } catch (error) {
-    console.error('Chat assistant error:', error);
-    return "I'm having trouble processing your request right now. Please try again later.";
-  }
-};
-
-// Fallback recipe for when AI is not available
-const generateFallbackRecipe = (prompt: string): GeneratedRecipe => {
-  return {
-    title: `Healthy ${prompt} Recipe`,
-    description: "A nutritious homemade version created with wholesome ingredients and cooking methods.",
-    prepTime: 15,
-    cookTime: 25,
-    servings: 2,
-    difficulty: "medium" as const,
-    ingredients: [
-      {
-        name: "main protein",
-        amount: 1,
-        unit: "lb",
-        notes: "choose lean option"
-      },
-      {
-        name: "vegetables",
-        amount: 2,
-        unit: "cups",
-        notes: "mixed, chopped"
-      },
-      {
-        name: "whole grain base",
-        amount: 1,
-        unit: "cup",
-        notes: "rice, quinoa, or pasta"
-      }
-    ],
-    instructions: [
-      {
-        step: 1,
-        text: "Prepare all ingredients by washing, chopping, and measuring.",
-        time: 10
-      },
-      {
-        step: 2,
-        text: "Cook protein according to package directions until fully cooked.",
-        time: 15
-      },
-      {
-        step: 3,
-        text: "Add vegetables and seasonings, cook until tender.",
-        time: 10
-      },
-      {
-        step: 4,
-        text: "Serve over prepared grain base and enjoy!",
-        time: 2
-      }
-    ],
-    nutrition: {
-      calories: 450,
-      protein: 30,
-      carbs: 40,
-      fat: 15,
-      fiber: 8,
-      sodium: 600
-    },
-    dietaryTags: ["homemade", "balanced"],
-    tips: [
-      "Adjust seasonings to taste",
-      "Add fresh herbs for extra flavor"
-    ]
-  };
-};
-// Analyze a food photo and return detected items
-export const detectFoodItems = async (imageBase64: string): Promise<string[]> => {
-  if (!process.env.OPENAI_API_KEY) {
-    // Return demo items when API key not configured
-    return [
-      'Chicken breast',
-      'Broccoli', 
-      'Brown rice',
-      'Bell pepper',
-      'Onion'
-    ];
-  }
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are a food identification assistant. Analyze the image and list all identifiable food items. Return a JSON array of item names. Be specific (e.g., 'chicken breast' not just 'meat'). Only list food items you can clearly identify."
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "What food items do you see in this image? Return as JSON array of strings."
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
-                detail: "low"
-              }
-            }
-          ]
-        }
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 300,
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (content) {
-      const parsed = JSON.parse(content);
-      return parsed.items || parsed.foods || Object.values(parsed).flat();
-    }
-  } catch (error) {
-    console.error('Food detection error:', error);
-  }
-
-  // Fallback
-  return ['Unable to detect items. Please add manually.'];
-};
+// Fallback recipe
+const generateFallbackRecipe = (prompt: string): GeneratedRecipe => ({
+  title: `Healthy ${prompt} Recipe`,
+  description: 'A nutritious homemade version.',
+  prepTime: 15,
+  cookTime: 25,
+  servings: 2,
+  difficulty: 'medium',
+  ingredients: [
+    { name: 'main protein', amount: 1, unit: 'lb', notes: 'lean option' },
+    { name: 'vegetables', amount: 2, unit: 'cups', notes: 'mixed, chopped' },
+    { name: 'whole grain base', amount: 1, unit: 'cup', notes: 'rice, quinoa, or pasta' },
+  ],
+  instructions: [
+    { step: 1, text: 'Prepare all ingredients.', time: 10 },
+    { step: 2, text: 'Cook protein until done.', time: 15 },
+    { step: 3, text: 'Add vegetables, cook until tender.', time: 10 },
+    { step: 4, text: 'Serve over grain base.', time: 2 },
+  ],
+  nutrition: { calories: 450, protein: 30, carbs: 40, fat: 15, fiber: 8, sodium: 600 },
+  dietaryTags: ['homemade', 'balanced'],
+  tips: ['Adjust seasonings to taste'],
+});
