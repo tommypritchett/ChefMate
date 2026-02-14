@@ -204,6 +204,27 @@ export const toolDefinitions: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'get_recipe_detail',
+      description:
+        'Get full details of a specific recipe including all ingredients, step-by-step instructions, nutrition breakdown, and tips. Use when the user asks for details about a recipe, wants to cook a specific recipe, or asks about ingredients/instructions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipeId: {
+            type: 'string',
+            description: 'The recipe ID to get details for',
+          },
+          slug: {
+            type: 'string',
+            description: 'Alternatively, the recipe slug',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_nutrition_summary',
       description:
         "Get the user's nutrition summary for today or a date range. Use when the user asks about their daily macros, calorie count, or nutrition progress.",
@@ -249,6 +270,8 @@ export async function executeTool(
       return generateShoppingList(args, userId);
     case 'log_meal':
       return logMeal(args, userId);
+    case 'get_recipe_detail':
+      return getRecipeDetail(args, userId);
     case 'get_nutrition_summary':
       return getNutritionSummary(args, userId);
     default:
@@ -974,6 +997,54 @@ async function logMeal(args: Record<string, any>, userId: string) {
       message: `Logged ${mealType}: "${description}"${calories ? ` (${calories} cal)` : ''}.`,
     },
     metadata: { type: 'meal_log' },
+  };
+}
+
+async function getRecipeDetail(args: Record<string, any>, _userId: string) {
+  const { recipeId, slug } = args;
+
+  const where: any = {};
+  if (recipeId) where.id = recipeId;
+  else if (slug) where.slug = slug;
+  else return { result: { error: 'Provide either recipeId or slug.' } };
+
+  const recipe = await prisma.recipe.findFirst({
+    where,
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      description: true,
+      brand: true,
+      category: true,
+      imageUrl: true,
+      prepTimeMinutes: true,
+      cookTimeMinutes: true,
+      difficulty: true,
+      servings: true,
+      averageRating: true,
+      nutrition: true,
+      dietaryTags: true,
+      ingredients: true,
+      instructions: true,
+    },
+  });
+
+  if (!recipe) {
+    return { result: { error: 'Recipe not found.' } };
+  }
+
+  return {
+    result: {
+      recipe: {
+        ...recipe,
+        nutrition: recipe.nutrition ? JSON.parse(recipe.nutrition) : null,
+        dietaryTags: recipe.dietaryTags ? JSON.parse(recipe.dietaryTags) : [],
+        ingredients: recipe.ingredients ? JSON.parse(recipe.ingredients) : [],
+        instructions: recipe.instructions ? JSON.parse(recipe.instructions) : [],
+      },
+    },
+    metadata: { type: 'recipe_detail', recipeId: recipe.id },
   };
 }
 
