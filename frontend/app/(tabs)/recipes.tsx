@@ -1,13 +1,13 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, memo } from 'react';
 import {
   View,
   Text,
   FlatList,
   TextInput,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { recipesApi } from '../../src/services/api';
@@ -88,7 +88,7 @@ export default function RecipesScreen() {
         activeOpacity={0.7}
       >
         {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} className="w-full h-40" resizeMode="cover" />
+          <Image source={{ uri: item.imageUrl }} className="w-full h-40" contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View className="w-full h-40 bg-gray-200 items-center justify-center">
             <Ionicons name="restaurant-outline" size={40} color="#d1d5db" />
@@ -193,6 +193,9 @@ export default function RecipesScreen() {
           contentContainerStyle={{ paddingVertical: 8 }}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+          removeClippedSubviews
           ListFooterComponent={
             hasMore ? <ActivityIndicator color="#10b981" className="py-4" /> : null
           }

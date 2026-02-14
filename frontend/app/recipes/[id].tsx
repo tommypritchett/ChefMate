@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { recipesApi, favoritesApi } from '../../src/services/api';
@@ -67,7 +68,7 @@ export default function RecipeDetailScreen() {
     <ScrollView className="flex-1 bg-gray-50">
       {/* Header image */}
       {recipe.imageUrl ? (
-        <Image source={{ uri: recipe.imageUrl }} className="w-full h-56" resizeMode="cover" />
+        <Image source={{ uri: recipe.imageUrl }} className="w-full h-56" contentFit="cover" cachePolicy="memory-disk" />
       ) : (
         <View className="w-full h-56 bg-gray-200 items-center justify-center">
           <Ionicons name="restaurant-outline" size={60} color="#d1d5db" />
