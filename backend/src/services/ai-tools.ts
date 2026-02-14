@@ -126,6 +126,41 @@ export const toolDefinitions: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'add_meal_to_plan',
+      description:
+        'Add a specific recipe to a meal plan slot. Use when the user wants to add a specific meal to a specific day/time in their plan, or swap a meal.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mealPlanId: {
+            type: 'string',
+            description: 'The meal plan ID to add the meal to',
+          },
+          recipeId: {
+            type: 'string',
+            description: 'The recipe ID to assign',
+          },
+          date: {
+            type: 'string',
+            description: 'Date in YYYY-MM-DD format',
+          },
+          mealType: {
+            type: 'string',
+            enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+            description: 'Which meal slot',
+          },
+          customName: {
+            type: 'string',
+            description: 'Optional custom name if no recipe ID (e.g. "Leftover pasta")',
+          },
+        },
+        required: ['mealPlanId', 'date', 'mealType'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'generate_shopping_list',
       description:
         "Generate a shopping list by comparing the active meal plan's ingredients against the user's current inventory. Use when the user asks for a shopping list or what they need to buy.",
@@ -208,6 +243,8 @@ export async function executeTool(
       return getMealPlan(args, userId);
     case 'create_meal_plan':
       return createMealPlan(args, userId);
+    case 'add_meal_to_plan':
+      return addMealToPlan(args, userId);
     case 'generate_shopping_list':
       return generateShoppingList(args, userId);
     case 'log_meal':
@@ -493,7 +530,7 @@ async function getMealPlan(args: Record<string, any>, userId: string) {
 }
 
 async function createMealPlan(args: Record<string, any>, userId: string) {
-  const { name, startDate: startStr } = args;
+  const { name, startDate: startStr, preferences } = args;
 
   // Default to next Monday
   let start: Date;
@@ -511,6 +548,12 @@ async function createMealPlan(args: Record<string, any>, userId: string) {
   end.setDate(start.getDate() + 6);
   end.setHours(23, 59, 59, 999);
 
+  // Deactivate existing plans for the same week
+  await prisma.mealPlan.updateMany({
+    where: { userId, isActive: true },
+    data: { isActive: false },
+  });
+
   const plan = await prisma.mealPlan.create({
     data: {
       userId,
@@ -521,6 +564,111 @@ async function createMealPlan(args: Record<string, any>, userId: string) {
     },
   });
 
+  // Auto-populate plan with recipes from the database
+  const recipeWhere: any = { isPublished: true };
+  if (preferences) {
+    const prefLower = preferences.toLowerCase();
+    // Build dietary filter from preferences
+    const dietKeywords = ['vegetarian', 'vegan', 'keto', 'paleo', 'gluten-free', 'dairy-free', 'low-carb', 'high-protein'];
+    const matchedDiet = dietKeywords.filter(k => prefLower.includes(k));
+    if (matchedDiet.length > 0) {
+      recipeWhere.OR = matchedDiet.map(tag => ({
+        dietaryTags: { contains: tag },
+      }));
+    }
+  }
+
+  // Fetch a pool of recipes to populate the plan
+  const recipes = await prisma.recipe.findMany({
+    where: recipeWhere,
+    take: 30,
+    orderBy: { averageRating: 'desc' },
+    select: {
+      id: true,
+      title: true,
+      category: true,
+      nutrition: true,
+      prepTimeMinutes: true,
+      cookTimeMinutes: true,
+    },
+  });
+
+  if (recipes.length > 0) {
+    // Separate by likely meal type based on category
+    const breakfastRecipes = recipes.filter(r => r.category === 'breakfast');
+    const mainRecipes = recipes.filter(r => r.category !== 'breakfast' && r.category !== 'dessert' && r.category !== 'drink');
+    const allPool = mainRecipes.length > 0 ? mainRecipes : recipes;
+
+    const mealTypes = ['breakfast', 'lunch', 'dinner'];
+    const slots: Array<{
+      mealPlanId: string;
+      recipeId: string;
+      date: Date;
+      mealType: string;
+    }> = [];
+
+    // Create 7 days x 3 meals
+    for (let day = 0; day < 7; day++) {
+      const slotDate = new Date(start);
+      slotDate.setDate(start.getDate() + day);
+
+      for (const mealType of mealTypes) {
+        let pool = mealType === 'breakfast' && breakfastRecipes.length > 0
+          ? breakfastRecipes
+          : allPool;
+        const recipe = pool[(day * 3 + mealTypes.indexOf(mealType)) % pool.length];
+        if (recipe) {
+          slots.push({
+            mealPlanId: plan.id,
+            recipeId: recipe.id,
+            date: slotDate,
+            mealType,
+          });
+        }
+      }
+    }
+
+    if (slots.length > 0) {
+      await prisma.mealPlanSlot.createMany({ data: slots });
+    }
+
+    // Re-fetch with slots populated
+    const fullPlan = await prisma.mealPlan.findUnique({
+      where: { id: plan.id },
+      include: {
+        slots: {
+          include: {
+            recipe: {
+              select: { id: true, title: true, nutrition: true, prepTimeMinutes: true, cookTimeMinutes: true },
+            },
+          },
+          orderBy: [{ date: 'asc' }, { mealType: 'asc' }],
+        },
+      },
+    });
+
+    const slotSummary = (fullPlan?.slots || []).map(s => ({
+      date: s.date,
+      mealType: s.mealType,
+      recipe: s.recipe ? { id: s.recipe.id, title: s.recipe.title } : null,
+    }));
+
+    return {
+      result: {
+        plan: {
+          id: plan.id,
+          name: plan.name,
+          startDate: plan.startDate,
+          endDate: plan.endDate,
+          totalMeals: slotSummary.length,
+          slots: slotSummary,
+        },
+        message: `Created and populated meal plan "${plan.name}" with ${slotSummary.length} meals across 7 days. You can swap any meal by telling me which day and meal you'd like to change.`,
+      },
+      metadata: { type: 'meal_plan', planId: plan.id },
+    };
+  }
+
   return {
     result: {
       plan: {
@@ -529,9 +677,78 @@ async function createMealPlan(args: Record<string, any>, userId: string) {
         startDate: plan.startDate,
         endDate: plan.endDate,
       },
-      message: `Created meal plan "${plan.name}" (${start.toLocaleDateString()} – ${end.toLocaleDateString()}). You can now add meals to specific days and slots.`,
+      message: `Created meal plan "${plan.name}" (${start.toLocaleDateString()} – ${end.toLocaleDateString()}). No recipes matched your preferences to auto-fill, but you can add meals manually.`,
     },
     metadata: { type: 'meal_plan', planId: plan.id },
+  };
+}
+
+async function addMealToPlan(args: Record<string, any>, userId: string) {
+  const { mealPlanId, recipeId, date, mealType, customName } = args;
+
+  // Verify plan belongs to user
+  const plan = await prisma.mealPlan.findFirst({
+    where: { id: mealPlanId, userId },
+  });
+
+  if (!plan) {
+    return {
+      result: { error: 'Meal plan not found or does not belong to you.' },
+    };
+  }
+
+  // If a slot already exists for this date+mealType, update it; otherwise create
+  const slotDate = new Date(date);
+  slotDate.setHours(0, 0, 0, 0);
+
+  const existing = await prisma.mealPlanSlot.findFirst({
+    where: {
+      mealPlanId,
+      date: slotDate,
+      mealType,
+    },
+  });
+
+  let slot;
+  if (existing) {
+    slot = await prisma.mealPlanSlot.update({
+      where: { id: existing.id },
+      data: {
+        recipeId: recipeId || null,
+        customName: customName || null,
+      },
+      include: {
+        recipe: { select: { id: true, title: true, nutrition: true } },
+      },
+    });
+  } else {
+    slot = await prisma.mealPlanSlot.create({
+      data: {
+        mealPlanId,
+        recipeId: recipeId || null,
+        date: slotDate,
+        mealType,
+        customName: customName || null,
+      },
+      include: {
+        recipe: { select: { id: true, title: true, nutrition: true } },
+      },
+    });
+  }
+
+  const mealName = slot.recipe?.title || slot.customName || 'Custom meal';
+  return {
+    result: {
+      slot: {
+        id: slot.id,
+        date: slot.date,
+        mealType: slot.mealType,
+        recipe: slot.recipe ? { id: slot.recipe.id, title: slot.recipe.title } : null,
+        customName: slot.customName,
+      },
+      message: `${existing ? 'Updated' : 'Added'} ${mealType} on ${slotDate.toLocaleDateString()}: "${mealName}".`,
+    },
+    metadata: { type: 'meal_plan', planId: mealPlanId },
   };
 }
 

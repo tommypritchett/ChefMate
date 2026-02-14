@@ -25,7 +25,13 @@ function buildSystemPrompt(context: UserContext): string {
 - Generating shopping lists
 - Cooking tips and technique guidance
 
-Be conversational, helpful, and concise. Use the available tools to look up real data instead of guessing. When showing recipes, include key details (cook time, calories, difficulty). When you mention recipes from the database, reference them by name.
+IMPORTANT BEHAVIOR RULES:
+1. ALWAYS USE TOOLS TO EXECUTE ACTIONS — do NOT just describe what you could do. If the user asks you to create a meal plan, CALL the create_meal_plan tool immediately. If they want to log a meal, CALL log_meal. Never say "I can create a plan for you" without actually calling the tool.
+2. After executing a tool, summarize what you DID, not what you could do. Say "I've created your meal plan with these meals:" not "I could create a plan with...".
+3. When creating meal plans, always call create_meal_plan with relevant preferences. The tool will auto-populate the plan with recipes from the database.
+4. When the user asks to add a specific meal to a plan, call add_meal_to_plan to assign it.
+5. Use real data from tools — never make up recipe names, nutrition info, or inventory contents.
+6. When showing recipes, include key details (cook time, calories, difficulty). Reference recipes by their actual database names.
 
 If the user asks something outside of food/cooking/nutrition, politely redirect the conversation.`;
 
@@ -434,13 +440,27 @@ async function fallbackResponse(
   }
 
   if (lower.includes('meal plan') || lower.includes('plan')) {
+    // If user wants to create, actually create
+    if (lower.includes('create') || lower.includes('make') || lower.includes('build') || lower.includes('generate') || lower.includes('set up')) {
+      const result = await executeTool('create_meal_plan', { name: 'My Meal Plan', preferences: message }, userId);
+      toolCallResults.push({ name: 'create_meal_plan', args: { name: 'My Meal Plan' }, result: result.result });
+      if (result.metadata) Object.assign(metadata, result.metadata);
+
+      const plan = result.result.plan;
+      return {
+        content: `I've created your meal plan **"${plan.name}"** with ${plan.totalMeals || 0} meals populated!\n\n${result.result.message}\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+        toolCalls: toolCallResults,
+        metadata,
+      };
+    }
+
     const result = await executeTool('get_meal_plan', { weekOffset: 0 }, userId);
     toolCallResults.push({ name: 'get_meal_plan', args: {}, result: result.result });
 
     return {
       content: result.result.plan
         ? `Your current meal plan: **${result.result.plan.name}** with ${result.result.plan.slots.length} meals scheduled.`
-        : "You don't have a meal plan for this week yet. I can help you create one!\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*",
+        : "You don't have a meal plan for this week yet. Would you like me to create one? Just say \"create a meal plan\"!\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*",
       toolCalls: toolCallResults,
       metadata,
     };
