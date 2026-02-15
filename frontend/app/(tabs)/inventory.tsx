@@ -396,6 +396,7 @@ export default function InventoryScreen() {
             className="flex-row items-center bg-primary-500 px-3 py-2 rounded-lg"
           >
             <Ionicons name="add" size={18} color="white" />
+            <Text className="text-white text-sm font-medium ml-1">Add Item</Text>
           </TouchableOpacity>
         </View>
       </View>
