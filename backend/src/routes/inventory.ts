@@ -95,7 +95,10 @@ router.post('/analyze-photo', requireAuth, async (req: AuthenticatedRequest, res
       });
     }
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      timeout: 40000, // 40s timeout for Vision API
+    });
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -137,9 +140,12 @@ Return ONLY valid JSON: {"items": [...]}`,
       source: 'gpt4o-vision',
       message: `Identified ${(parsed.items || []).length} food item(s) in the photo.`,
     });
-  } catch (error) {
-    console.error('Photo analysis error:', error);
-    res.status(500).json({ error: 'Failed to analyze photo' });
+  } catch (error: any) {
+    console.error('Photo analysis error:', error?.message || error);
+    if (error?.code === 'ETIMEDOUT' || error?.message?.includes('timeout')) {
+      return res.status(504).json({ error: 'Photo analysis timed out. Please try a smaller or clearer photo.' });
+    }
+    res.status(500).json({ error: 'Failed to analyze photo. Please try again.' });
   }
 });
 

@@ -10,15 +10,25 @@ interface UseSpeechRecognitionReturn {
   resetTranscript: () => void;
 }
 
+const SILENCE_TIMEOUT_MS = 2500; // Stop after 2.5 seconds of silence
+
 export default function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const recognitionRef = useRef<any>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isSupported =
     Platform.OS === 'web' &&
     typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
 
   const startListening = useCallback(() => {
     if (!isSupported) return;
@@ -26,7 +36,7 @@ export default function useSpeechRecognition(): UseSpeechRecognitionReturn {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
@@ -41,14 +51,29 @@ export default function useSpeechRecognition(): UseSpeechRecognitionReturn {
         }
       }
       setTranscript(final || interim);
+
+      // Reset silence timer on every new result
+      clearSilenceTimer();
+      silenceTimerRef.current = setTimeout(() => {
+        // No new speech for SILENCE_TIMEOUT_MS — auto-stop
+        if (recognitionRef.current) {
+          recognitionRef.current.stop();
+          recognitionRef.current = null;
+        }
+      }, SILENCE_TIMEOUT_MS);
     };
 
     recognition.onend = () => {
+      clearSilenceTimer();
       setIsListening(false);
     };
 
     recognition.onerror = (event: any) => {
-      console.warn('Speech recognition error:', event.error);
+      // 'no-speech' is not a real error — just means silence detected
+      if (event.error !== 'no-speech') {
+        console.warn('Speech recognition error:', event.error);
+      }
+      clearSilenceTimer();
       setIsListening(false);
     };
 
@@ -56,15 +81,16 @@ export default function useSpeechRecognition(): UseSpeechRecognitionReturn {
     recognition.start();
     setIsListening(true);
     setTranscript('');
-  }, [isSupported]);
+  }, [isSupported, clearSilenceTimer]);
 
   const stopListening = useCallback(() => {
+    clearSilenceTimer();
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
     setIsListening(false);
-  }, []);
+  }, [clearSilenceTimer]);
 
   const resetTranscript = useCallback(() => {
     setTranscript('');

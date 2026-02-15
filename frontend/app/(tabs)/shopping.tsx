@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { shoppingApi, mealPlansApi, inventoryApi, groceryApi } from '../src/services/api';
+import { shoppingApi, mealPlansApi, inventoryApi, groceryApi } from '../../src/services/api';
 
 const CATEGORY_ORDER = ['produce', 'dairy', 'meat', 'grains', 'condiments', 'beverages', 'other'];
 
@@ -256,14 +256,18 @@ export default function ShoppingScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={22} color="#374151" />
-        </TouchableOpacity>
-        <Text className="text-lg font-semibold text-gray-800">Shopping Lists</Text>
-        <TouchableOpacity onPress={handleGenerateFromMealPlan} disabled={generating}>
-          <Ionicons name="sparkles" size={22} color={generating ? '#d1d5db' : '#10b981'} />
+      {/* Generate button bar */}
+      <View className="flex-row items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
+        <Text className="text-sm text-gray-500">{lists.length} list{lists.length !== 1 ? 's' : ''}</Text>
+        <TouchableOpacity
+          onPress={handleGenerateFromMealPlan}
+          disabled={generating}
+          className="flex-row items-center bg-primary-50 px-3 py-1.5 rounded-lg"
+        >
+          <Ionicons name="sparkles" size={14} color={generating ? '#d1d5db' : '#10b981'} />
+          <Text className="text-xs text-primary-600 ml-1 font-medium">
+            {generating ? 'Generating...' : 'From Meal Plan'}
+          </Text>
         </TouchableOpacity>
       </View>
 

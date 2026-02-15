@@ -220,10 +220,10 @@ export default function InventoryScreen() {
       }
     } catch (err: any) {
       console.error('Photo analysis error:', err);
-      const message = err?.response?.status === 500
+      const message = err?.response?.status === 504 || err?.message?.includes('timeout') || err?.code === 'ECONNABORTED'
+        ? 'Photo analysis timed out. Try a smaller or clearer photo, or add items manually.'
+        : err?.response?.status === 500
         ? 'Analysis failed on the server. Please try again or add items manually.'
-        : err?.message?.includes('timeout') || err?.code === 'ECONNABORTED'
-        ? 'Analysis is taking too long. Please try again.'
         : 'Failed to analyze photo. Please check your connection and try again.';
       setPhotoError(message);
       setPhotoState('error');
@@ -301,12 +301,12 @@ export default function InventoryScreen() {
       let threadId = convoThreadId;
       if (!threadId) {
         const res = await conversationsApi.createThread('Inventory Input');
-        threadId = res.thread?.id || res.id;
+        threadId = res.thread?.id || (res as any).id;
         setConvoThreadId(threadId);
       }
 
       // Send message to AI
-      const response = await conversationsApi.sendMessage(threadId, text);
+      const response = await conversationsApi.sendMessage(threadId!, text);
       const aiMessage = response.assistantMessage?.message || response.assistantMessage?.content || 'Items processed.';
 
       setConvoMessages(prev => [...prev, { role: 'assistant', text: aiMessage }]);

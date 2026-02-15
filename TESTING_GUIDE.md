@@ -99,7 +99,7 @@ Manual test procedures for inventory and AI features.
 8. **Verify: AI offers** "Want me to add missing items to your shopping list?"
 9. Reply: `Yes`
 10. **Verify: AI confirms** items added to shopping list
-11. Open Shopping Lists (Profile > Shopping Lists) and verify items are there
+11. Open **Shopping** tab and verify items are there
 
 **Result:** PASS / FAIL
 
@@ -133,6 +133,69 @@ Verify each method adds items correctly:
 | 5 | Manual form | Inventory tab | + button > Fill form > Add |
 
 After all 5 methods, verify all items appear in inventory grouped by storage location.
+
+**Result:** PASS / FAIL
+
+---
+
+## TEST 8: Shopping List Tab Navigation
+
+**Steps:**
+1. Verify bottom tab bar shows 5 tabs: Chat AI, Recipes, Meal Plan, Shopping, Inventory
+2. Tap **Shopping** tab → verify Shopping Lists screen loads
+3. Verify "From Meal Plan" generate button is visible
+4. Create a new list → verify it appears in list selector
+5. Verify **Profile** is NOT in the tab bar
+6. Tap the **person icon** in the top-right header → verify Profile screen opens
+7. From Profile, tap "Sign Out" → verify logout works
+
+**Result:** PASS / FAIL
+
+---
+
+## TEST 9: Recipe Favorites Section
+
+**Steps:**
+1. Open a recipe detail page → tap the save/favorite button
+2. Go back to **Recipes** tab
+3. **Verify: "My Favorites" section** appears at the top with a horizontal scroll
+4. Verify the favorited recipe appears as a small card
+5. Tap the favorite card → verify it navigates to recipe detail
+
+**Result:** PASS / FAIL
+
+---
+
+## TEST 10: Recipe Filters (Category + Dietary Tags)
+
+**Steps:**
+1. Open **Recipes** tab
+2. Tap **Chicken** category filter → verify only chicken recipes show
+3. Tap **Breakfast** → verify only breakfast recipes show
+4. Tap **All** → verify all recipes return
+5. Tap the **filter icon** (funnel) next to the search bar
+6. **Verify: Dietary tag filter chips** appear below categories
+7. Tap **high-protein** → verify filtered results
+8. Tap **vegetarian** in addition → verify results match both tags
+9. Tap **Clear** → verify tags are cleared, all results return
+10. Try combining a category (e.g., Mexican) + a tag (e.g., quick)
+
+**Result:** PASS / FAIL
+
+---
+
+## TEST 11: Voice Continuous Mode + Silence Detection
+
+**Steps:**
+1. Open Inventory → Quick Add → Voice mode
+2. Tap mic button
+3. Say: "I bought chicken"
+4. **Pause 1 second** → say: "and rice"
+5. **Pause 1 second** → say: "and some onions"
+6. **Verify:** All items appear in transcription (not just first phrase)
+7. **Stop talking for 3 seconds**
+8. **Verify:** Voice automatically stops after ~2.5s of silence
+9. Verify complete transcription is in the text field
 
 **Result:** PASS / FAIL
 

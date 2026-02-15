@@ -116,6 +116,7 @@ export const recipesApi = {
     brand?: string;
     difficulty?: string;
     search?: string;
+    tags?: string;
     page?: number;
     limit?: number;
     featured?: boolean;
@@ -281,7 +282,9 @@ export const inventoryApi = {
   },
 
   analyzePhoto: async (imageBase64: string): Promise<{ items: any[]; source: string; message: string }> => {
-    const response = await api.post('/inventory/analyze-photo', { imageBase64 });
+    const response = await api.post('/inventory/analyze-photo', { imageBase64 }, {
+      timeout: 45000, // 45s — Vision API + large base64 payload needs more time
+    });
     return response.data;
   },
 };

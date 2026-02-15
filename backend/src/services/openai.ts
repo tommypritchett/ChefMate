@@ -60,15 +60,29 @@ When compare_recipe_ingredients returns items with needsValidation=true, ask the
 - If user says "no" or "used it", treat that item as missing and include it in the shopping list
 - If user says "yes" or doesn't respond to a specific item, keep it as available
 
-NATURAL LANGUAGE INVENTORY INPUT:
-When a user describes items they bought or want to add in natural language (e.g., "I just got chicken, 2 bags of rice, milk, and some broccoli"), use this flow:
-1. Call parse_natural_inventory_input with their text to extract structured items
-2. If there are ambiguities (vague quantities like "some"), ask ONE clarifying question covering all ambiguous items
-3. Once clarified (or if no ambiguities), call bulk_add_inventory with the full list
-4. Confirm what was added, grouped by storage location (fridge/freezer/pantry)
-- NEVER ask about category or storage location — infer them automatically
-- Only ask about ambiguous QUANTITIES
-- Keep it conversational: "Got it! I've added 8 items to your inventory: fridge: chicken, milk, broccoli | pantry: rice, pasta"
+NATURAL LANGUAGE INVENTORY INPUT (CRITICAL — ALWAYS ASK BEFORE ADDING):
+When a user mentions food items they bought or want to add, you MUST ask clarifying questions BEFORE adding anything to inventory. NEVER add generic items like "chicken" or "rice" — always get specifics first.
+
+REQUIRED FLOW:
+1. Call parse_natural_inventory_input to identify the items mentioned
+2. For EACH item that is vague or generic, ask clarifying questions ONE item at a time:
+   a. SPECIFIC TYPE: "chicken" → ask "What kind? Breasts, thighs, wings, ground, or whole?"
+      "rice" → ask "What type? White, brown, jasmine, or basmati?"
+      "milk" → ask "What kind? Whole, 2%, skim, oat, or almond?"
+   b. QUANTITY: If not specified, ask "How much?" with example options (pounds, pieces, bags, gallons)
+   c. STORAGE: For items where it's ambiguous (e.g. chicken could be fridge or freezer), ask "Fridge or freezer?"
+3. Work through items conversationally — ask about one item, get the answer, then move to the next
+4. Only call bulk_add_inventory AFTER all items have been fully specified
+5. After adding, confirm with a summary: "Added to your inventory: ✓ Chicken breast - 2 lbs (fridge) ✓ White rice - 2 bags (pantry)"
+
+EXAMPLES:
+- User: "I bought chicken" → You: "What kind of chicken? Breasts, thighs, wings, ground, or whole?"
+- User: "Breasts" → You: "How much chicken breast? (pounds, pieces, or packages)"
+- User: "2 pounds" → You: "Fridge or freezer?" → User: "Fridge" → NOW add to inventory
+
+- User: "I bought chicken, rice, and onions" → Start with first item: "Let me get the details! What kind of chicken? Breasts, thighs, wings, ground, or whole?"
+
+NEVER skip the clarifying questions. NEVER add items with just generic names.
 
 If the user asks something outside of food/cooking/nutrition, politely redirect the conversation.`;
 
@@ -508,7 +522,7 @@ async function fallbackResponse(
     }
   }
 
-  // Natural language inventory input (Enhancement B)
+  // Natural language inventory input — ask clarifying questions before adding
   if (lower.includes('bought') || lower.includes('got') || lower.includes('picked up') ||
       (lower.includes('add') && (lower.includes('inventory') || lower.includes('fridge') || lower.includes('pantry') || lower.includes('freezer'))) ||
       lower.match(/^i have \w+.*(,| and )/)) {
@@ -517,31 +531,40 @@ async function fallbackResponse(
 
     const parsed = parseResult.result;
     if (parsed.parsedItems?.length > 0) {
-      if (parsed.hasAmbiguities) {
-        const questions = parsed.ambiguities.map((a: any) => a.reason).join('\n');
-        return {
-          content: `I found ${parsed.totalItems} item(s) in your message. Before I add them, I have a quick question:\n\n${questions}\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
-          toolCalls: toolCallResults,
-          metadata,
-        };
+      // Build clarifying questions for each item
+      const firstItem = parsed.parsedItems[0];
+      const itemName = firstItem.name.toLowerCase();
+
+      // Determine what clarification is needed
+      const typeOptions: Record<string, string> = {
+        chicken: 'Breasts, thighs, wings, ground, or whole?',
+        beef: 'Ground, steak, stew meat, or roast?',
+        pork: 'Chops, tenderloin, ground, or bacon?',
+        fish: 'Salmon, tilapia, cod, or tuna?',
+        rice: 'White, brown, jasmine, or basmati?',
+        milk: 'Whole, 2%, skim, oat, or almond?',
+        bread: 'White, wheat, sourdough, or multigrain?',
+        cheese: 'Cheddar, mozzarella, parmesan, or swiss?',
+        pasta: 'Spaghetti, penne, fettuccine, or macaroni?',
+      };
+
+      const typeQuestion = typeOptions[itemName];
+      const needsQuantity = !firstItem.quantity || firstItem.quantity <= 1;
+      const totalItems = parsed.parsedItems.length;
+
+      let question = `Great${totalItems > 1 ? ` — I see ${totalItems} items` : ''}! Let me get the details.\n\n`;
+      if (typeQuestion) {
+        question += `What kind of **${firstItem.name}**? ${typeQuestion}`;
+      } else if (needsQuantity) {
+        question += `How much **${firstItem.name}**? (e.g., 2 lbs, 3 pieces, 1 bag)`;
+      } else {
+        question += `Where should I store the **${firstItem.name}**? Fridge, freezer, or pantry?`;
       }
 
-      // No ambiguities — add directly
-      const addResult = await executeTool('bulk_add_inventory', {
-        items: parsed.parsedItems.map((i: any) => ({
-          name: i.name,
-          quantity: i.quantity,
-          unit: i.unit,
-          category: i.category,
-          storageLocation: i.storageLocation,
-          expiresInDays: i.expiresInDays,
-        })),
-      }, userId);
-      toolCallResults.push({ name: 'bulk_add_inventory', args: { items: parsed.parsedItems }, result: addResult.result });
-      if (addResult.metadata) Object.assign(metadata, addResult.metadata);
+      question += `\n\n*AI is in demo mode. Configure an OpenAI API key for full conversational capabilities.*`;
 
       return {
-        content: addResult.result.message + `\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+        content: question,
         toolCalls: toolCallResults,
         metadata,
       };

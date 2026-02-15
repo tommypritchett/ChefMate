@@ -1,5 +1,18 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+function ProfileHeaderButton() {
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/(tabs)/profile')}
+      style={{ marginRight: 12 }}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <Ionicons name="person-circle-outline" size={26} color="#ffffff" />
+    </TouchableOpacity>
+  );
+}
 
 export default function TabLayout() {
   return (
@@ -24,6 +37,7 @@ export default function TabLayout() {
         headerTitleStyle: {
           fontWeight: 'bold',
         },
+        headerRight: () => <ProfileHeaderButton />,
       }}
     >
       <Tabs.Screen
@@ -57,6 +71,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="shopping"
+        options={{
+          title: 'Shopping',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cart" size={size} color={color} />
+          ),
+          headerTitle: 'Shopping Lists',
+        }}
+      />
+      <Tabs.Screen
         name="inventory"
         options={{
           title: 'Inventory',
@@ -69,10 +93,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
-          ),
+          href: null, // Hidden from tab bar
           headerTitle: 'Profile',
         }}
       />

@@ -44,14 +44,6 @@ export default function ProfileScreen() {
           <Text className="text-gray-800 ml-3 flex-1">Health Goals</Text>
           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
         </TouchableOpacity>
-        <TouchableOpacity
-          className="flex-row items-center p-4 border-b border-gray-100"
-          onPress={() => router.push('/shopping')}
-        >
-          <Ionicons name="cart-outline" size={22} color="#10b981" />
-          <Text className="text-gray-800 ml-3 flex-1">Shopping Lists</Text>
-          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-        </TouchableOpacity>
         <TouchableOpacity className="flex-row items-center p-4 border-b border-gray-100">
           <Ionicons name="settings-outline" size={22} color="#6b7280" />
           <Text className="text-gray-800 ml-3 flex-1">Preferences</Text>
