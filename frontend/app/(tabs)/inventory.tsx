@@ -8,9 +8,11 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { inventoryApi } from '../../src/services/api';
+import useSpeechRecognition from '../../src/hooks/useSpeechRecognition';
 
 const STORAGE_LOCATIONS = ['fridge', 'freezer', 'pantry'] as const;
 const CATEGORIES = ['produce', 'dairy', 'meat', 'grains', 'condiments', 'beverages', 'other'];
@@ -39,6 +41,15 @@ export default function InventoryScreen() {
   const [newUnit, setNewUnit] = useState('');
   const [newExpiry, setNewExpiry] = useState('');
   const [adding, setAdding] = useState(false);
+  const { isListening, transcript, isSupported, startListening, stopListening } =
+    useSpeechRecognition();
+
+  // Update name field from voice input
+  useEffect(() => {
+    if (transcript && showAddModal) {
+      setNewName(transcript);
+    }
+  }, [transcript, showAddModal]);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -234,14 +245,31 @@ export default function InventoryScreen() {
             {/* Name */}
             <View>
               <Text className="text-sm font-medium text-gray-700 mb-1">Item Name *</Text>
-              <TextInput
-                className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                placeholder="e.g. Chicken breast"
-                placeholderTextColor="#9ca3af"
-                value={newName}
-                onChangeText={setNewName}
-                autoFocus
-              />
+              <View className="flex-row items-center gap-2">
+                <TextInput
+                  className="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                  placeholder={isListening ? 'Listening...' : 'e.g. Chicken breast'}
+                  placeholderTextColor={isListening ? '#ef4444' : '#9ca3af'}
+                  value={newName}
+                  onChangeText={setNewName}
+                  autoFocus={!isListening}
+                  editable={!isListening}
+                />
+                {isSupported && (
+                  <TouchableOpacity
+                    onPress={() => isListening ? stopListening() : startListening()}
+                    className={`w-10 h-10 rounded-full items-center justify-center ${
+                      isListening ? 'bg-red-500' : 'bg-gray-100'
+                    }`}
+                  >
+                    <Ionicons
+                      name={isListening ? 'mic' : 'mic-outline'}
+                      size={20}
+                      color={isListening ? 'white' : '#6b7280'}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
 
             {/* Storage Location */}
