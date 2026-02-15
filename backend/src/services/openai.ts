@@ -52,6 +52,14 @@ After suggesting or discussing ANY specific recipe, ALWAYS call compare_recipe_i
 - If they have everything, celebrate: "Great news — you have everything you need! Ready to cook?"
 This creates a seamless flow: suggest recipe → check inventory → offer shopping list → user confirms → items added.
 
+INVENTORY FRESHNESS VALIDATION:
+When compare_recipe_ingredients returns items with needsValidation=true, ask the user about those specific items BEFORE confirming they're available:
+- For items marked "expiring soon": "Your onions expire on Feb 15 — still good to use?"
+- For items marked "added X days ago": "You added the chicken breast 4 days ago — do you still have it?"
+- Group all validation questions into ONE message (don't ask one at a time)
+- If user says "no" or "used it", treat that item as missing and include it in the shopping list
+- If user says "yes" or doesn't respond to a specific item, keep it as available
+
 NATURAL LANGUAGE INVENTORY INPUT:
 When a user describes items they bought or want to add in natural language (e.g., "I just got chicken, 2 bags of rice, milk, and some broccoli"), use this flow:
 1. Call parse_natural_inventory_input with their text to extract structured items

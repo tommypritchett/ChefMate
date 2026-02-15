@@ -1423,7 +1423,21 @@ async function compareRecipeIngredients(args: Record<string, any>, userId: strin
   });
   const findMatch = buildInventoryMatcher(inventory);
 
-  const haveItems: Array<{ name: string; inventoryName: string; quantity?: number; unit?: string }> = [];
+  const now = new Date();
+  const threeDays = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+
+  const haveItems: Array<{
+    name: string;
+    inventoryName: string;
+    quantity?: number;
+    unit?: string;
+    addedDaysAgo?: number;
+    expiringSoon?: boolean;
+    expiresAt?: string;
+    needsValidation?: boolean;
+    validationReason?: string;
+  }> = [];
   const missingItems: Array<{ name: string; amount?: number; unit?: string }> = [];
 
   for (const ing of ingredients) {
@@ -1431,15 +1445,29 @@ async function compareRecipeIngredients(args: Record<string, any>, userId: strin
     const match = findMatch(ing.name);
     if (match) {
       // Check if expired
-      const isExpired = match.expiresAt && new Date(match.expiresAt) < new Date();
+      const isExpired = match.expiresAt && new Date(match.expiresAt) < now;
       if (isExpired) {
         missingItems.push({ name: ing.name, amount: ing.amount, unit: ing.unit });
       } else {
+        const addedDate = match.createdAt ? new Date(match.createdAt) : null;
+        const addedDaysAgo = addedDate ? Math.floor((now.getTime() - addedDate.getTime()) / (24 * 60 * 60 * 1000)) : undefined;
+        const expiringSoon = match.expiresAt ? new Date(match.expiresAt) <= threeDays : false;
+        const isOld = addedDate ? addedDate < twoDaysAgo : false;
+
         haveItems.push({
           name: ing.name,
           inventoryName: match.name,
           quantity: match.quantity,
           unit: match.unit,
+          addedDaysAgo,
+          expiringSoon,
+          expiresAt: match.expiresAt?.toISOString?.() || match.expiresAt || undefined,
+          needsValidation: isOld || expiringSoon,
+          validationReason: expiringSoon
+            ? `expiring soon (${match.expiresAt ? new Date(match.expiresAt).toLocaleDateString() : 'unknown'})`
+            : isOld
+            ? `added ${addedDaysAgo} day(s) ago — still available?`
+            : undefined,
         });
       }
     } else {
@@ -1449,6 +1477,7 @@ async function compareRecipeIngredients(args: Record<string, any>, userId: strin
 
   const totalIngredients = haveItems.length + missingItems.length;
   const coverage = totalIngredients > 0 ? Math.round((haveItems.length / totalIngredients) * 100) : 0;
+  const itemsNeedingValidation = haveItems.filter(i => i.needsValidation);
 
   return {
     result: {
@@ -1458,6 +1487,7 @@ async function compareRecipeIngredients(args: Record<string, any>, userId: strin
       have: haveItems,
       missing: missingItems,
       coveragePercent: coverage,
+      itemsNeedingValidation: itemsNeedingValidation.length > 0 ? itemsNeedingValidation : undefined,
       message: missingItems.length === 0
         ? `You have all ${totalIngredients} ingredients for "${recipe.title}"! You're ready to cook.`
         : `You have ${haveItems.length}/${totalIngredients} ingredients for "${recipe.title}". Missing ${missingItems.length} item(s): ${missingItems.map(i => i.name).join(', ')}.`,

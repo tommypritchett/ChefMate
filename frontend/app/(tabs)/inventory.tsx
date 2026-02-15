@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,13 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
-  Animated,
   ScrollView,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { inventoryApi } from '../../src/services/api';
+import { inventoryApi, conversationsApi } from '../../src/services/api';
 import useSpeechRecognition from '../../src/hooks/useSpeechRecognition';
 
 const STORAGE_LOCATIONS = ['fridge', 'freezer', 'pantry'] as const;
@@ -31,6 +31,23 @@ interface InventoryItem {
   createdAt: string;
 }
 
+interface PhotoItem {
+  name: string;
+  quantity: number;
+  unit: string;
+  category: string;
+  storageLocation: string;
+  confidence: number;
+  selected: boolean;
+}
+
+type PhotoState = 'idle' | 'analyzing' | 'results' | 'error' | 'added';
+
+interface ConvoMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
 export default function InventoryScreen() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,19 +61,39 @@ export default function InventoryScreen() {
   const [newUnit, setNewUnit] = useState('');
   const [newExpiry, setNewExpiry] = useState('');
   const [adding, setAdding] = useState(false);
-  const [showPhotoResults, setShowPhotoResults] = useState(false);
-  const [photoItems, setPhotoItems] = useState<Array<{ name: string; quantity: number; unit: string; category: string; storageLocation: string; confidence: number; selected: boolean }>>([]);
-  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
 
-  const { isListening, transcript, isSupported, startListening, stopListening } =
+  // Photo scan state
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [photoState, setPhotoState] = useState<PhotoState>('idle');
+  const [photoItems, setPhotoItems] = useState<PhotoItem[]>([]);
+  const [photoError, setPhotoError] = useState('');
+  const [addedCount, setAddedCount] = useState(0);
+
+  // Conversational input state
+  const [showConvoModal, setShowConvoModal] = useState(false);
+  const [convoMode, setConvoMode] = useState<'text' | 'voice'>('text');
+  const [convoInput, setConvoInput] = useState('');
+  const [convoMessages, setConvoMessages] = useState<ConvoMessage[]>([]);
+  const [convoProcessing, setConvoProcessing] = useState(false);
+  const [convoThreadId, setConvoThreadId] = useState<string | null>(null);
+  const convoScrollRef = useRef<ScrollView>(null);
+
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
-  // Update name field from voice input
+  // Update name field from voice input (Add Item modal)
   useEffect(() => {
     if (transcript && showAddModal) {
       setNewName(transcript);
     }
   }, [transcript, showAddModal]);
+
+  // Update convo input from voice (Convo modal)
+  useEffect(() => {
+    if (transcript && showConvoModal && convoMode === 'voice') {
+      setConvoInput(transcript);
+    }
+  }, [transcript, showConvoModal, convoMode]);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -123,73 +160,74 @@ export default function InventoryScreen() {
     setNewExpiry('');
   };
 
-  const handlePhotoScan = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Camera access is needed to scan food items.');
-        return;
-      }
+  // ─── Photo Analysis ────────────────────────────────────────────
 
-      const result = await ImagePicker.launchCameraAsync({
-        base64: true,
-        quality: 0.7,
-        allowsEditing: false,
-      });
+  const startPhotoAnalysis = async (source: 'camera' | 'library') => {
+    try {
+      let result: ImagePicker.ImagePickerResult;
+
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          setPhotoError('Camera permission is required to scan food items.');
+          setPhotoState('error');
+          setShowPhotoModal(true);
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          base64: true,
+          quality: 0.7,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          setPhotoError('Photo library permission is required.');
+          setPhotoState('error');
+          setShowPhotoModal(true);
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          base64: true,
+          quality: 0.7,
+        });
+      }
 
       if (result.canceled || !result.assets?.[0]?.base64) return;
 
-      setAnalyzingPhoto(true);
-      setShowPhotoResults(true);
+      // Show modal with analyzing state
+      setPhotoState('analyzing');
+      setPhotoError('');
+      setPhotoItems([]);
+      setShowPhotoModal(true);
 
       const analysis = await inventoryApi.analyzePhoto(result.assets[0].base64);
-      setPhotoItems(
-        (analysis.items || []).map((item: any) => ({
-          ...item,
-          selected: true,
-        }))
-      );
-    } catch (err) {
-      console.error('Photo scan error:', err);
-      Alert.alert('Error', 'Failed to analyze photo. Please try again.');
-      setShowPhotoResults(false);
-    } finally {
-      setAnalyzingPhoto(false);
-    }
-  };
+      const detectedItems = (analysis.items || []).map((item: any) => ({
+        name: item.name || 'Unknown item',
+        quantity: item.quantity || 1,
+        unit: item.unit || 'count',
+        category: item.category || 'other',
+        storageLocation: item.storageLocation || 'fridge',
+        confidence: item.confidence || 0.5,
+        selected: true,
+      }));
 
-  const handlePhotoLibrary = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Photo library access is needed.');
-        return;
+      if (detectedItems.length === 0) {
+        setPhotoError('No food items could be identified in the photo. Try a clearer photo or add items manually.');
+        setPhotoState('error');
+      } else {
+        setPhotoItems(detectedItems);
+        setPhotoState('results');
       }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        base64: true,
-        quality: 0.7,
-        mediaTypes: ['images'],
-      });
-
-      if (result.canceled || !result.assets?.[0]?.base64) return;
-
-      setAnalyzingPhoto(true);
-      setShowPhotoResults(true);
-
-      const analysis = await inventoryApi.analyzePhoto(result.assets[0].base64);
-      setPhotoItems(
-        (analysis.items || []).map((item: any) => ({
-          ...item,
-          selected: true,
-        }))
-      );
-    } catch (err) {
-      console.error('Photo library error:', err);
-      Alert.alert('Error', 'Failed to analyze photo.');
-      setShowPhotoResults(false);
-    } finally {
-      setAnalyzingPhoto(false);
+    } catch (err: any) {
+      console.error('Photo analysis error:', err);
+      const message = err?.response?.status === 500
+        ? 'Analysis failed on the server. Please try again or add items manually.'
+        : err?.message?.includes('timeout') || err?.code === 'ECONNABORTED'
+        ? 'Analysis is taking too long. Please try again.'
+        : 'Failed to analyze photo. Please check your connection and try again.';
+      setPhotoError(message);
+      setPhotoState('error');
+      setShowPhotoModal(true);
     }
   };
 
@@ -208,14 +246,24 @@ export default function InventoryScreen() {
           unit: item.unit,
         });
       }
-      setShowPhotoResults(false);
-      setPhotoItems([]);
+      setAddedCount(selected.length);
+      setPhotoState('added');
       fetchItems();
     } catch (err) {
       console.error('Failed to add photo items:', err);
+      setPhotoError('Failed to add items. Please try again.');
+      setPhotoState('error');
     } finally {
       setAdding(false);
     }
+  };
+
+  const closePhotoModal = () => {
+    setShowPhotoModal(false);
+    setPhotoState('idle');
+    setPhotoItems([]);
+    setPhotoError('');
+    setAddedCount(0);
   };
 
   const togglePhotoItem = (index: number) => {
@@ -223,6 +271,77 @@ export default function InventoryScreen() {
       i === index ? { ...item, selected: !item.selected } : item
     ));
   };
+
+  // ─── Conversational Input ─────────────────────────────────────
+
+  const openConvoModal = () => {
+    setConvoMessages([{
+      role: 'assistant',
+      text: 'Tell me what you have! You can say something like "I bought chicken breast, 2 bags of rice, onions, and milk" and I\'ll add them all to your inventory.',
+    }]);
+    setConvoInput('');
+    setConvoThreadId(null);
+    setShowConvoModal(true);
+  };
+
+  const handleConvoSend = async () => {
+    const text = convoInput.trim();
+    if (!text || convoProcessing) return;
+
+    setConvoMessages(prev => [...prev, { role: 'user', text }]);
+    setConvoInput('');
+    setConvoProcessing(true);
+
+    if (isListening) {
+      stopListening();
+    }
+
+    try {
+      // Create thread if needed
+      let threadId = convoThreadId;
+      if (!threadId) {
+        const res = await conversationsApi.createThread('Inventory Input');
+        threadId = res.thread?.id || res.id;
+        setConvoThreadId(threadId);
+      }
+
+      // Send message to AI
+      const response = await conversationsApi.sendMessage(threadId, text);
+      const aiMessage = response.assistantMessage?.message || response.assistantMessage?.content || 'Items processed.';
+
+      setConvoMessages(prev => [...prev, { role: 'assistant', text: aiMessage }]);
+
+      // Refresh inventory after AI processes items
+      fetchItems();
+    } catch (err) {
+      console.error('Convo error:', err);
+      setConvoMessages(prev => [...prev, {
+        role: 'assistant',
+        text: 'Sorry, something went wrong. Please try again or use the manual add form.',
+      }]);
+    } finally {
+      setConvoProcessing(false);
+      setTimeout(() => convoScrollRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  };
+
+  const handleVoiceToggle = () => {
+    if (isListening) {
+      stopListening();
+      // Auto-send after stopping voice
+      setTimeout(() => {
+        if (convoInput.trim()) {
+          handleConvoSend();
+        }
+      }, 300);
+    } else {
+      resetTranscript();
+      setConvoInput('');
+      startListening();
+    }
+  };
+
+  // ─── Helpers ──────────────────────────────────────────────────
 
   const isExpiringSoon = (expiresAt: string | null) => {
     if (!expiresAt) return false;
@@ -251,11 +370,11 @@ export default function InventoryScreen() {
           <TouchableOpacity
             onPress={() => {
               if (Platform.OS === 'web') {
-                handlePhotoLibrary();
+                startPhotoAnalysis('library');
               } else {
                 Alert.alert('Add by Photo', 'How would you like to add items?', [
-                  { text: 'Take Photo', onPress: handlePhotoScan },
-                  { text: 'Choose from Library', onPress: handlePhotoLibrary },
+                  { text: 'Take Photo', onPress: () => startPhotoAnalysis('camera') },
+                  { text: 'Choose from Library', onPress: () => startPhotoAnalysis('library') },
                   { text: 'Cancel', style: 'cancel' },
                 ]);
               }
@@ -266,11 +385,17 @@ export default function InventoryScreen() {
             <Text className="text-white text-sm font-medium ml-1">Scan</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={openConvoModal}
+            className="flex-row items-center bg-purple-500 px-3 py-2 rounded-lg"
+          >
+            <Ionicons name="chatbubble-ellipses" size={16} color="white" />
+            <Text className="text-white text-sm font-medium ml-1">Quick Add</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => setShowAddModal(true)}
-            className="flex-row items-center bg-primary-500 px-4 py-2 rounded-lg"
+            className="flex-row items-center bg-primary-500 px-3 py-2 rounded-lg"
           >
             <Ionicons name="add" size={18} color="white" />
-            <Text className="text-white text-sm font-medium ml-1">Add Item</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -285,12 +410,21 @@ export default function InventoryScreen() {
           <Text className="text-gray-400 mt-3 text-center">
             Your inventory is empty. Add items to track what you have!
           </Text>
-          <TouchableOpacity
-            onPress={() => setShowAddModal(true)}
-            className="mt-4 bg-primary-500 px-6 py-3 rounded-lg"
-          >
-            <Text className="text-white font-medium">Add Your First Item</Text>
-          </TouchableOpacity>
+          <View className="flex-row gap-3 mt-4">
+            <TouchableOpacity
+              onPress={openConvoModal}
+              className="bg-purple-500 px-5 py-3 rounded-lg flex-row items-center"
+            >
+              <Ionicons name="chatbubble-ellipses" size={16} color="white" />
+              <Text className="text-white font-medium ml-2">Quick Add</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowAddModal(true)}
+              className="bg-primary-500 px-5 py-3 rounded-lg"
+            >
+              <Text className="text-white font-medium">Manual Add</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : (
         <SectionList
@@ -353,48 +487,92 @@ export default function InventoryScreen() {
         />
       )}
 
-      {/* Photo Results Modal */}
-      <Modal visible={showPhotoResults} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPhotoResults(false)}>
+      {/* ═══ Photo Scan Modal ═══ */}
+      <Modal visible={showPhotoModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={closePhotoModal}>
         <View className="flex-1 bg-gray-50">
           <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => { setShowPhotoResults(false); setPhotoItems([]); }}>
-              <Text className="text-gray-500">Cancel</Text>
+            <TouchableOpacity onPress={closePhotoModal}>
+              <Text className="text-gray-500">{photoState === 'added' ? 'Done' : 'Cancel'}</Text>
             </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">Photo Scan Results</Text>
-            <TouchableOpacity
-              onPress={handleAddPhotoItems}
-              disabled={adding || analyzingPhoto || photoItems.filter(i => i.selected).length === 0}
-            >
-              <Text className={`font-medium ${photoItems.some(i => i.selected) && !adding ? 'text-primary-500' : 'text-gray-300'}`}>
-                {adding ? 'Adding...' : `Add (${photoItems.filter(i => i.selected).length})`}
-              </Text>
-            </TouchableOpacity>
+            <Text className="text-lg font-semibold text-gray-800">Photo Scan</Text>
+            {photoState === 'results' ? (
+              <TouchableOpacity
+                onPress={handleAddPhotoItems}
+                disabled={adding || photoItems.filter(i => i.selected).length === 0}
+              >
+                <Text className={`font-medium ${photoItems.some(i => i.selected) && !adding ? 'text-primary-500' : 'text-gray-300'}`}>
+                  {adding ? 'Adding...' : `Add (${photoItems.filter(i => i.selected).length})`}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 60 }} />
+            )}
           </View>
 
-          {analyzingPhoto ? (
+          {/* Analyzing state */}
+          {photoState === 'analyzing' && (
             <View className="flex-1 items-center justify-center">
               <ActivityIndicator size="large" color="#3b82f6" />
-              <Text className="text-gray-500 mt-3">Analyzing photo with AI...</Text>
-              <Text className="text-gray-400 text-xs mt-1">Identifying food items</Text>
+              <Text className="text-gray-600 mt-4 text-base font-medium">Analyzing photo...</Text>
+              <Text className="text-gray-400 text-sm mt-1">AI is identifying food items</Text>
             </View>
-          ) : photoItems.length === 0 ? (
+          )}
+
+          {/* Error state */}
+          {photoState === 'error' && (
             <View className="flex-1 items-center justify-center px-6">
-              <Ionicons name="image-outline" size={48} color="#d1d5db" />
-              <Text className="text-gray-400 mt-3 text-center">
-                No food items detected. Try taking a clearer photo.
-              </Text>
+              <Ionicons name="alert-circle-outline" size={56} color="#ef4444" />
+              <Text className="text-gray-700 mt-4 text-center text-base font-medium">Analysis Issue</Text>
+              <Text className="text-gray-500 mt-2 text-center text-sm">{photoError}</Text>
+              <View className="flex-row gap-3 mt-6">
+                <TouchableOpacity
+                  onPress={() => {
+                    closePhotoModal();
+                    setTimeout(() => {
+                      if (Platform.OS === 'web') {
+                        startPhotoAnalysis('library');
+                      } else {
+                        startPhotoAnalysis('camera');
+                      }
+                    }, 300);
+                  }}
+                  className="bg-blue-500 px-5 py-3 rounded-lg flex-row items-center"
+                >
+                  <Ionicons name="camera-outline" size={18} color="white" />
+                  <Text className="text-white font-medium ml-2">Retry Photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    closePhotoModal();
+                    setShowAddModal(true);
+                  }}
+                  className="bg-gray-200 px-5 py-3 rounded-lg"
+                >
+                  <Text className="text-gray-700 font-medium">Add Manually</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          ) : (
+          )}
+
+          {/* Results state */}
+          {photoState === 'results' && (
             <ScrollView className="flex-1 px-4 pt-4">
-              <Text className="text-xs text-gray-400 mb-3">
-                Tap items to select/deselect. Selected items will be added to your inventory.
-              </Text>
+              {/* Summary banner */}
+              <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+                <Text className="text-blue-800 font-medium text-sm">
+                  Found {photoItems.length} item{photoItems.length !== 1 ? 's' : ''} in your photo
+                </Text>
+                <Text className="text-blue-600 text-xs mt-1">
+                  Tap to select/deselect, then press "Add" to save to inventory.
+                </Text>
+              </View>
+
               {photoItems.map((item, index) => (
                 <TouchableOpacity
                   key={index}
                   onPress={() => togglePhotoItem(index)}
-                  className={`mb-2 p-3 bg-white rounded-xl flex-row items-center border ${
-                    item.selected ? 'border-primary-300 bg-primary-50' : 'border-gray-200'
+                  className={`mb-2 p-3 rounded-xl flex-row items-center border ${
+                    item.selected ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white'
                   }`}
                 >
                   <Ionicons
@@ -405,13 +583,17 @@ export default function InventoryScreen() {
                   <View className="flex-1 ml-3">
                     <Text className="text-sm font-medium text-gray-800">{item.name}</Text>
                     <View className="flex-row items-center mt-0.5 gap-2">
-                      <Text className="text-xs text-gray-400">
+                      <Text className="text-xs text-gray-500">
                         {item.quantity} {item.unit}
                       </Text>
-                      <Text className="text-xs text-gray-400 capitalize">{item.category}</Text>
-                      <Text className="text-xs text-gray-400 capitalize">{item.storageLocation}</Text>
-                      <Text className="text-xs text-blue-400">
-                        {Math.round(item.confidence * 100)}%
+                      <View className="bg-gray-100 px-1.5 py-0.5 rounded">
+                        <Text className="text-[10px] text-gray-500 capitalize">{item.storageLocation}</Text>
+                      </View>
+                      <View className="bg-gray-100 px-1.5 py-0.5 rounded">
+                        <Text className="text-[10px] text-gray-500 capitalize">{item.category}</Text>
+                      </View>
+                      <Text className="text-[10px] text-blue-500">
+                        {Math.round(item.confidence * 100)}% match
                       </Text>
                     </View>
                   </View>
@@ -419,10 +601,156 @@ export default function InventoryScreen() {
               ))}
             </ScrollView>
           )}
+
+          {/* Success state */}
+          {photoState === 'added' && (
+            <View className="flex-1 items-center justify-center px-6">
+              <View className="bg-primary-100 w-20 h-20 rounded-full items-center justify-center">
+                <Ionicons name="checkmark-circle" size={48} color="#10b981" />
+              </View>
+              <Text className="text-gray-800 mt-4 text-lg font-semibold">Added to Inventory!</Text>
+              <Text className="text-gray-500 mt-2 text-center">
+                {addedCount} item{addedCount !== 1 ? 's' : ''} added successfully.
+              </Text>
+              <TouchableOpacity
+                onPress={closePhotoModal}
+                className="mt-6 bg-primary-500 px-8 py-3 rounded-lg"
+              >
+                <Text className="text-white font-medium">Done</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </Modal>
 
-      {/* Add Item Modal */}
+      {/* ═══ Conversational Input Modal ═══ */}
+      <Modal visible={showConvoModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowConvoModal(false)}>
+        <KeyboardAvoidingView
+          className="flex-1 bg-gray-50"
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          {/* Header */}
+          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+            <TouchableOpacity onPress={() => { setShowConvoModal(false); fetchItems(); }}>
+              <Text className="text-gray-500">Close</Text>
+            </TouchableOpacity>
+            <Text className="text-lg font-semibold text-gray-800">Quick Add</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          {/* Mode toggle */}
+          <View className="flex-row mx-4 mt-3 bg-gray-200 rounded-lg p-0.5">
+            <TouchableOpacity
+              onPress={() => { setConvoMode('text'); if (isListening) stopListening(); }}
+              className={`flex-1 py-2 rounded-md items-center ${convoMode === 'text' ? 'bg-white' : ''}`}
+            >
+              <Text className={`text-sm font-medium ${convoMode === 'text' ? 'text-gray-800' : 'text-gray-500'}`}>
+                Text
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setConvoMode('voice')}
+              className={`flex-1 py-2 rounded-md items-center ${convoMode === 'voice' ? 'bg-white' : ''}`}
+            >
+              <Text className={`text-sm font-medium ${convoMode === 'voice' ? 'text-gray-800' : 'text-gray-500'}`}>
+                Voice {isSupported ? '' : '(web only)'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Messages */}
+          <ScrollView
+            ref={convoScrollRef}
+            className="flex-1 px-4 pt-3"
+            contentContainerStyle={{ paddingBottom: 10 }}
+            onContentSizeChange={() => convoScrollRef.current?.scrollToEnd({ animated: true })}
+          >
+            {convoMessages.map((msg, i) => (
+              <View
+                key={i}
+                className={`mb-2 max-w-[85%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}
+              >
+                <View className={`px-3 py-2 rounded-xl ${
+                  msg.role === 'user' ? 'bg-primary-500' : 'bg-white border border-gray-200'
+                }`}>
+                  <Text className={`text-sm ${msg.role === 'user' ? 'text-white' : 'text-gray-800'}`}>
+                    {msg.text}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            {convoProcessing && (
+              <View className="self-start mb-2">
+                <View className="bg-white border border-gray-200 px-3 py-2 rounded-xl">
+                  <ActivityIndicator size="small" color="#10b981" />
+                </View>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Input area */}
+          <View className="px-4 py-3 bg-white border-t border-gray-200">
+            {convoMode === 'text' ? (
+              <View className="flex-row items-center gap-2">
+                <TextInput
+                  className="flex-1 bg-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-800"
+                  placeholder="e.g. I bought chicken, rice, and onions"
+                  placeholderTextColor="#9ca3af"
+                  value={convoInput}
+                  onChangeText={setConvoInput}
+                  onSubmitEditing={handleConvoSend}
+                  returnKeyType="send"
+                  editable={!convoProcessing}
+                />
+                <TouchableOpacity
+                  onPress={handleConvoSend}
+                  disabled={!convoInput.trim() || convoProcessing}
+                  className={`w-10 h-10 rounded-full items-center justify-center ${
+                    convoInput.trim() && !convoProcessing ? 'bg-primary-500' : 'bg-gray-200'
+                  }`}
+                >
+                  <Ionicons name="send" size={18} color={convoInput.trim() && !convoProcessing ? 'white' : '#9ca3af'} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View className="items-center gap-2">
+                {convoInput ? (
+                  <View className="w-full flex-row items-center gap-2">
+                    <Text className="flex-1 bg-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-800">
+                      {convoInput}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={handleConvoSend}
+                      disabled={convoProcessing}
+                      className="w-10 h-10 rounded-full items-center justify-center bg-primary-500"
+                    >
+                      <Ionicons name="send" size={18} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  onPress={handleVoiceToggle}
+                  disabled={!isSupported || convoProcessing}
+                  className={`w-16 h-16 rounded-full items-center justify-center ${
+                    isListening ? 'bg-red-500' : isSupported ? 'bg-blue-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <Ionicons
+                    name={isListening ? 'mic' : 'mic-outline'}
+                    size={28}
+                    color="white"
+                  />
+                </TouchableOpacity>
+                <Text className="text-xs text-gray-400">
+                  {isListening ? 'Listening... tap to stop' : isSupported ? 'Tap to speak' : 'Voice not supported on this device'}
+                </Text>
+              </View>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ═══ Add Item Modal ═══ */}
       <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddModal(false)}>
         <View className="flex-1 bg-gray-50">
           <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
