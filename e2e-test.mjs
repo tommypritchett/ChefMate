@@ -255,14 +255,13 @@ async function run() {
     // Click on a recipe card to navigate to detail
     try {
       await page.waitForTimeout(1500);
-      // Use Playwright's native click - find the visible "McDonald's" text (unique to recipe cards, not chat)
-      // First try clicking with coordinate-based approach on the first recipe card
-      const mcdonaldsText = page.locator('text=McDonald\'s').first();
-      const isMcVisible = await mcdonaldsText.isVisible().catch(() => false);
+      // Click the first recipe card - look for calorie text (all cards show "X cal")
+      const calText = page.locator('text=/\\d+ cal/').first();
+      const isCalVisible = await calText.isVisible().catch(() => false);
       let clicked = false;
 
-      if (isMcVisible) {
-        await mcdonaldsText.click({ timeout: 5000 });
+      if (isCalVisible) {
+        await calText.click({ timeout: 5000 });
         clicked = true;
       } else {
         // Fallback: click anywhere on the first card area (below search bar, above second card)

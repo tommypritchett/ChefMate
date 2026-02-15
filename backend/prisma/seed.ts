@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { additionalRecipes } from './additional-recipes';
 
 const prisma = new PrismaClient();
 
@@ -1782,19 +1783,20 @@ async function main() {
   // Clear existing recipes first to avoid duplicates
   await prisma.recipe.deleteMany({});
   console.log('Cleared existing recipes');
-  
-  for (const recipe of sampleRecipes) {
+
+  const allRecipes = [...sampleRecipes, ...additionalRecipes];
+  for (const recipe of allRecipes) {
     const result = await prisma.recipe.create({
       data: recipe,
     });
     console.log(`Created recipe: ${result.title}`);
   }
-  
-  console.log(`\nSeeding finished. Created ${sampleRecipes.length} recipes.`);
+
+  console.log(`\nSeeding finished. Created ${allRecipes.length} recipes.`);
   
   // Print summary by dietary tag
   const tagCounts: Record<string, number> = {};
-  for (const recipe of sampleRecipes) {
+  for (const recipe of allRecipes) {
     const tags = JSON.parse(recipe.dietaryTags) as string[];
     if (tags.length === 0) {
       tagCounts['no-tags'] = (tagCounts['no-tags'] || 0) + 1;
