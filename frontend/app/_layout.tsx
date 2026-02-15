@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { Slot, SplashScreen } from 'expo-router';
-import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../src/store/authStore';
 import { useProtectedRoute } from '../src/hooks/useProtectedRoute';
@@ -12,23 +11,19 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const { loadUser, isInitialized } = useAuthStore();
 
-  const [fontsLoaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
   useEffect(() => {
     loadUser();
   }, []);
 
   useEffect(() => {
-    if (isInitialized && fontsLoaded) {
+    if (isInitialized) {
       SplashScreen.hideAsync();
     }
-  }, [isInitialized, fontsLoaded]);
+  }, [isInitialized]);
 
   useProtectedRoute();
 
-  if (!isInitialized || !fontsLoaded) {
+  if (!isInitialized) {
     return null;
   }
 
