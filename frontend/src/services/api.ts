@@ -279,6 +279,11 @@ export const inventoryApi = {
   deleteItem: async (id: string): Promise<void> => {
     await api.delete(`/inventory/${id}`);
   },
+
+  analyzePhoto: async (imageBase64: string): Promise<{ items: any[]; source: string; message: string }> => {
+    const response = await api.post('/inventory/analyze-photo', { imageBase64 });
+    return response.data;
+  },
 };
 
 // Shopping Lists API

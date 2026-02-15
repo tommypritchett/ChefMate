@@ -9,8 +9,11 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
+  ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { inventoryApi } from '../../src/services/api';
 import useSpeechRecognition from '../../src/hooks/useSpeechRecognition';
 
@@ -41,6 +44,10 @@ export default function InventoryScreen() {
   const [newUnit, setNewUnit] = useState('');
   const [newExpiry, setNewExpiry] = useState('');
   const [adding, setAdding] = useState(false);
+  const [showPhotoResults, setShowPhotoResults] = useState(false);
+  const [photoItems, setPhotoItems] = useState<Array<{ name: string; quantity: number; unit: string; category: string; storageLocation: string; confidence: number; selected: boolean }>>([]);
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+
   const { isListening, transcript, isSupported, startListening, stopListening } =
     useSpeechRecognition();
 
@@ -116,6 +123,107 @@ export default function InventoryScreen() {
     setNewExpiry('');
   };
 
+  const handlePhotoScan = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Camera access is needed to scan food items.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        base64: true,
+        quality: 0.7,
+        allowsEditing: false,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.base64) return;
+
+      setAnalyzingPhoto(true);
+      setShowPhotoResults(true);
+
+      const analysis = await inventoryApi.analyzePhoto(result.assets[0].base64);
+      setPhotoItems(
+        (analysis.items || []).map((item: any) => ({
+          ...item,
+          selected: true,
+        }))
+      );
+    } catch (err) {
+      console.error('Photo scan error:', err);
+      Alert.alert('Error', 'Failed to analyze photo. Please try again.');
+      setShowPhotoResults(false);
+    } finally {
+      setAnalyzingPhoto(false);
+    }
+  };
+
+  const handlePhotoLibrary = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Photo library access is needed.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        base64: true,
+        quality: 0.7,
+        mediaTypes: ['images'],
+      });
+
+      if (result.canceled || !result.assets?.[0]?.base64) return;
+
+      setAnalyzingPhoto(true);
+      setShowPhotoResults(true);
+
+      const analysis = await inventoryApi.analyzePhoto(result.assets[0].base64);
+      setPhotoItems(
+        (analysis.items || []).map((item: any) => ({
+          ...item,
+          selected: true,
+        }))
+      );
+    } catch (err) {
+      console.error('Photo library error:', err);
+      Alert.alert('Error', 'Failed to analyze photo.');
+      setShowPhotoResults(false);
+    } finally {
+      setAnalyzingPhoto(false);
+    }
+  };
+
+  const handleAddPhotoItems = async () => {
+    const selected = photoItems.filter(i => i.selected);
+    if (selected.length === 0) return;
+
+    setAdding(true);
+    try {
+      for (const item of selected) {
+        await inventoryApi.addItem({
+          name: item.name,
+          category: item.category,
+          storageLocation: item.storageLocation,
+          quantity: item.quantity,
+          unit: item.unit,
+        });
+      }
+      setShowPhotoResults(false);
+      setPhotoItems([]);
+      fetchItems();
+    } catch (err) {
+      console.error('Failed to add photo items:', err);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const togglePhotoItem = (index: number) => {
+    setPhotoItems(prev => prev.map((item, i) =>
+      i === index ? { ...item, selected: !item.selected } : item
+    ));
+  };
+
   const isExpiringSoon = (expiresAt: string | null) => {
     if (!expiresAt) return false;
     const diff = new Date(expiresAt).getTime() - Date.now();
@@ -139,13 +247,32 @@ export default function InventoryScreen() {
       {/* Summary bar */}
       <View className="flex-row justify-between items-center px-4 py-3 bg-white border-b border-gray-200">
         <Text className="text-sm text-gray-500">{items.length} items total</Text>
-        <TouchableOpacity
-          onPress={() => setShowAddModal(true)}
-          className="flex-row items-center bg-primary-500 px-4 py-2 rounded-lg"
-        >
-          <Ionicons name="add" size={18} color="white" />
-          <Text className="text-white text-sm font-medium ml-1">Add Item</Text>
-        </TouchableOpacity>
+        <View className="flex-row items-center gap-2">
+          <TouchableOpacity
+            onPress={() => {
+              if (Platform.OS === 'web') {
+                handlePhotoLibrary();
+              } else {
+                Alert.alert('Add by Photo', 'How would you like to add items?', [
+                  { text: 'Take Photo', onPress: handlePhotoScan },
+                  { text: 'Choose from Library', onPress: handlePhotoLibrary },
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
+              }
+            }}
+            className="flex-row items-center bg-blue-500 px-3 py-2 rounded-lg"
+          >
+            <Ionicons name="camera" size={18} color="white" />
+            <Text className="text-white text-sm font-medium ml-1">Scan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowAddModal(true)}
+            className="flex-row items-center bg-primary-500 px-4 py-2 rounded-lg"
+          >
+            <Ionicons name="add" size={18} color="white" />
+            <Text className="text-white text-sm font-medium ml-1">Add Item</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
@@ -225,6 +352,75 @@ export default function InventoryScreen() {
           }}
         />
       )}
+
+      {/* Photo Results Modal */}
+      <Modal visible={showPhotoResults} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPhotoResults(false)}>
+        <View className="flex-1 bg-gray-50">
+          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+            <TouchableOpacity onPress={() => { setShowPhotoResults(false); setPhotoItems([]); }}>
+              <Text className="text-gray-500">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="text-lg font-semibold text-gray-800">Photo Scan Results</Text>
+            <TouchableOpacity
+              onPress={handleAddPhotoItems}
+              disabled={adding || analyzingPhoto || photoItems.filter(i => i.selected).length === 0}
+            >
+              <Text className={`font-medium ${photoItems.some(i => i.selected) && !adding ? 'text-primary-500' : 'text-gray-300'}`}>
+                {adding ? 'Adding...' : `Add (${photoItems.filter(i => i.selected).length})`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {analyzingPhoto ? (
+            <View className="flex-1 items-center justify-center">
+              <ActivityIndicator size="large" color="#3b82f6" />
+              <Text className="text-gray-500 mt-3">Analyzing photo with AI...</Text>
+              <Text className="text-gray-400 text-xs mt-1">Identifying food items</Text>
+            </View>
+          ) : photoItems.length === 0 ? (
+            <View className="flex-1 items-center justify-center px-6">
+              <Ionicons name="image-outline" size={48} color="#d1d5db" />
+              <Text className="text-gray-400 mt-3 text-center">
+                No food items detected. Try taking a clearer photo.
+              </Text>
+            </View>
+          ) : (
+            <ScrollView className="flex-1 px-4 pt-4">
+              <Text className="text-xs text-gray-400 mb-3">
+                Tap items to select/deselect. Selected items will be added to your inventory.
+              </Text>
+              {photoItems.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => togglePhotoItem(index)}
+                  className={`mb-2 p-3 bg-white rounded-xl flex-row items-center border ${
+                    item.selected ? 'border-primary-300 bg-primary-50' : 'border-gray-200'
+                  }`}
+                >
+                  <Ionicons
+                    name={item.selected ? 'checkbox' : 'square-outline'}
+                    size={22}
+                    color={item.selected ? '#10b981' : '#d1d5db'}
+                  />
+                  <View className="flex-1 ml-3">
+                    <Text className="text-sm font-medium text-gray-800">{item.name}</Text>
+                    <View className="flex-row items-center mt-0.5 gap-2">
+                      <Text className="text-xs text-gray-400">
+                        {item.quantity} {item.unit}
+                      </Text>
+                      <Text className="text-xs text-gray-400 capitalize">{item.category}</Text>
+                      <Text className="text-xs text-gray-400 capitalize">{item.storageLocation}</Text>
+                      <Text className="text-xs text-blue-400">
+                        {Math.round(item.confidence * 100)}%
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
 
       {/* Add Item Modal */}
       <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddModal(false)}>
