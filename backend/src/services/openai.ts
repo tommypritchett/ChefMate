@@ -52,6 +52,16 @@ After suggesting or discussing ANY specific recipe, ALWAYS call compare_recipe_i
 - If they have everything, celebrate: "Great news — you have everything you need! Ready to cook?"
 This creates a seamless flow: suggest recipe → check inventory → offer shopping list → user confirms → items added.
 
+NATURAL LANGUAGE INVENTORY INPUT:
+When a user describes items they bought or want to add in natural language (e.g., "I just got chicken, 2 bags of rice, milk, and some broccoli"), use this flow:
+1. Call parse_natural_inventory_input with their text to extract structured items
+2. If there are ambiguities (vague quantities like "some"), ask ONE clarifying question covering all ambiguous items
+3. Once clarified (or if no ambiguities), call bulk_add_inventory with the full list
+4. Confirm what was added, grouped by storage location (fridge/freezer/pantry)
+- NEVER ask about category or storage location — infer them automatically
+- Only ask about ambiguous QUANTITIES
+- Keep it conversational: "Got it! I've added 8 items to your inventory: fridge: chicken, milk, broccoli | pantry: rice, pasta"
+
 If the user asks something outside of food/cooking/nutrition, politely redirect the conversation.`;
 
   if (context.preferences) {
@@ -487,6 +497,46 @@ async function fallbackResponse(
           metadata,
         };
       }
+    }
+  }
+
+  // Natural language inventory input (Enhancement B)
+  if (lower.includes('bought') || lower.includes('got') || lower.includes('picked up') ||
+      (lower.includes('add') && (lower.includes('inventory') || lower.includes('fridge') || lower.includes('pantry') || lower.includes('freezer'))) ||
+      lower.match(/^i have \w+.*(,| and )/)) {
+    const parseResult = await executeTool('parse_natural_inventory_input', { text: message }, userId);
+    toolCallResults.push({ name: 'parse_natural_inventory_input', args: { text: message }, result: parseResult.result });
+
+    const parsed = parseResult.result;
+    if (parsed.parsedItems?.length > 0) {
+      if (parsed.hasAmbiguities) {
+        const questions = parsed.ambiguities.map((a: any) => a.reason).join('\n');
+        return {
+          content: `I found ${parsed.totalItems} item(s) in your message. Before I add them, I have a quick question:\n\n${questions}\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+          toolCalls: toolCallResults,
+          metadata,
+        };
+      }
+
+      // No ambiguities — add directly
+      const addResult = await executeTool('bulk_add_inventory', {
+        items: parsed.parsedItems.map((i: any) => ({
+          name: i.name,
+          quantity: i.quantity,
+          unit: i.unit,
+          category: i.category,
+          storageLocation: i.storageLocation,
+          expiresInDays: i.expiresInDays,
+        })),
+      }, userId);
+      toolCallResults.push({ name: 'bulk_add_inventory', args: { items: parsed.parsedItems }, result: addResult.result });
+      if (addResult.metadata) Object.assign(metadata, addResult.metadata);
+
+      return {
+        content: addResult.result.message + `\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+        toolCalls: toolCallResults,
+        metadata,
+      };
     }
   }
 

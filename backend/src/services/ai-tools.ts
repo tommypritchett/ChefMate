@@ -325,6 +325,65 @@ export const toolDefinitions: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'parse_natural_inventory_input',
+      description:
+        'Parse a natural language description of food items into structured inventory entries. Use when the user describes items conversationally (e.g., "I just bought chicken, 2 bags of rice, some broccoli and a gallon of milk"). Returns parsed items with any ambiguities that need clarification.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: {
+            type: 'string',
+            description: 'The natural language text describing food items to add',
+          },
+        },
+        required: ['text'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'bulk_add_inventory',
+      description:
+        'Add multiple items to the user\'s inventory at once. Use after parse_natural_inventory_input has parsed the items (and any ambiguities have been resolved via conversation). Each item can have name, quantity, unit, category, and storage location.',
+      parameters: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Item name' },
+                quantity: { type: 'number', description: 'Quantity (default 1)' },
+                unit: { type: 'string', description: 'Unit (e.g., lbs, oz, bags, count)' },
+                category: {
+                  type: 'string',
+                  description: 'Food category',
+                  enum: ['produce', 'protein', 'dairy', 'grains', 'frozen', 'canned', 'condiments', 'snacks', 'beverages', 'other'],
+                },
+                storageLocation: {
+                  type: 'string',
+                  description: 'Where to store',
+                  enum: ['fridge', 'freezer', 'pantry'],
+                },
+                expiresInDays: {
+                  type: 'number',
+                  description: 'Days until expiry (auto-calculates date)',
+                },
+              },
+              required: ['name'],
+            },
+            description: 'Array of items to add to inventory',
+          },
+        },
+        required: ['items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_nutrition_summary',
       description:
         "Get the user's nutrition summary for today or a date range. Use when the user asks about their daily macros, calorie count, or nutrition progress.",
@@ -378,6 +437,10 @@ export async function executeTool(
       return compareRecipeIngredients(args, userId);
     case 'add_missing_to_shopping_list':
       return addMissingToShoppingList(args, userId);
+    case 'parse_natural_inventory_input':
+      return parseNaturalInventoryInput(args, userId);
+    case 'bulk_add_inventory':
+      return bulkAddInventory(args, userId);
     case 'get_nutrition_summary':
       return getNutritionSummary(args, userId);
     default:
@@ -1449,6 +1512,192 @@ async function addMissingToShoppingList(args: Record<string, any>, userId: strin
       message: `Added ${created.length} item(s) to "${list.name}": ${created.map(i => i.name).join(', ')}.`,
     },
     metadata: { type: 'shopping_list', listId: list.id },
+  };
+}
+
+// Default expiry days and storage by category
+const CATEGORY_DEFAULTS: Record<string, { storageLocation: string; expiresInDays: number }> = {
+  produce: { storageLocation: 'fridge', expiresInDays: 7 },
+  protein: { storageLocation: 'fridge', expiresInDays: 4 },
+  dairy: { storageLocation: 'fridge', expiresInDays: 14 },
+  grains: { storageLocation: 'pantry', expiresInDays: 180 },
+  frozen: { storageLocation: 'freezer', expiresInDays: 90 },
+  canned: { storageLocation: 'pantry', expiresInDays: 365 },
+  condiments: { storageLocation: 'fridge', expiresInDays: 90 },
+  snacks: { storageLocation: 'pantry', expiresInDays: 60 },
+  beverages: { storageLocation: 'fridge', expiresInDays: 30 },
+  other: { storageLocation: 'pantry', expiresInDays: 30 },
+};
+
+// Keyword-based category inference
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley'],
+  protein: ['chicken', 'beef', 'pork', 'fish', 'salmon', 'shrimp', 'turkey', 'steak', 'bacon', 'sausage', 'ground', 'meat', 'tofu', 'egg'],
+  dairy: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream', 'cottage', 'mozzarella', 'cheddar', 'parmesan'],
+  grains: ['rice', 'pasta', 'bread', 'flour', 'oat', 'cereal', 'tortilla', 'noodle', 'quinoa'],
+  frozen: ['frozen', 'ice cream', 'pizza rolls'],
+  canned: ['canned', 'beans', 'soup', 'tuna can', 'tomato sauce', 'tomato paste'],
+  condiments: ['sauce', 'ketchup', 'mustard', 'mayo', 'dressing', 'vinegar', 'oil', 'olive oil', 'soy sauce', 'hot sauce', 'sriracha', 'salsa'],
+  snacks: ['chips', 'crackers', 'nuts', 'granola', 'popcorn', 'cookie', 'bar'],
+  beverages: ['juice', 'soda', 'water', 'coffee', 'tea', 'wine', 'beer'],
+};
+
+function inferCategory(name: string): string {
+  const lower = name.toLowerCase();
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (keywords.some(kw => lower.includes(kw))) return category;
+  }
+  return 'other';
+}
+
+async function parseNaturalInventoryInput(args: Record<string, any>, _userId: string) {
+  const { text } = args;
+  if (!text) return { result: { error: 'No text provided.' } };
+
+  // Parse natural language into structured items
+  // Split on commas, "and", newlines
+  const segments = text
+    .split(/[,\n]|\band\b/i)
+    .map((s: string) => s.trim())
+    .filter((s: string) => s.length > 0);
+
+  const parsedItems: Array<{
+    name: string;
+    quantity: number;
+    unit: string;
+    category: string;
+    storageLocation: string;
+    expiresInDays: number;
+    needsClarification: boolean;
+    clarificationReason?: string;
+  }> = [];
+
+  const ambiguities: Array<{ item: string; reason: string }> = [];
+
+  for (const segment of segments) {
+    // Try to extract quantity and unit from the segment
+    // Patterns: "2 bags of rice", "a gallon of milk", "3 chicken breasts", "some broccoli"
+    let quantity = 1;
+    let unit = 'count';
+    let name = segment;
+
+    // Match patterns like "2 lbs of chicken", "3 bags of rice", "a dozen eggs"
+    const qtyMatch = segment.match(
+      /^(\d+\.?\d*|a|an|some|few|couple)\s*(lbs?|pounds?|oz|ounces?|gallons?|gal|liters?|bags?|boxes?|cans?|bottles?|packs?|packages?|bunches?|heads?|dozens?|cups?|pints?|quarts?|count|each|pcs?)?\s*(?:of\s+)?(.+)/i
+    );
+
+    if (qtyMatch) {
+      const qtyStr = qtyMatch[1].toLowerCase();
+      quantity = qtyStr === 'a' || qtyStr === 'an' ? 1 :
+                 qtyStr === 'some' || qtyStr === 'few' ? 3 :
+                 qtyStr === 'couple' ? 2 :
+                 parseFloat(qtyStr) || 1;
+
+      if (qtyStr === 'some') {
+        ambiguities.push({ item: segment, reason: `How many/much "${qtyMatch[3].trim()}" did you mean by "some"?` });
+      }
+
+      unit = qtyMatch[2]?.toLowerCase().replace(/s$/, '') || 'count';
+      // Normalize units
+      if (unit === 'pound' || unit === 'lb') unit = 'lbs';
+      if (unit === 'ounce' || unit === 'oz') unit = 'oz';
+      if (unit === 'gallon' || unit === 'gal') unit = 'gallon';
+      if (unit === 'dozen') { quantity = quantity * 12; unit = 'count'; }
+
+      name = qtyMatch[3].trim();
+    }
+
+    // Infer category and defaults
+    const category = inferCategory(name);
+    const defaults = CATEGORY_DEFAULTS[category] || CATEGORY_DEFAULTS.other;
+
+    const needsClarification = ambiguities.some(a => a.item === segment);
+
+    parsedItems.push({
+      name,
+      quantity,
+      unit,
+      category,
+      storageLocation: defaults.storageLocation,
+      expiresInDays: defaults.expiresInDays,
+      needsClarification,
+      clarificationReason: needsClarification ? ambiguities.find(a => a.item === segment)?.reason : undefined,
+    });
+  }
+
+  return {
+    result: {
+      parsedItems,
+      totalItems: parsedItems.length,
+      ambiguities,
+      hasAmbiguities: ambiguities.length > 0,
+      message: ambiguities.length > 0
+        ? `I parsed ${parsedItems.length} item(s) but have ${ambiguities.length} question(s) to clarify before adding them.`
+        : `I parsed ${parsedItems.length} item(s) and they're ready to add to your inventory.`,
+    },
+  };
+}
+
+async function bulkAddInventory(args: Record<string, any>, userId: string) {
+  const { items } = args;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return { result: { error: 'No items provided.' } };
+  }
+
+  const added: Array<{ id: string; name: string; quantity: number; unit: string; category: string; storageLocation: string; expiresAt: string | null }> = [];
+
+  for (const item of items) {
+    const category = item.category || inferCategory(item.name);
+    const defaults = CATEGORY_DEFAULTS[category] || CATEGORY_DEFAULTS.other;
+    const storageLocation = item.storageLocation || defaults.storageLocation;
+    const expiresInDays = item.expiresInDays || defaults.expiresInDays;
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + expiresInDays);
+
+    const created = await prisma.inventoryItem.create({
+      data: {
+        userId,
+        name: item.name,
+        quantity: item.quantity || 1,
+        unit: item.unit || 'count',
+        category,
+        storageLocation,
+        expiresAt,
+      },
+    });
+
+    added.push({
+      id: created.id,
+      name: created.name,
+      quantity: created.quantity || 1,
+      unit: created.unit || 'count',
+      category: created.category || category,
+      storageLocation: created.storageLocation || storageLocation,
+      expiresAt: created.expiresAt?.toISOString() || null,
+    });
+  }
+
+  // Group by storage location for a nice summary
+  const byLocation: Record<string, string[]> = {};
+  for (const item of added) {
+    const loc = item.storageLocation;
+    if (!byLocation[loc]) byLocation[loc] = [];
+    byLocation[loc].push(item.name);
+  }
+
+  const locationSummary = Object.entries(byLocation)
+    .map(([loc, names]) => `${loc}: ${names.join(', ')}`)
+    .join(' | ');
+
+  return {
+    result: {
+      addedItems: added,
+      totalAdded: added.length,
+      byLocation,
+      message: `Added ${added.length} item(s) to your inventory! ${locationSummary}`,
+    },
+    metadata: { type: 'inventory_bulk_add' },
   };
 }
 
