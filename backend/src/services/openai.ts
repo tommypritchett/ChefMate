@@ -42,6 +42,16 @@ When discussing recipes or helping users cook, be a real cooking advisor — not
 - If the user mentions dietary needs, proactively suggest substitutions (e.g., "I can swap the cream for coconut milk to make it dairy-free")
 - Think like a chef: build on the conversation, remember preferences mentioned earlier in the thread
 
+INVENTORY-AWARE RECIPE SUGGESTIONS (CRITICAL):
+After suggesting or discussing ANY specific recipe, ALWAYS call compare_recipe_ingredients with the recipe's ID to check what the user has vs what they're missing. Present the results clearly:
+- Show which ingredients they already have (with a checkmark feel)
+- Show which ingredients are missing
+- Show the coverage percentage (e.g., "You have 7/10 ingredients")
+- If items are missing, proactively ask: "Want me to add the missing items to your shopping list?"
+- When the user confirms, call add_missing_to_shopping_list with the missing items
+- If they have everything, celebrate: "Great news — you have everything you need! Ready to cook?"
+This creates a seamless flow: suggest recipe → check inventory → offer shopping list → user confirms → items added.
+
 If the user asks something outside of food/cooking/nutrition, politely redirect the conversation.`;
 
   if (context.preferences) {
@@ -422,11 +432,61 @@ async function fallbackResponse(
             `- **${r.title}** (${r.difficulty}, ${(r.prepTimeMinutes || 0) + (r.cookTimeMinutes || 0)} min)`
         )
         .join('\n');
+
+      // Auto-check inventory for the first recipe (Enhancement A)
+      const firstRecipe = recipes[0];
+      let inventoryNote = '';
+      if (firstRecipe?.id) {
+        const compareResult = await executeTool('compare_recipe_ingredients', { recipeId: firstRecipe.id }, userId);
+        toolCallResults.push({ name: 'compare_recipe_ingredients', args: { recipeId: firstRecipe.id }, result: compareResult.result });
+        if (compareResult.metadata) Object.assign(metadata, compareResult.metadata);
+
+        const comp = compareResult.result;
+        if (comp.missing && comp.missing.length > 0) {
+          const haveList = comp.have?.length > 0
+            ? comp.have.map((i: any) => i.name).join(', ')
+            : 'none';
+          const missList = comp.missing.map((i: any) => i.name).join(', ');
+          inventoryNote = `\n\n**Inventory Check for "${comp.recipeTitle}"** (${comp.coveragePercent}% coverage):\n- Have: ${haveList}\n- Missing: ${missList}\n\nWant me to add the missing items to your shopping list?`;
+        } else if (comp.have && comp.have.length > 0) {
+          inventoryNote = `\n\n**Great news!** You have all ${comp.totalIngredients} ingredients for "${comp.recipeTitle}". Ready to cook!`;
+        }
+      }
+
       return {
-        content: `Here are some recipes I found:\n\n${list}\n\n*Note: AI features are in demo mode. Configure an OpenAI API key for full conversational capabilities.*`,
+        content: `Here are some recipes I found:\n\n${list}${inventoryNote}\n\n*Note: AI features are in demo mode. Configure an OpenAI API key for full conversational capabilities.*`,
         toolCalls: toolCallResults,
         metadata,
       };
+    }
+  }
+
+  if (lower.includes('add') && (lower.includes('shopping') || lower.includes('list') || lower.includes('missing'))) {
+    // User wants to add missing items to shopping list — find their most recent compare result
+    // In fallback mode, we try to find the most recent recipe and compare
+    const recentRecipe = await prisma.recipe.findFirst({
+      where: { isPublished: true },
+      orderBy: { averageRating: 'desc' },
+      select: { id: true, title: true },
+    });
+
+    if (recentRecipe) {
+      const compareResult = await executeTool('compare_recipe_ingredients', { recipeId: recentRecipe.id }, userId);
+      const missing = compareResult.result?.missing || [];
+      if (missing.length > 0) {
+        const addResult = await executeTool('add_missing_to_shopping_list', {
+          items: missing.map((i: any) => ({ name: i.name, quantity: i.amount, unit: i.unit })),
+          listName: `Ingredients for ${recentRecipe.title}`,
+        }, userId);
+        toolCallResults.push({ name: 'add_missing_to_shopping_list', args: { items: missing }, result: addResult.result });
+        if (addResult.metadata) Object.assign(metadata, addResult.metadata);
+
+        return {
+          content: addResult.result.message + `\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+          toolCalls: toolCallResults,
+          metadata,
+        };
+      }
     }
   }
 

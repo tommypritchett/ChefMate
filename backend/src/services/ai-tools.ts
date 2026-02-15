@@ -276,6 +276,55 @@ export const toolDefinitions: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'compare_recipe_ingredients',
+      description:
+        'Compare a recipe\'s ingredients against the user\'s current inventory. Returns which ingredients they have, which are missing, and offers to add missing items to a shopping list. ALWAYS call this after suggesting or discussing a specific recipe.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipeId: {
+            type: 'string',
+            description: 'The recipe ID to compare against inventory',
+          },
+        },
+        required: ['recipeId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_missing_to_shopping_list',
+      description:
+        'Add missing recipe ingredients to a shopping list. Use when the user confirms they want to add missing items after a compare_recipe_ingredients result. Creates a new list or adds to an existing one.',
+      parameters: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                quantity: { type: 'number' },
+                unit: { type: 'string' },
+              },
+              required: ['name'],
+            },
+            description: 'Array of items to add to the shopping list',
+          },
+          listName: {
+            type: 'string',
+            description: 'Name for the shopping list (defaults to recipe name)',
+          },
+        },
+        required: ['items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_nutrition_summary',
       description:
         "Get the user's nutrition summary for today or a date range. Use when the user asks about their daily macros, calorie count, or nutrition progress.",
@@ -325,6 +374,10 @@ export async function executeTool(
       return logMeal(args, userId);
     case 'get_recipe_detail':
       return getRecipeDetail(args, userId);
+    case 'compare_recipe_ingredients':
+      return compareRecipeIngredients(args, userId);
+    case 'add_missing_to_shopping_list':
+      return addMissingToShoppingList(args, userId);
     case 'get_nutrition_summary':
       return getNutritionSummary(args, userId);
     default:
@@ -1279,6 +1332,123 @@ async function getRecipeDetail(args: Record<string, any>, _userId: string) {
       },
     },
     metadata: { type: 'recipe_detail', recipeId: recipe.id },
+  };
+}
+
+async function compareRecipeIngredients(args: Record<string, any>, userId: string) {
+  const { recipeId } = args;
+
+  const recipe = await prisma.recipe.findFirst({
+    where: { id: recipeId },
+    select: { id: true, title: true, ingredients: true },
+  });
+
+  if (!recipe) {
+    return { result: { error: 'Recipe not found.' } };
+  }
+
+  let ingredients: any[];
+  try {
+    ingredients = JSON.parse(recipe.ingredients);
+  } catch {
+    ingredients = [];
+  }
+
+  // Get inventory and build matcher
+  const inventory = await prisma.inventoryItem.findMany({
+    where: { userId },
+  });
+  const findMatch = buildInventoryMatcher(inventory);
+
+  const haveItems: Array<{ name: string; inventoryName: string; quantity?: number; unit?: string }> = [];
+  const missingItems: Array<{ name: string; amount?: number; unit?: string }> = [];
+
+  for (const ing of ingredients) {
+    if (ing.isOptional) continue;
+    const match = findMatch(ing.name);
+    if (match) {
+      // Check if expired
+      const isExpired = match.expiresAt && new Date(match.expiresAt) < new Date();
+      if (isExpired) {
+        missingItems.push({ name: ing.name, amount: ing.amount, unit: ing.unit });
+      } else {
+        haveItems.push({
+          name: ing.name,
+          inventoryName: match.name,
+          quantity: match.quantity,
+          unit: match.unit,
+        });
+      }
+    } else {
+      missingItems.push({ name: ing.name, amount: ing.amount, unit: ing.unit });
+    }
+  }
+
+  const totalIngredients = haveItems.length + missingItems.length;
+  const coverage = totalIngredients > 0 ? Math.round((haveItems.length / totalIngredients) * 100) : 0;
+
+  return {
+    result: {
+      recipeId: recipe.id,
+      recipeTitle: recipe.title,
+      totalIngredients,
+      have: haveItems,
+      missing: missingItems,
+      coveragePercent: coverage,
+      message: missingItems.length === 0
+        ? `You have all ${totalIngredients} ingredients for "${recipe.title}"! You're ready to cook.`
+        : `You have ${haveItems.length}/${totalIngredients} ingredients for "${recipe.title}". Missing ${missingItems.length} item(s): ${missingItems.map(i => i.name).join(', ')}.`,
+      canOfferShoppingList: missingItems.length > 0,
+    },
+    metadata: { type: 'ingredient_comparison', recipeId: recipe.id },
+  };
+}
+
+async function addMissingToShoppingList(args: Record<string, any>, userId: string) {
+  const { items, listName } = args;
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return { result: { error: 'No items provided.' } };
+  }
+
+  // Find or create a shopping list
+  let list = await prisma.shoppingList.findFirst({
+    where: { userId, isActive: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!list) {
+    list = await prisma.shoppingList.create({
+      data: {
+        userId,
+        name: listName || 'Recipe Ingredients',
+        sourceType: 'manual',
+      },
+    });
+  }
+
+  const created = [];
+  for (const item of items) {
+    const newItem = await prisma.shoppingListItem.create({
+      data: {
+        shoppingListId: list.id,
+        name: item.name,
+        quantity: item.quantity || null,
+        unit: item.unit || null,
+      },
+    });
+    created.push({ id: newItem.id, name: newItem.name, quantity: newItem.quantity, unit: newItem.unit });
+  }
+
+  return {
+    result: {
+      listId: list.id,
+      listName: list.name,
+      addedItems: created,
+      totalAdded: created.length,
+      message: `Added ${created.length} item(s) to "${list.name}": ${created.map(i => i.name).join(', ')}.`,
+    },
+    metadata: { type: 'shopping_list', listId: list.id },
   };
 }
 
