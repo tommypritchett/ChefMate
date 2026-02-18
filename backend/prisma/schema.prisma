@@ -68,6 +68,11 @@ model Recipe {
   // Dietary tags - stored as JSON string
   dietaryTags       String? // JSON string: ['high-protein', 'vegan', 'gluten-free', etc.]
 
+  // Advanced filter fields
+  proteinType       String? // 'chicken', 'beef', 'pork', 'fish', 'shrimp', 'tofu', 'eggs', 'turkey', 'none'
+  cuisineStyle      String? // 'american', 'mexican', 'italian', 'asian', 'mediterranean', 'indian', etc.
+  cookingMethod     String? // 'stovetop', 'oven', 'grill', 'crockpot', 'air-fryer', 'instant-pot', 'no-cook', 'sheet-pan'
+
   // AI-generated info
   isAiGenerated     Boolean @default(false)
   generatedByUserId String?
@@ -306,6 +311,7 @@ model MealPlanSlot {
   recipeId   String?
   date       DateTime
   mealType   String // 'breakfast', 'lunch', 'dinner', 'snack'
+  servings   Int?   // Number of servings for this slot (defaults to recipe.servings)
   customName String?
   notes      String?
   createdAt  DateTime @default(now())

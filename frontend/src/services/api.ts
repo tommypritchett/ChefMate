@@ -117,6 +117,10 @@ export const recipesApi = {
     difficulty?: string;
     search?: string;
     tags?: string;
+    proteinType?: string;
+    cuisineStyle?: string;
+    cookingMethod?: string;
+    minIngredientMatch?: number;
     page?: number;
     limit?: number;
     featured?: boolean;
@@ -189,7 +193,9 @@ export const conversationsApi = {
   },
 
   sendMessage: async (threadId: string, message: string, context?: any): Promise<{ userMessage: any; assistantMessage: any }> => {
-    const response = await api.post(`/conversations/${threadId}/messages`, { message, context });
+    const response = await api.post(`/conversations/${threadId}/messages`, { message, context }, {
+      timeout: 90000, // 90s — AI tool execution can take multiple rounds
+    });
     return response.data;
   },
 };
@@ -220,7 +226,7 @@ export const mealPlansApi = {
     await api.delete(`/meal-plans/${id}`);
   },
 
-  addSlot: async (planId: string, data: { recipeId?: string; date: string; mealType: string; customName?: string; notes?: string }): Promise<{ slot: any }> => {
+  addSlot: async (planId: string, data: { recipeId?: string; date: string; mealType: string; customName?: string; notes?: string; servings?: number }): Promise<{ slot: any }> => {
     const response = await api.post(`/meal-plans/${planId}/slots`, data);
     return response.data;
   },
@@ -277,6 +283,18 @@ export const inventoryApi = {
     return response.data;
   },
 
+  updateItem: async (id: string, data: {
+    name?: string;
+    category?: string;
+    storageLocation?: string;
+    quantity?: number;
+    unit?: string;
+    expiresAt?: string | null;
+  }): Promise<{ item: any }> => {
+    const response = await api.patch(`/inventory/${id}`, data);
+    return response.data;
+  },
+
   deleteItem: async (id: string): Promise<void> => {
     await api.delete(`/inventory/${id}`);
   },
@@ -321,12 +339,37 @@ export const shoppingApi = {
     return response.data;
   },
 
+  editItem: async (listId: string, itemId: string, data: { name?: string; quantity?: number; unit?: string; notes?: string }): Promise<{ item: any; listCompleted?: boolean }> => {
+    const response = await api.patch(`/shopping-lists/${listId}/items/${itemId}`, data);
+    return response.data;
+  },
+
   deleteItem: async (listId: string, itemId: string): Promise<void> => {
     await api.delete(`/shopping-lists/${listId}/items/${itemId}`);
   },
 
-  purchaseAll: async (listId: string): Promise<any> => {
-    const response = await api.post(`/shopping-lists/${listId}/purchase-all`);
+  updateList: async (listId: string, data: { name?: string; isActive?: boolean }): Promise<{ list: any }> => {
+    const response = await api.patch(`/shopping-lists/${listId}`, data);
+    return response.data;
+  },
+
+  purchaseItem: async (listId: string, itemId: string, storageLocation?: string): Promise<any> => {
+    const response = await api.post(`/shopping-lists/${listId}/items/${itemId}/purchase`, { storageLocation });
+    return response.data;
+  },
+
+  purchasePreview: async (listId: string): Promise<{ items: Array<{ id: string; name: string; quantity: number; unit: string; category: string; storageLocation: string }> }> => {
+    const response = await api.get(`/shopping-lists/${listId}/purchase-preview`);
+    return response.data;
+  },
+
+  purchaseAll: async (listId: string, itemLocations?: Array<{ itemId: string; storageLocation: string }>): Promise<any> => {
+    const response = await api.post(`/shopping-lists/${listId}/purchase-all`, { itemLocations });
+    return response.data;
+  },
+
+  searchProducts: async (query: string): Promise<{ products: Array<{ name: string; category: string; defaultUnit: string; commonUnits?: string[]; source?: string }> }> => {
+    const response = await api.get('/shopping-lists/search-products', { params: { q: query } });
     return response.data;
   },
 };
@@ -392,8 +435,20 @@ export const groceryApi = {
     return response.data;
   },
 
-  comparePrices: async (items: string[]): Promise<{ items: any[]; storeTotals: Record<string, number> }> => {
-    const response = await api.post('/grocery/compare', { items });
+  comparePrices: async (items: string[], location?: { lat: number; lng: number }, preferredStores?: string[]): Promise<{
+    items: any[];
+    storeTotals: Record<string, number>;
+    storeLinks?: Record<string, { homeUrl: string; searchUrl: string }>;
+    bestStore?: { name: string; total: number };
+    totalSavings?: number;
+    storeDistances?: Array<{ chain: string; distance: number; address: string; logoColor: string; homeUrl: string }>;
+    rankedStores?: Array<{ store: string; total: number; distance: number; score: number; recommended: boolean }>;
+  }> => {
+    const response = await api.post('/grocery/compare', {
+      items,
+      ...(location && { lat: location.lat, lng: location.lng }),
+      ...(preferredStores && { preferredStores }),
+    });
     return response.data;
   },
 };

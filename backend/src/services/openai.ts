@@ -48,9 +48,52 @@ After suggesting or discussing ANY specific recipe, ALWAYS call compare_recipe_i
 - Show which ingredients are missing
 - Show the coverage percentage (e.g., "You have 7/10 ingredients")
 - If items are missing, proactively ask: "Want me to add the missing items to your shopping list?"
-- When the user confirms, call add_missing_to_shopping_list with the missing items
 - If they have everything, celebrate: "Great news — you have everything you need! Ready to cook?"
 This creates a seamless flow: suggest recipe → check inventory → offer shopping list → user confirms → items added.
+
+SHOPPING LIST SELECTION (CRITICAL — ALWAYS ASK WHICH LIST):
+When the user confirms they want to add items to a shopping list, you MUST follow this flow:
+1. FIRST call manage_shopping_list with action "view_lists" to get the user's existing lists
+2. Present the options to the user:
+   - Number each existing list (e.g., "1. Weekly Groceries (5 items), 2. Taco Night (3 items)")
+   - Always include an option to "Create a new list"
+3. WAIT for the user to choose before adding items
+4. Once they choose:
+   - If they pick an existing list: call add_missing_to_shopping_list with the listId
+   - If they want a new list: call add_missing_to_shopping_list with a listName (no listId)
+NEVER add items to a shopping list without asking which list first. NEVER auto-pick the first/most recent list.
+
+DIRECT SHOPPING LIST CREATION:
+When the user explicitly asks you to CREATE a new shopping list with specific items (e.g., "I need bell peppers, black beans, and corn — create a list for this"), follow this flow:
+1. Ask: "What should I name this shopping list?"
+2. WAIT for the user to provide a name
+3. Call manage_shopping_list with action "create_list", listName = user's chosen name, and items = the parsed items array
+4. Confirm: "Created '[name]' shopping list with N items: item1, item2, ..."
+Do NOT skip asking for the list name. Do NOT create the list until the user provides a name.
+
+SERVING SIZE CONVERSATION (ALWAYS ASK BEFORE ADDING TO MEAL PLAN):
+When the user wants to add a recipe to their meal plan, ALWAYS ask about servings BEFORE calling add_meal_to_plan:
+1. Present serving options conversationally:
+   "How many servings would you like?"
+   - 1 serving (just for tonight)
+   - 2 servings (tonight + leftovers)
+   - 4 servings (meal prep for the week)
+   - Custom amount
+2. If the user picks more than 1 serving, include a meal prep tip from the tool response
+3. After adding, show the scaled nutrition totals (e.g., "That's 900 calories total for 2 servings")
+4. Then offer to check ingredients: "Want me to check what ingredients you need?"
+This creates the flow: suggest recipe → ask servings → add to plan → check inventory → offer shopping list.
+
+SMART SHOPPING LIST (MULTI-RECIPE QUANTITY AGGREGATION):
+When the user adds multiple recipes to a meal plan or asks about ingredients for multiple recipes:
+1. Ask how many servings of each recipe they want
+2. Call generate_smart_shopping_list with recipeIds and servings map
+3. Present results clearly showing:
+   - Items they need to buy (with quantities and reasons like "Have 0.5 lbs, need 1.25 lbs total")
+   - Items they already have enough of
+   - Cross-recipe aggregation details (e.g., "Chicken breast: 1.75 lbs total — 1 lb for Chicken Sandwich + 0.75 lbs for Chipotle Bowl")
+4. Ask: "Should I create a shopping list with these N items?"
+5. If yes, call generate_smart_shopping_list again with saveToDB=true, or use add_missing_to_shopping_list
 
 INVENTORY FRESHNESS VALIDATION:
 When compare_recipe_ingredients returns items with needsValidation=true, ask the user about those specific items BEFORE confirming they're available:
@@ -493,31 +536,105 @@ async function fallbackResponse(
     }
   }
 
+  // Direct shopping list creation: "create a list called X" or "name it X"
+  if ((lower.includes('create') || lower.includes('make') || lower.includes('new')) && lower.includes('list') && !lower.includes('meal plan')) {
+    // Check if there are items mentioned along with the request
+    const parseResult = await executeTool('parse_natural_inventory_input', { text: message }, userId);
+    const parsedItems = parseResult.result?.parsedItems || [];
+
+    if (parsedItems.length > 0) {
+      // User mentioned items + create list — ask for name
+      const itemNames = parsedItems.map((i: any) => i.name).join(', ');
+      return {
+        content: `I see ${parsedItems.length} item(s): ${itemNames}. What should I name this shopping list?\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+        toolCalls: [{ name: 'parse_natural_inventory_input', args: { text: message }, result: parseResult.result }],
+        metadata: {},
+      };
+    } else {
+      return {
+        content: `What should I name this shopping list? And what items would you like to add?\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+        toolCalls: [],
+        metadata: {},
+      };
+    }
+  }
+
   if (lower.includes('add') && (lower.includes('shopping') || lower.includes('list') || lower.includes('missing'))) {
-    // User wants to add missing items to shopping list — find their most recent compare result
-    // In fallback mode, we try to find the most recent recipe and compare
-    const recentRecipe = await prisma.recipe.findFirst({
-      where: { isPublished: true },
-      orderBy: { averageRating: 'desc' },
-      select: { id: true, title: true },
-    });
+    // First, show the user their available lists so they can choose
+    const listsResult = await executeTool('manage_shopping_list', { action: 'view_lists' }, userId);
+    toolCallResults.push({ name: 'manage_shopping_list', args: { action: 'view_lists' }, result: listsResult.result });
 
-    if (recentRecipe) {
-      const compareResult = await executeTool('compare_recipe_ingredients', { recipeId: recentRecipe.id }, userId);
-      const missing = compareResult.result?.missing || [];
-      if (missing.length > 0) {
-        const addResult = await executeTool('add_missing_to_shopping_list', {
-          items: missing.map((i: any) => ({ name: i.name, quantity: i.amount, unit: i.unit })),
-          listName: `Ingredients for ${recentRecipe.title}`,
-        }, userId);
-        toolCallResults.push({ name: 'add_missing_to_shopping_list', args: { items: missing }, result: addResult.result });
-        if (addResult.metadata) Object.assign(metadata, addResult.metadata);
+    const lists = listsResult.result?.lists || [];
 
-        return {
-          content: addResult.result.message + `\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
-          toolCalls: toolCallResults,
-          metadata,
-        };
+    // Check if the message specifies a list number (e.g., "add to list 1", "list 2")
+    const listNumMatch = lower.match(/list\s*(\d+)/);
+    const selectedIndex = listNumMatch ? parseInt(listNumMatch[1]) - 1 : -1;
+
+    if (lists.length > 0 && selectedIndex >= 0 && selectedIndex < lists.length) {
+      // User selected a specific list — find missing items and add
+      const selectedList = lists[selectedIndex];
+      const recentRecipe = await prisma.recipe.findFirst({
+        where: { isPublished: true },
+        orderBy: { averageRating: 'desc' },
+        select: { id: true, title: true },
+      });
+
+      if (recentRecipe) {
+        const compareResult = await executeTool('compare_recipe_ingredients', { recipeId: recentRecipe.id }, userId);
+        const missing = compareResult.result?.missing || [];
+        if (missing.length > 0) {
+          const addResult = await executeTool('add_missing_to_shopping_list', {
+            items: missing.map((i: any) => ({ name: i.name, quantity: i.amount, unit: i.unit })),
+            listId: selectedList.id,
+          }, userId);
+          toolCallResults.push({ name: 'add_missing_to_shopping_list', args: { items: missing, listId: selectedList.id }, result: addResult.result });
+          if (addResult.metadata) Object.assign(metadata, addResult.metadata);
+
+          return {
+            content: addResult.result.message + `\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+            toolCalls: toolCallResults,
+            metadata,
+          };
+        }
+      }
+    }
+
+    // Show list options to user
+    if (lists.length > 0) {
+      const listOptions = lists.map((l: any, i: number) =>
+        `${i + 1}. **${l.name}** (${l.itemCount} item${l.itemCount !== 1 ? 's' : ''})`
+      ).join('\n');
+
+      return {
+        content: `Which shopping list should I add the items to?\n\n${listOptions}\n${lists.length + 1}. **Create a new list**\n\nJust say the number or list name!\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+        toolCalls: toolCallResults,
+        metadata,
+      };
+    } else {
+      // No lists — create one and add items
+      const recentRecipe = await prisma.recipe.findFirst({
+        where: { isPublished: true },
+        orderBy: { averageRating: 'desc' },
+        select: { id: true, title: true },
+      });
+
+      if (recentRecipe) {
+        const compareResult = await executeTool('compare_recipe_ingredients', { recipeId: recentRecipe.id }, userId);
+        const missing = compareResult.result?.missing || [];
+        if (missing.length > 0) {
+          const addResult = await executeTool('add_missing_to_shopping_list', {
+            items: missing.map((i: any) => ({ name: i.name, quantity: i.amount, unit: i.unit })),
+            listName: `Ingredients for ${recentRecipe.title}`,
+          }, userId);
+          toolCallResults.push({ name: 'add_missing_to_shopping_list', args: { items: missing }, result: addResult.result });
+          if (addResult.metadata) Object.assign(metadata, addResult.metadata);
+
+          return {
+            content: addResult.result.message + `\n\n*AI is in demo mode. Configure an OpenAI API key for full capabilities.*`,
+            toolCalls: toolCallResults,
+            metadata,
+          };
+        }
       }
     }
   }

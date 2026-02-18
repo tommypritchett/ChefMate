@@ -42,8 +42,22 @@ export default function RegisterScreen() {
         password,
       });
     } catch (err: any) {
-      const message = err?.response?.data?.error || 'Registration failed. Please try again.';
-      setError(message);
+      console.error('Register error details:', JSON.stringify({
+        message: err?.message,
+        code: err?.code,
+        status: err?.response?.status,
+        data: err?.response?.data,
+      }));
+      if (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network Error')) {
+        setError('Cannot connect to server. Make sure the backend is running on port 3001.');
+      } else if (err?.code === 'ECONNABORTED') {
+        setError('Request timed out. The server may be starting up — try again.');
+      } else {
+        const message = err?.response?.data?.error
+          || err?.response?.data?.details?.[0]?.msg
+          || 'Registration failed. Please try again.';
+        setError(message);
+      }
     }
   };
 

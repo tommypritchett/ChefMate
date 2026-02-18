@@ -168,7 +168,7 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.post('/:id/slots', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const { recipeId, date, mealType, customName, notes } = req.body;
+    const { recipeId, date, mealType, customName, notes, servings } = req.body;
 
     if (!date || !mealType) {
       return res.status(400).json({ error: 'Date and mealType are required' });
@@ -190,7 +190,8 @@ router.post('/:id/slots', requireAuth, async (req: AuthenticatedRequest, res) =>
         date: new Date(date),
         mealType,
         customName,
-        notes
+        notes,
+        servings: servings || null,
       },
       include: {
         recipe: {
@@ -216,7 +217,7 @@ router.post('/:id/slots', requireAuth, async (req: AuthenticatedRequest, res) =>
 router.patch('/:id/slots/:slotId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id, slotId } = req.params;
-    const { recipeId, date, mealType, customName, notes } = req.body;
+    const { recipeId, date, mealType, customName, notes, servings } = req.body;
 
     // Verify plan belongs to user
     const plan = await prisma.mealPlan.findFirst({
@@ -241,6 +242,7 @@ router.patch('/:id/slots/:slotId', requireAuth, async (req: AuthenticatedRequest
     if (mealType !== undefined) updateData.mealType = mealType;
     if (customName !== undefined) updateData.customName = customName;
     if (notes !== undefined) updateData.notes = notes;
+    if (servings !== undefined) updateData.servings = servings;
 
     const updated = await prisma.mealPlanSlot.update({
       where: { id: slotId },

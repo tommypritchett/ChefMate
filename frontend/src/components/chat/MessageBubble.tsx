@@ -9,6 +9,15 @@ interface Props {
   isStreaming?: boolean;
 }
 
+// Parse message into segments: plain text, bold, bullet points, headers
+// Strips image markdown since we can't render images in chat bubbles
+function parseMessageSegments(text: string) {
+  // Remove image markdown: ![alt](url)
+  const cleaned = text.replace(/!\[.*?\]\(.*?\)/g, '');
+  // Split by lines for rendering
+  return cleaned;
+}
+
 export default function MessageBubble({ role, message, isStreaming }: Props) {
   const isUser = role === 'user';
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -20,8 +29,8 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
       return;
     }
 
-    // Strip markdown-like formatting for cleaner TTS
     const cleanText = message
+      .replace(/!\[.*?\]\(.*?\)/g, '')
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*(.*?)\*/g, '$1')
       .replace(/#{1,6}\s/g, '')
@@ -34,6 +43,54 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
       onDone: () => setIsSpeaking(false),
       onStopped: () => setIsSpeaking(false),
       onError: () => setIsSpeaking(false),
+    });
+  };
+
+  const displayText = parseMessageSegments(message);
+  const textColor = isUser ? 'text-white' : 'text-gray-800';
+
+  // Render text with basic markdown (bold, headers, bullets)
+  const renderFormattedText = (text: string) => {
+    const lines = text.split('\n');
+    return lines.map((line, i) => {
+      const trimmed = line.trim();
+      if (!trimmed) return i < lines.length - 1 ? <Text key={i}>{'\n'}</Text> : null;
+
+      // Header lines (### Header)
+      const headerMatch = trimmed.match(/^#{1,3}\s+(.+)/);
+      if (headerMatch) {
+        return (
+          <Text key={i} className={`font-bold ${textColor}`}>
+            {headerMatch[1]}{i < lines.length - 1 ? '\n' : ''}
+          </Text>
+        );
+      }
+
+      // Bullet points (- item or • item)
+      const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/);
+      if (bulletMatch) {
+        return (
+          <Text key={i} className={textColor}>
+            {'  •  '}{renderInlineBold(bulletMatch[1], isUser)}{i < lines.length - 1 ? '\n' : ''}
+          </Text>
+        );
+      }
+
+      // Numbered list (1. item)
+      const numMatch = trimmed.match(/^(\d+)\.\s+(.+)/);
+      if (numMatch) {
+        return (
+          <Text key={i} className={textColor}>
+            {`  ${numMatch[1]}.  `}{renderInlineBold(numMatch[2], isUser)}{i < lines.length - 1 ? '\n' : ''}
+          </Text>
+        );
+      }
+
+      return (
+        <Text key={i} className={textColor}>
+          {renderInlineBold(trimmed, isUser)}{i < lines.length - 1 ? '\n' : ''}
+        </Text>
+      );
     });
   };
 
@@ -52,10 +109,10 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
         }`}
       >
         <Text
-          className={`text-[15px] leading-[22px] ${isUser ? 'text-white' : 'text-gray-800'}`}
+          className={`text-[15px] leading-[22px] ${textColor}`}
           selectable
         >
-          {message}
+          {isUser ? displayText : renderFormattedText(displayText)}
           {isStreaming && <Text className="text-primary-400">|</Text>}
         </Text>
 
@@ -79,4 +136,21 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
       </View>
     </View>
   );
+}
+
+// Render inline bold (**text**) within a line
+function renderInlineBold(text: string, isUser: boolean) {
+  const parts = text.split(/(\*\*.*?\*\*)/);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) => {
+    const boldMatch = part.match(/^\*\*(.*?)\*\*$/);
+    if (boldMatch) {
+      return (
+        <Text key={i} style={{ fontWeight: 'bold' }}>
+          {boldMatch[1]}
+        </Text>
+      );
+    }
+    return part;
+  });
 }

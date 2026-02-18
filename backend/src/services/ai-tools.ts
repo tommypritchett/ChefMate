@@ -128,7 +128,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: 'add_meal_to_plan',
       description:
-        'Add a specific recipe to a meal plan slot. Use when the user wants to add a specific meal to a specific day/time in their plan, or swap a meal.',
+        'Add a specific recipe to a meal plan slot. Use when the user wants to add a specific meal to a specific day/time in their plan, or swap a meal. IMPORTANT: Always ask the user how many servings they want before calling this tool.',
       parameters: {
         type: 'object',
         properties: {
@@ -148,6 +148,10 @@ export const toolDefinitions: ChatCompletionTool[] = [
             type: 'string',
             enum: ['breakfast', 'lunch', 'dinner', 'snack'],
             description: 'Which meal slot',
+          },
+          servings: {
+            type: 'number',
+            description: 'Number of servings (e.g., 1 for just tonight, 2 for leftovers, 4 for meal prep). Always ask the user before setting.',
           },
           customName: {
             type: 'string',
@@ -220,6 +224,19 @@ export const toolDefinitions: ChatCompletionTool[] = [
           unit: {
             type: 'string',
             description: 'Unit for add_item (e.g. lbs, oz, count)',
+          },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                quantity: { type: 'number' },
+                unit: { type: 'string' },
+              },
+              required: ['name'],
+            },
+            description: 'Array of items to include when creating a new list (for create_list action)',
           },
         },
         required: ['action'],
@@ -296,7 +313,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
     function: {
       name: 'add_missing_to_shopping_list',
       description:
-        'Add missing recipe ingredients to a shopping list. Use when the user confirms they want to add missing items after a compare_recipe_ingredients result. Creates a new list or adds to an existing one.',
+        'Add missing recipe ingredients to a specific shopping list. IMPORTANT: Before calling this, ALWAYS call manage_shopping_list with action "view_lists" first to get available lists, then present the options to the user and let them choose. Only call this AFTER the user selects a list (by listId) or asks to create a new one (provide listName without listId).',
       parameters: {
         type: 'object',
         properties: {
@@ -313,12 +330,48 @@ export const toolDefinitions: ChatCompletionTool[] = [
             },
             description: 'Array of items to add to the shopping list',
           },
+          listId: {
+            type: 'string',
+            description: 'ID of an existing shopping list to add items to. Required if adding to an existing list.',
+          },
           listName: {
             type: 'string',
-            description: 'Name for the shopping list (defaults to recipe name)',
+            description: 'Name for a new shopping list (only used when creating a new list, i.e. when listId is not provided)',
           },
         },
         required: ['items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_smart_shopping_list',
+      description:
+        'Generate a smart shopping list from multiple recipes with cross-recipe quantity aggregation and inventory comparison. Use when the user adds multiple recipes to a meal plan and wants a shopping list, or asks "what do I need for these recipes?". Aggregates ingredients across all recipes, adjusts for servings, and subtracts what the user already has in inventory.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipeIds: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Array of recipe IDs to aggregate ingredients from',
+          },
+          servings: {
+            type: 'object',
+            additionalProperties: { type: 'number' },
+            description: 'Map of recipeId → desired servings (e.g. {"id1": 2, "id2": 4}). Defaults to recipe.servings if not specified.',
+          },
+          listName: {
+            type: 'string',
+            description: 'Optional name for the shopping list to save',
+          },
+          saveToDB: {
+            type: 'boolean',
+            description: 'If true, saves the generated list to the database (default false)',
+          },
+        },
+        required: ['recipeIds'],
       },
     },
   },
@@ -437,6 +490,8 @@ export async function executeTool(
       return compareRecipeIngredients(args, userId);
     case 'add_missing_to_shopping_list':
       return addMissingToShoppingList(args, userId);
+    case 'generate_smart_shopping_list':
+      return generateSmartShoppingList(args, userId);
     case 'parse_natural_inventory_input':
       return parseNaturalInventoryInput(args, userId);
     case 'bulk_add_inventory':
@@ -773,6 +828,7 @@ async function getMealPlan(args: Record<string, any>, userId: string) {
           id: s.id,
           date: s.date,
           mealType: s.mealType,
+          servings: (s as any).servings || null,
           recipe: s.recipe
             ? {
                 ...s.recipe,
@@ -941,8 +997,37 @@ async function createMealPlan(args: Record<string, any>, userId: string) {
   };
 }
 
+// Meal prep tips based on recipe properties
+const MEAL_PREP_TIPS: Record<string, { freezable: boolean; shelfLife: string; tip: string }> = {
+  chicken: { freezable: true, shelfLife: '3-4 days in fridge, 3 months frozen', tip: 'Cook chicken in bulk, portion into containers, and freeze extras for quick weeknight meals.' },
+  beef: { freezable: true, shelfLife: '3-4 days in fridge, 3 months frozen', tip: 'Brown ground beef ahead of time for quick taco nights, pasta sauces, or stir-fries.' },
+  fish: { freezable: true, shelfLife: '1-2 days in fridge, 2 months frozen', tip: 'Fish is best fresh. If meal prepping, cook and eat within 2 days or freeze immediately.' },
+  rice: { freezable: true, shelfLife: '4-6 days in fridge, 6 months frozen', tip: 'Cook a big batch of rice — it freezes great! Reheat with a splash of water.' },
+  pasta: { freezable: true, shelfLife: '3-5 days in fridge, 2 months frozen', tip: 'Slightly undercook pasta for meal prep — it softens when reheated.' },
+  salad: { freezable: false, shelfLife: '1-2 days in fridge', tip: 'Keep dressing separate until serving to prevent wilting.' },
+  soup: { freezable: true, shelfLife: '3-4 days in fridge, 3 months frozen', tip: 'Soups and stews are perfect for meal prep — flavors improve over time!' },
+  bowl: { freezable: true, shelfLife: '3-4 days in fridge, 2 months frozen', tip: 'Prep grain bowls with protein and store sauces separately for best texture.' },
+  burger: { freezable: true, shelfLife: '2-3 days in fridge, 3 months frozen', tip: 'Form patties and freeze with parchment paper between them for easy grab-and-cook meals.' },
+  breakfast: { freezable: true, shelfLife: '3-5 days in fridge, 2 months frozen', tip: 'Breakfast burritos, egg muffins, and overnight oats are great make-ahead options.' },
+};
+
+function getMealPrepTip(recipe: any): { freezable: boolean; shelfLife: string; tip: string } | null {
+  const title = (recipe.title || '').toLowerCase();
+  const category = (recipe.category || '').toLowerCase();
+  const ingredients = (recipe.ingredients || '').toLowerCase();
+
+  for (const [keyword, tip] of Object.entries(MEAL_PREP_TIPS)) {
+    if (title.includes(keyword) || category.includes(keyword) || ingredients.includes(keyword)) {
+      return tip;
+    }
+  }
+
+  // Default for anything cooked
+  return { freezable: true, shelfLife: '3-4 days in fridge', tip: 'Most cooked meals can be refrigerated for 3-4 days. Portion into containers while warm for best results.' };
+}
+
 async function addMealToPlan(args: Record<string, any>, userId: string) {
-  const { mealPlanId, recipeId, date, mealType, customName } = args;
+  const { mealPlanId, recipeId, date, mealType, customName, servings } = args;
 
   // Verify plan belongs to user
   const plan = await prisma.mealPlan.findFirst({
@@ -967,6 +1052,17 @@ async function addMealToPlan(args: Record<string, any>, userId: string) {
     },
   });
 
+  // Get recipe details for nutrition and meal prep tips
+  let recipeDetail: any = null;
+  if (recipeId) {
+    recipeDetail = await prisma.recipe.findFirst({
+      where: { id: recipeId },
+      select: { id: true, title: true, nutrition: true, servings: true, ingredients: true, category: true },
+    });
+  }
+
+  const slotServings = servings || recipeDetail?.servings || null;
+
   let slot;
   if (existing) {
     slot = await prisma.mealPlanSlot.update({
@@ -974,9 +1070,10 @@ async function addMealToPlan(args: Record<string, any>, userId: string) {
       data: {
         recipeId: recipeId || null,
         customName: customName || null,
+        servings: slotServings,
       },
       include: {
-        recipe: { select: { id: true, title: true, nutrition: true } },
+        recipe: { select: { id: true, title: true, nutrition: true, servings: true } },
       },
     });
   } else {
@@ -987,12 +1084,34 @@ async function addMealToPlan(args: Record<string, any>, userId: string) {
         date: slotDate,
         mealType,
         customName: customName || null,
+        servings: slotServings,
       },
       include: {
-        recipe: { select: { id: true, title: true, nutrition: true } },
+        recipe: { select: { id: true, title: true, nutrition: true, servings: true } },
       },
     });
   }
+
+  // Calculate scaled nutrition if servings differ from recipe default
+  let scaledNutrition: any = null;
+  if (recipeDetail?.nutrition && slotServings) {
+    try {
+      const baseNutrition = JSON.parse(recipeDetail.nutrition);
+      const recipeDefaultServings = recipeDetail.servings || 1;
+      const multiplier = slotServings / recipeDefaultServings;
+      scaledNutrition = {
+        calories: Math.round((baseNutrition.calories || 0) * multiplier),
+        protein: Math.round((baseNutrition.protein || 0) * multiplier),
+        carbs: Math.round((baseNutrition.carbs || 0) * multiplier),
+        fat: Math.round((baseNutrition.fat || 0) * multiplier),
+        perServing: baseNutrition,
+        totalServings: slotServings,
+      };
+    } catch {}
+  }
+
+  // Get meal prep tip
+  const mealPrepTip = recipeDetail ? getMealPrepTip(recipeDetail) : null;
 
   const mealName = slot.recipe?.title || slot.customName || 'Custom meal';
   return {
@@ -1001,10 +1120,13 @@ async function addMealToPlan(args: Record<string, any>, userId: string) {
         id: slot.id,
         date: slot.date,
         mealType: slot.mealType,
-        recipe: slot.recipe ? { id: slot.recipe.id, title: slot.recipe.title } : null,
+        servings: slotServings,
+        recipe: slot.recipe ? { id: slot.recipe.id, title: slot.recipe.title, defaultServings: slot.recipe.servings } : null,
         customName: slot.customName,
       },
-      message: `${existing ? 'Updated' : 'Added'} ${mealType} on ${slotDate.toLocaleDateString()}: "${mealName}".`,
+      scaledNutrition,
+      mealPrepTip: slotServings && slotServings > 1 ? mealPrepTip : null,
+      message: `${existing ? 'Updated' : 'Added'} ${mealType} on ${slotDate.toLocaleDateString()}: "${mealName}"${slotServings ? ` (${slotServings} servings)` : ''}.`,
     },
     metadata: { type: 'meal_plan', planId: mealPlanId },
   };
@@ -1086,7 +1208,7 @@ async function generateShoppingList(args: Record<string, any>, userId: string) {
       plan = await prisma.mealPlan.findFirst({
         where: { id: mealPlanId, userId },
         include: {
-          slots: { include: { recipe: { select: { ingredients: true } } } },
+          slots: { include: { recipe: { select: { ingredients: true, servings: true } } } },
         },
       });
     } else {
@@ -1094,7 +1216,7 @@ async function generateShoppingList(args: Record<string, any>, userId: string) {
         where: { userId, isActive: true },
         orderBy: { startDate: 'desc' },
         include: {
-          slots: { include: { recipe: { select: { ingredients: true } } } },
+          slots: { include: { recipe: { select: { ingredients: true, servings: true } } } },
         },
       });
     }
@@ -1117,16 +1239,22 @@ async function generateShoppingList(args: Record<string, any>, userId: string) {
       } catch {
         continue;
       }
+      // Apply serving multiplier if slot has custom servings
+      const slotServings = (slot as any).servings || null;
+      const recipeServings = (slot.recipe as any).servings || 1;
+      const multiplier = slotServings ? slotServings / recipeServings : 1;
+
       for (const ing of ingredients) {
         if (ing.isOptional) continue;
         const key = ing.name.toLowerCase();
+        const adjustedAmount = (ing.amount || 1) * multiplier;
         const existing = needed.get(key);
         if (existing) {
-          existing.totalAmount += ing.amount || 1;
+          existing.totalAmount += adjustedAmount;
         } else {
           needed.set(key, {
             name: ing.name,
-            totalAmount: ing.amount || 1,
+            totalAmount: adjustedAmount,
             unit: ing.unit || '',
           });
         }
@@ -1217,17 +1345,32 @@ async function manageShoppingList(args: Record<string, any>, userId: string) {
     }
 
     case 'create_list': {
+      const listItems = args.items as Array<{ name: string; quantity?: number; unit?: string }> | undefined;
       const list = await prisma.shoppingList.create({
         data: {
           userId,
           name: listName || 'Shopping List',
           sourceType: 'manual',
+          ...(listItems && listItems.length > 0 ? {
+            items: {
+              create: listItems.map(item => ({
+                name: item.name,
+                quantity: item.quantity || null,
+                unit: item.unit || null,
+              })),
+            },
+          } : {}),
         },
+        include: { items: true },
       });
+      const itemCount = list.items?.length || 0;
       return {
         result: {
-          list: { id: list.id, name: list.name },
-          message: `Created shopping list "${list.name}".`,
+          list: { id: list.id, name: list.name, itemCount },
+          items: list.items?.map((i: any) => ({ id: i.id, name: i.name, quantity: i.quantity, unit: i.unit })) || [],
+          message: itemCount > 0
+            ? `Created shopping list "${list.name}" with ${itemCount} item(s): ${list.items.map((i: any) => i.name).join(', ')}.`
+            : `Created shopping list "${list.name}".`,
         },
         metadata: { type: 'shopping_list', listId: list.id },
       };
@@ -1498,50 +1641,298 @@ async function compareRecipeIngredients(args: Record<string, any>, userId: strin
 }
 
 async function addMissingToShoppingList(args: Record<string, any>, userId: string) {
-  const { items, listName } = args;
+  const { items, listId, listName } = args;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return { result: { error: 'No items provided.' } };
   }
 
-  // Find or create a shopping list
-  let list = await prisma.shoppingList.findFirst({
-    where: { userId, isActive: true },
-    orderBy: { createdAt: 'desc' },
-  });
+  let list;
 
-  if (!list) {
+  if (listId) {
+    // User selected a specific existing list
+    list = await prisma.shoppingList.findFirst({
+      where: { id: listId, userId },
+    });
+    if (!list) {
+      return { result: { error: `Shopping list not found. Please try again.` } };
+    }
+  } else if (listName) {
+    // User wants a new list — create it
     list = await prisma.shoppingList.create({
       data: {
         userId,
-        name: listName || 'Recipe Ingredients',
+        name: listName,
         sourceType: 'manual',
       },
     });
+  } else {
+    // No listId and no listName — return available lists so AI can ask the user
+    const existingLists = await prisma.shoppingList.findMany({
+      where: { userId, isActive: true },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    if (existingLists.length === 0) {
+      // No lists exist — create a default one
+      list = await prisma.shoppingList.create({
+        data: {
+          userId,
+          name: 'Recipe Ingredients',
+          sourceType: 'manual',
+        },
+      });
+    } else {
+      // Return list options for the AI to present to the user
+      return {
+        result: {
+          needsListSelection: true,
+          availableLists: existingLists.map(l => ({
+            id: l.id,
+            name: l.name,
+            itemCount: l.items.length,
+          })),
+          pendingItems: items,
+          message: `Which shopping list should I add these ${items.length} item(s) to? You have ${existingLists.length} list(s), or I can create a new one.`,
+        },
+      };
+    }
   }
 
-  const created = [];
+  // Get existing items for aggregation check
+  const existingItems = await prisma.shoppingListItem.findMany({
+    where: { shoppingListId: list.id, isChecked: false },
+  });
+
+  const results: Array<{ id: string; name: string; quantity: any; unit: any; action: string }> = [];
   for (const item of items) {
-    const newItem = await prisma.shoppingListItem.create({
-      data: {
-        shoppingListId: list.id,
-        name: item.name,
-        quantity: item.quantity || null,
-        unit: item.unit || null,
-      },
+    // Check for existing matching item (fuzzy match)
+    const normNew = (item.name || '').toLowerCase().trim();
+    const existing = existingItems.find(e => {
+      const normE = (e.name || '').toLowerCase().trim();
+      return normE === normNew || normE.includes(normNew) || normNew.includes(normE);
     });
-    created.push({ id: newItem.id, name: newItem.name, quantity: newItem.quantity, unit: newItem.unit });
+
+    if (existing && (item.quantity || 0) > 0 && (existing.quantity || 0) > 0) {
+      // Aggregate
+      const newQty = (existing.quantity || 0) + (item.quantity || 0);
+      const updated = await prisma.shoppingListItem.update({
+        where: { id: existing.id },
+        data: { quantity: Math.round(newQty * 100) / 100, unit: item.unit || existing.unit },
+      });
+      results.push({ id: updated.id, name: updated.name, quantity: updated.quantity, unit: updated.unit, action: 'aggregated' });
+    } else {
+      const newItem = await prisma.shoppingListItem.create({
+        data: {
+          shoppingListId: list.id,
+          name: item.name,
+          quantity: item.quantity || null,
+          unit: item.unit || null,
+        },
+      });
+      results.push({ id: newItem.id, name: newItem.name, quantity: newItem.quantity, unit: newItem.unit, action: 'created' });
+    }
+  }
+
+  const aggregatedCount = results.filter(r => r.action === 'aggregated').length;
+  const createdCount = results.filter(r => r.action === 'created').length;
+  let message = `Added ${results.length} item(s) to "${list.name}": ${results.map(i => i.name).join(', ')}.`;
+  if (aggregatedCount > 0) {
+    message += ` (${aggregatedCount} existing item(s) had their quantities updated)`;
   }
 
   return {
     result: {
       listId: list.id,
       listName: list.name,
-      addedItems: created,
-      totalAdded: created.length,
-      message: `Added ${created.length} item(s) to "${list.name}": ${created.map(i => i.name).join(', ')}.`,
+      addedItems: results,
+      totalAdded: results.length,
+      aggregatedCount,
+      createdCount,
+      message,
     },
     metadata: { type: 'shopping_list', listId: list.id },
+  };
+}
+
+async function generateSmartShoppingList(args: Record<string, any>, userId: string) {
+  const { recipeIds, servings = {}, listName, saveToDB } = args;
+
+  if (!recipeIds || !Array.isArray(recipeIds) || recipeIds.length === 0) {
+    return { result: { error: 'No recipe IDs provided.' } };
+  }
+
+  // Fetch all recipes
+  const recipes = await prisma.recipe.findMany({
+    where: { id: { in: recipeIds } },
+    select: { id: true, title: true, ingredients: true, servings: true },
+  });
+
+  if (recipes.length === 0) {
+    return { result: { error: 'No recipes found for the given IDs.' } };
+  }
+
+  // Aggregate ingredients across all recipes with serving multipliers
+  // Key: normalized ingredient name, Value: { name, totalQuantity, unit, sourceRecipes[] }
+  const aggregated: Map<string, {
+    name: string;
+    totalQuantity: number;
+    unit: string;
+    sourceRecipes: string[];
+  }> = new Map();
+
+  for (const recipe of recipes) {
+    let ingredients: any[];
+    try {
+      ingredients = JSON.parse(recipe.ingredients);
+    } catch {
+      continue;
+    }
+
+    const desiredServings = servings[recipe.id] || recipe.servings || 1;
+    const recipeServings = recipe.servings || 1;
+    const multiplier = desiredServings / recipeServings;
+
+    for (const ing of ingredients) {
+      if (ing.isOptional) continue;
+      const key = (ing.name || '').toLowerCase().trim();
+      if (!key) continue;
+
+      const adjustedQty = (ing.amount || 1) * multiplier;
+      const existing = aggregated.get(key);
+
+      if (existing) {
+        existing.totalQuantity += adjustedQty;
+        if (!existing.sourceRecipes.includes(recipe.title)) {
+          existing.sourceRecipes.push(recipe.title);
+        }
+        // Keep the unit from the first occurrence
+      } else {
+        aggregated.set(key, {
+          name: ing.name,
+          totalQuantity: adjustedQty,
+          unit: ing.unit || '',
+          sourceRecipes: [recipe.title],
+        });
+      }
+    }
+  }
+
+  // Get inventory and build matcher
+  const inventory = await prisma.inventoryItem.findMany({ where: { userId } });
+  const findMatch = buildInventoryMatcher(inventory);
+
+  // Calculate what's missing
+  const shoppingItems: Array<{
+    name: string;
+    neededQuantity: number;
+    haveQuantity: number;
+    unit: string;
+    sourceRecipes: string[];
+    reason: string;
+  }> = [];
+
+  const alreadyHave: Array<{
+    name: string;
+    neededQuantity: number;
+    haveQuantity: number;
+    unit: string;
+  }> = [];
+
+  for (const [_key, item] of aggregated) {
+    const match = findMatch(item.name);
+
+    if (!match) {
+      // Don't have any
+      shoppingItems.push({
+        name: item.name,
+        neededQuantity: Math.round(item.totalQuantity * 100) / 100,
+        haveQuantity: 0,
+        unit: item.unit,
+        sourceRecipes: item.sourceRecipes,
+        reason: item.sourceRecipes.length > 1
+          ? `Needed for ${item.sourceRecipes.length} recipes: ${item.sourceRecipes.join(', ')}`
+          : `Needed for ${item.sourceRecipes[0]}`,
+      });
+    } else {
+      const haveQty = match.quantity || 0;
+      const neededQty = Math.round(item.totalQuantity * 100) / 100;
+
+      if (haveQty < neededQty && haveQty > 0) {
+        // Have some but not enough
+        const diff = Math.round((neededQty - haveQty) * 100) / 100;
+        shoppingItems.push({
+          name: item.name,
+          neededQuantity: diff,
+          haveQuantity: haveQty,
+          unit: item.unit,
+          sourceRecipes: item.sourceRecipes,
+          reason: `Have ${haveQty} ${item.unit}, need ${neededQty} ${item.unit} total`,
+        });
+      } else if (haveQty >= neededQty) {
+        alreadyHave.push({
+          name: item.name,
+          neededQuantity: neededQty,
+          haveQuantity: haveQty,
+          unit: item.unit,
+        });
+      } else {
+        // haveQty is 0 or falsy — treat as missing
+        shoppingItems.push({
+          name: item.name,
+          neededQuantity: neededQty,
+          haveQuantity: 0,
+          unit: item.unit,
+          sourceRecipes: item.sourceRecipes,
+          reason: item.sourceRecipes.length > 1
+            ? `Needed for ${item.sourceRecipes.length} recipes: ${item.sourceRecipes.join(', ')}`
+            : `Needed for ${item.sourceRecipes[0]}`,
+        });
+      }
+    }
+  }
+
+  // Optionally save to DB
+  let savedList: any = null;
+  if (saveToDB && shoppingItems.length > 0) {
+    const recipeNames = recipes.map(r => r.title).join(' + ');
+    savedList = await prisma.shoppingList.create({
+      data: {
+        userId,
+        name: listName || `Shopping for ${recipeNames}`,
+        sourceType: 'meal_plan',
+        items: {
+          create: shoppingItems.map(item => ({
+            name: item.name,
+            quantity: item.neededQuantity,
+            unit: item.unit,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+  }
+
+  const recipeNames = recipes.map(r => r.title);
+  const summary = shoppingItems.length === 0
+    ? `You have everything you need for ${recipeNames.join(' and ')}!`
+    : `For ${recipes.length} recipe(s) (${recipeNames.join(', ')}), you need ${shoppingItems.length} item(s). You already have ${alreadyHave.length} ingredient(s) covered.`;
+
+  return {
+    result: {
+      totalRecipes: recipes.length,
+      recipeNames,
+      totalUniqueIngredients: aggregated.size,
+      itemsNeeded: shoppingItems.length,
+      itemsAlreadyHave: alreadyHave.length,
+      shoppingItems,
+      alreadyHave,
+      savedListId: savedList?.id,
+      summary,
+    },
+    metadata: { type: 'smart_shopping_list', recipeIds, listId: savedList?.id },
   };
 }
 

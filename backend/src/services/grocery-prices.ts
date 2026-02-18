@@ -21,35 +21,40 @@ interface PriceResult {
   savings: number;
 }
 
-// Store configurations
+// Store configurations — all use web URLs (works on web + mobile via Linking.openURL)
 const STORES = {
   kroger: {
     name: 'Kroger',
     logoColor: '#0468BF',
-    searchUrl: (q: string) => `https://www.kroger.com/search?query=${q}`,
-    deepLink: (q: string) => `kroger://search?query=${q}`,
+    homeUrl: 'https://www.kroger.com',
+    searchUrl: (q: string) => `https://www.kroger.com/search?query=${q}&searchType=default_search`,
+    deepLink: (q: string) => `https://www.kroger.com/search?query=${q}&searchType=default_search`,
   },
   walmart: {
     name: 'Walmart',
     logoColor: '#0071CE',
+    homeUrl: 'https://www.walmart.com',
     searchUrl: (q: string) => `https://www.walmart.com/search?q=${q}`,
     deepLink: (q: string) => `https://www.walmart.com/search?q=${q}`,
   },
   target: {
     name: 'Target',
     logoColor: '#CC0000',
+    homeUrl: 'https://www.target.com',
     searchUrl: (q: string) => `https://www.target.com/s?searchTerm=${q}`,
     deepLink: (q: string) => `https://www.target.com/s?searchTerm=${q}`,
   },
   aldi: {
     name: 'Aldi',
     logoColor: '#00457C',
-    searchUrl: (q: string) => `https://www.aldi.us/products/?search=${q}`,
-    deepLink: (q: string) => `https://www.aldi.us/products/?search=${q}`,
+    homeUrl: 'https://www.aldi.us',
+    searchUrl: (q: string) => `https://www.instacart.com/store/aldi/search_v3/${q}`,
+    deepLink: (q: string) => `https://www.instacart.com/store/aldi/search_v3/${q}`,
   },
   amazon: {
     name: 'Amazon Fresh',
     logoColor: '#FF9900',
+    homeUrl: 'https://www.amazon.com/alm/storefront?almBrandId=QW1hem9uIEZyZXNo',
     searchUrl: (q: string) => `https://www.amazon.com/s?k=${q}&i=amazonfresh`,
     deepLink: (q: string) => `https://www.amazon.com/s?k=${q}&i=amazonfresh`,
   },
@@ -397,25 +402,80 @@ const MOCK_PRICES: Record<string, StorePrice[]> = {
 // Synonym mapping for fuzzy item matching
 const SYNONYMS: Record<string, string> = {
   'chicken': 'chicken breast',
+  'boneless chicken': 'chicken breast',
+  'skinless chicken': 'chicken breast',
+  'chicken breast boneless': 'chicken breast',
+  'chicken thigh': 'chicken thighs',
   'beef': 'ground beef',
+  'ground beef 80/20': 'ground beef',
+  'lean ground beef': 'ground beef',
+  'hamburger': 'ground beef',
   'turkey': 'ground turkey',
   'fish': 'salmon',
+  'salmon fillet': 'salmon',
   'yogurt': 'greek yogurt',
+  'plain yogurt': 'greek yogurt',
   'peppers': 'bell pepper',
   'pepper': 'bell pepper',
+  'green pepper': 'bell pepper',
+  'red pepper': 'bell pepper',
   'potatoes': 'sweet potato',
   'potato': 'sweet potato',
+  'yam': 'sweet potato',
   'noodles': 'pasta',
   'spaghetti': 'pasta',
+  'penne': 'pasta',
+  'linguine': 'pasta',
+  'macaroni': 'pasta',
   'oil': 'olive oil',
+  'cooking oil': 'olive oil',
+  'vegetable oil': 'olive oil',
   'beans': 'black beans',
+  'kidney beans': 'black beans',
+  'pinto beans': 'black beans',
   'broth': 'chicken broth',
   'stock': 'chicken broth',
+  'vegetable broth': 'chicken broth',
   'tomatoes': 'tomato',
+  'roma tomato': 'tomato',
+  'cherry tomatoes': 'tomato',
   'onions': 'onion',
+  'yellow onion': 'onion',
+  'red onion': 'onion',
+  'white onion': 'onion',
   'lemons': 'lemon',
+  'lime': 'lemon',
+  'limes': 'lemon',
   'bananas': 'banana',
   'avocados': 'avocado',
+  'whole milk': 'milk',
+  'skim milk': 'milk',
+  '2% milk': 'milk',
+  'almond milk': 'milk',
+  'brown rice': 'rice',
+  'white rice': 'rice',
+  'jasmine rice': 'rice',
+  'basmati rice': 'rice',
+  'wheat bread': 'bread',
+  'white bread': 'bread',
+  'whole wheat bread': 'bread',
+  'cheddar cheese': 'cheese',
+  'mozzarella': 'cheese',
+  'parmesan': 'cheese',
+  'shredded cheese': 'cheese',
+  'salted butter': 'butter',
+  'unsalted butter': 'butter',
+  'all purpose flour': 'flour',
+  'ap flour': 'flour',
+  'whole wheat flour': 'flour',
+  'rolled oats': 'oats',
+  'oatmeal': 'oats',
+  'diced tomatoes': 'canned tomatoes',
+  'crushed tomatoes': 'canned tomatoes',
+  'tomato sauce': 'canned tomatoes',
+  'tomato paste': 'canned tomatoes',
+  'extra virgin olive oil': 'olive oil',
+  'evoo': 'olive oil',
 };
 
 // Generate a reasonable fallback price for items not in our mock DB
@@ -489,6 +549,7 @@ export function getPricesForItem(itemName: string): PriceResult {
 export function getPricesForList(items: string[]): {
   items: PriceResult[];
   storeTotals: Record<string, number>;
+  storeLinks: Record<string, { homeUrl: string; searchUrl: string }>;
   bestStore: { name: string; total: number };
   totalSavings: number;
 } {
@@ -506,6 +567,16 @@ export function getPricesForList(items: string[]): {
     storeTotals[store] = round(storeTotals[store]);
   }
 
+  // Build store links (home URLs + multi-item search)
+  const storeLinks: Record<string, { homeUrl: string; searchUrl: string }> = {};
+  for (const [key, cfg] of Object.entries(STORES)) {
+    const itemList = items.join(', ');
+    storeLinks[cfg.name] = {
+      homeUrl: cfg.homeUrl,
+      searchUrl: cfg.searchUrl(encodeURIComponent(itemList.slice(0, 100))),
+    };
+  }
+
   // Find best store
   const bestEntry = Object.entries(storeTotals).reduce((best, [name, total]) =>
     total < best.total ? { name, total } : best,
@@ -516,6 +587,7 @@ export function getPricesForList(items: string[]): {
   return {
     items: results,
     storeTotals,
+    storeLinks,
     bestStore: bestEntry,
     totalSavings: round(worstTotal - bestEntry.total),
   };
@@ -575,7 +647,7 @@ export async function getKrogerPrices(query: string): Promise<StorePrice[] | nul
         store: 'Kroger',
         price: round(price),
         unit: size,
-        deepLink: `kroger://search?query=${encodeURIComponent(query)}`,
+        deepLink: STORES.kroger.searchUrl(encodeURIComponent(query)),
         logoColor: STORES.kroger.logoColor,
       },
     ];
@@ -583,4 +655,136 @@ export async function getKrogerPrices(query: string): Promise<StorePrice[] | nul
     console.error('Kroger API error:', err);
     return null;
   }
+}
+
+// ─── Store Locations & Distance ──────────────────────────────────────────
+
+interface StoreLocation {
+  chain: string;
+  lat: number;
+  lng: number;
+  address: string;
+}
+
+// Sample store locations (Nashville, TN area — expand per deployment region)
+// In production, use a store locator API (Google Places, etc.)
+const STORE_LOCATIONS: StoreLocation[] = [
+  // Kroger
+  { chain: 'Kroger', lat: 36.1627, lng: -86.7816, address: '2601 Charlotte Ave, Nashville, TN' },
+  { chain: 'Kroger', lat: 36.1184, lng: -86.8383, address: '4560 Harding Pike, Nashville, TN' },
+  { chain: 'Kroger', lat: 36.1062, lng: -86.7459, address: '2131 Abbott Martin Rd, Nashville, TN' },
+  { chain: 'Kroger', lat: 36.0846, lng: -86.7137, address: '2601 Nolensville Pike, Nashville, TN' },
+  // Walmart
+  { chain: 'Walmart', lat: 36.1092, lng: -86.8884, address: '7044 Charlotte Pike, Nashville, TN' },
+  { chain: 'Walmart', lat: 36.0413, lng: -86.7023, address: '5824 Nolensville Pike, Antioch, TN' },
+  { chain: 'Walmart', lat: 36.2309, lng: -86.8151, address: '3458 Dickerson Pike, Nashville, TN' },
+  // Target
+  { chain: 'Target', lat: 36.1282, lng: -86.8422, address: '32 White Bridge Rd, Nashville, TN' },
+  { chain: 'Target', lat: 36.1107, lng: -86.8169, address: '3790 Charlotte Ave, Nashville, TN' },
+  { chain: 'Target', lat: 36.1527, lng: -86.7927, address: '2566 W End Ave, Nashville, TN' },
+  // Aldi
+  { chain: 'Aldi', lat: 36.1369, lng: -86.8757, address: '6826 Charlotte Pike, Nashville, TN' },
+  { chain: 'Aldi', lat: 36.0738, lng: -86.7029, address: '5305 Nolensville Pike, Nashville, TN' },
+  { chain: 'Aldi', lat: 36.2151, lng: -86.7256, address: '2421 Gallatin Pike, Nashville, TN' },
+  // Amazon Fresh — delivery only, no physical distance
+  { chain: 'Amazon Fresh', lat: 0, lng: 0, address: 'Delivery only' },
+];
+
+// Haversine formula: distance between two lat/lng points in miles
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 3958.8; // Earth radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export interface StoreDistance {
+  chain: string;
+  distance: number; // miles
+  address: string;
+  logoColor: string;
+  homeUrl: string;
+}
+
+export function getNearestStores(userLat: number, userLng: number, maxMiles: number = 20): StoreDistance[] {
+  const chainDistances: Record<string, StoreDistance> = {};
+
+  for (const loc of STORE_LOCATIONS) {
+    // Amazon Fresh = delivery, always 0 distance
+    if (loc.chain === 'Amazon Fresh') {
+      chainDistances[loc.chain] = {
+        chain: loc.chain,
+        distance: 0,
+        address: 'Delivery to your area',
+        logoColor: STORES.amazon.logoColor,
+        homeUrl: STORES.amazon.homeUrl,
+      };
+      continue;
+    }
+
+    const dist = haversineDistance(userLat, userLng, loc.lat, loc.lng);
+    if (!chainDistances[loc.chain] || dist < chainDistances[loc.chain].distance) {
+      const storeKey = Object.entries(STORES).find(([, v]) => v.name === loc.chain)?.[0] as keyof typeof STORES;
+      chainDistances[loc.chain] = {
+        chain: loc.chain,
+        distance: round(dist),
+        address: loc.address,
+        logoColor: storeKey ? STORES[storeKey].logoColor : '#6b7280',
+        homeUrl: storeKey ? STORES[storeKey].homeUrl : '',
+      };
+    }
+  }
+
+  return Object.values(chainDistances)
+    .filter(s => s.distance <= maxMiles || s.chain === 'Amazon Fresh')
+    .sort((a, b) => a.distance - b.distance);
+}
+
+// Score stores considering price and distance (80/20 weighting)
+// Returns sorted by score, with cheapest and closest flagged
+export function scoreStores(
+  storeTotals: Record<string, number>,
+  distances: StoreDistance[],
+  _preferredStores: string[] = [],
+): Array<{ store: string; total: number; distance: number; score: number; recommended: boolean; cheapest?: boolean; closest?: boolean }> {
+  const distMap: Record<string, number> = {};
+  for (const d of distances) {
+    distMap[d.chain] = d.distance;
+  }
+
+  const entries = Object.entries(storeTotals).map(([store, total]) => {
+    const distance = distMap[store] ?? 99;
+
+    // Score: lower is better — 80% price, 20% distance
+    const maxTotal = Math.max(...Object.values(storeTotals));
+    const priceScore = (total / maxTotal) * 80;
+    const distScore = (Math.min(distance, 20) / 20) * 20;
+    const score = round(priceScore + distScore);
+
+    return { store, total, distance, score, recommended: false, cheapest: false, closest: false };
+  });
+
+  // Sort by score (80% price + 20% distance)
+  entries.sort((a, b) => a.score - b.score);
+  if (entries.length > 0) entries[0].recommended = true;
+
+  // Flag cheapest store
+  const cheapest = [...entries].sort((a, b) => a.total - b.total);
+  if (cheapest.length > 0) cheapest[0].cheapest = true;
+
+  // Flag closest physical store (exclude Amazon Fresh / delivery)
+  const closestPhysical = [...entries]
+    .filter(e => e.distance > 0 || e.store === 'Amazon Fresh' ? false : true)
+    .sort((a, b) => a.distance - b.distance);
+  // If all have 0 distance (e.g. exact location match), just pick first non-Amazon
+  const physicalStores = entries.filter(e => e.store !== 'Amazon Fresh');
+  const closestStore = closestPhysical.length > 0 ? closestPhysical[0]
+    : physicalStores.length > 0 ? physicalStores.sort((a, b) => a.distance - b.distance)[0]
+    : null;
+  if (closestStore) closestStore.closest = true;
+
+  return entries;
 }

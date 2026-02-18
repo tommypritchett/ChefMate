@@ -201,9 +201,121 @@ After all 5 methods, verify all items appear in inventory grouped by storage loc
 
 ---
 
+## TEST 12: Smart Shopping List Selection (AI Chat)
+
+**Steps:**
+1. Add some items to inventory first
+2. Open Chat tab
+3. Ask for a recipe: "What should I make for dinner?"
+4. When AI shows missing ingredients and asks "Want me to add to your shopping list?"
+5. Reply: "Yes"
+6. **Verify: AI calls manage_shopping_list with view_lists first**
+7. **Verify: AI presents numbered list of existing shopping lists + "Create new"**
+8. Reply with a list number or "create new"
+9. **Verify: Items added to the selected list**
+10. Check Shopping tab to confirm
+
+**Expected:** AI always asks which list before adding items. Never auto-picks.
+**Result:** PASS / FAIL
+
+---
+
+## TEST 13: Mark as Purchased → Add to Inventory (Single Item)
+
+**Steps:**
+1. Create a shopping list with items (e.g., chicken, rice, onions)
+2. Open Shopping tab
+3. Tap an unchecked item (e.g., chicken)
+4. **Verify: Storage location picker appears** (Fridge / Freezer / Pantry)
+5. Tap "Fridge"
+6. **Verify: Item shows as checked** in the list
+7. Open Inventory tab
+8. **Verify: "Chicken" appears in fridge section**
+
+**Expected:** Checking off an item prompts for storage and adds to inventory.
+**Result:** PASS / FAIL
+
+---
+
+## TEST 14: Mark All as Purchased (Bulk)
+
+**Steps:**
+1. Create a shopping list with 3+ items
+2. Open Shopping tab
+3. Tap **Purchase All** button
+4. **Verify: Modal opens** showing all items with auto-inferred storage locations
+5. **Verify: Each item shows Fridge/Freezer/Pantry toggle** (e.g., chicken=fridge, rice=pantry)
+6. Tap to change storage for one item (e.g., move chicken to freezer)
+7. Tap **Add (N)** button
+8. **Verify: Success alert** "N items added to your inventory!"
+9. Open Inventory tab
+10. **Verify: All items appear** in their assigned storage locations
+
+**Expected:** Bulk purchase with per-item storage selection and auto-inference.
+**Result:** PASS / FAIL
+
+---
+
+## TEST 15: Advanced Recipe Filters
+
+**Steps:**
+1. Open Recipes tab
+2. Tap filter icon (options icon next to search bar)
+3. **Verify: Expanded filter panel** shows 4 sections: Dietary, Protein, Cuisine, Method
+4. Tap **Chicken** under Protein → verify only chicken recipes show
+5. Tap **Mexican** under Cuisine → verify filtered results
+6. Tap **Oven** under Method → verify filtered results
+7. Tap **Clear All Filters** → verify all recipes return
+8. Combine: Protein=Chicken + Cuisine=Mexican → verify intersection
+9. Use category filter (Breakfast) + Protein filter → verify both apply
+
+**Expected:** All filter combinations work. Filters persist until cleared.
+**Result:** PASS / FAIL
+
+---
+
+## TEST 16: Recipe Detail — Inventory Indicators
+
+**Steps:**
+1. Add some items to inventory (chicken, rice, olive oil)
+2. Open a recipe that uses chicken
+3. **Verify: Each ingredient shows check or X icon**
+4. **Verify: Green check** for items you have (chicken, rice, olive oil)
+5. **Verify: Red X** for items you're missing
+6. **Verify: Summary** "You have X/Y ingredients (Z%)"
+7. If missing items, **verify: "Add N Missing to Shopping List" button** appears
+8. Tap the button
+9. **Verify: Shopping list picker modal** shows existing lists + "Create New"
+10. Select a list
+11. **Verify: Items added** to the selected list
+
+**Expected:** Real-time inventory comparison on recipe detail with shopping list integration.
+**Result:** PASS / FAIL
+
+---
+
+## TEST 17: Photo Analysis Preprocessing
+
+**Steps:**
+1. Open Inventory → Scan
+2. Select a very large photo (>5MB or >2000px)
+3. **Verify: Photo is preprocessed** (compressed + resized) before sending
+4. **Verify: Analysis completes** without timeout
+5. Select a non-food photo
+6. **Verify: Error message** "No food items were detected"
+7. **Verify: Retry Photo button** works
+8. Try with poor connection (throttle network)
+9. **Verify: Appropriate error message** per failure type
+
+**Expected:** Photo preprocessing prevents large-image failures. Clear error messages per failure type.
+**Result:** PASS / FAIL
+
+---
+
 ## Notes
 
 - **Demo mode** (no OPENAI_API_KEY): Chat uses fallback tool execution. Photo scan returns mock items (chicken, broccoli, rice, soy sauce). All features work but responses are less conversational.
 - **Voice features** require Chrome/Edge with Web Speech API. Safari and Firefox have limited support.
 - **Photo analysis** on web uses file picker (no camera). On iOS/Android, offers camera or library choice.
+- **Photo preprocessing**: Images are auto-resized to 1500px wide and compressed to 60% JPEG before uploading.
 - **Backend must be running** on port 3001 for all tests. Frontend on port 8081.

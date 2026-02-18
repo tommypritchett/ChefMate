@@ -467,6 +467,170 @@ async function run() {
     log(`  Redirected to login: ${redirectedToLogin ? 'PASS' : 'FAIL'}`);
 
     // =========================================================
+    // TEST 19: Shopping tab in navigation + Purchase flow UI
+    // =========================================================
+    log('\n=== TEST 19: Shopping tab + Purchase All UI ===');
+    // Re-login first
+    await fillInput(page, 'you@example.com', testEmail);
+    await fillInput(page, 'Enter your password', 'testing123');
+    await page.locator('text=Sign In').first().click();
+    await page.waitForTimeout(4000);
+
+    await clickTab(page, 'Shopping');
+    await page.waitForTimeout(2000);
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/19-shopping-tab.png`, fullPage: true });
+
+    const shoppingTabContent = await page.textContent('body');
+    const hasShoppingUI = shoppingTabContent.includes('list') || shoppingTabContent.includes('From Meal Plan') || shoppingTabContent.includes('No shopping lists');
+    log(`  Shopping tab loads: ${hasShoppingUI ? 'PASS' : 'FAIL'}`);
+
+    const fromMealPlanBtn = await page.locator('text=From Meal Plan').first().isVisible().catch(() => false);
+    log(`  "From Meal Plan" button: ${fromMealPlanBtn ? 'PASS' : 'FAIL'}`);
+
+    // Profile is NOT a tab anymore — verify it's a header icon
+    const profileInTabs = await page.locator('[role="tab"]:has-text("Profile")').first().isVisible().catch(() => false);
+    log(`  Profile NOT in tab bar: ${!profileInTabs ? 'PASS' : 'FAIL'}`);
+
+    // =========================================================
+    // TEST 20: Recipe filters — advanced filter panel
+    // =========================================================
+    log('\n=== TEST 20: Advanced recipe filters ===');
+    await clickTab(page, 'Recipes');
+    await page.waitForTimeout(2000);
+
+    // Open filter panel
+    const filterIcon = page.locator('[role="button"]').filter({ has: page.locator('text=options') }).first();
+    // Try clicking the filter/options icon in search bar
+    try {
+      const optionsBtn = page.locator('text=options-outline').first();
+      if (await optionsBtn.isVisible().catch(() => false)) {
+        await optionsBtn.click();
+      } else {
+        // Click the icon to the right of the search bar
+        const searchBar = page.locator('[placeholder="Search recipes..."]');
+        const box = await searchBar.boundingBox();
+        if (box) {
+          await page.mouse.click(box.x + box.width + 30, box.y + box.height / 2);
+        }
+      }
+      await page.waitForTimeout(1000);
+      await page.screenshot({ path: `${SCREENSHOT_DIR}/20-recipe-filters.png`, fullPage: true });
+
+      const hasDietary = await page.locator('text=Dietary').first().isVisible().catch(() => false);
+      log(`  Dietary filter section: ${hasDietary ? 'PASS' : 'FAIL'}`);
+
+      const hasProtein = await page.locator('text=Protein').first().isVisible().catch(() => false);
+      log(`  Protein filter section: ${hasProtein ? 'PASS' : 'FAIL'}`);
+
+      const hasCuisine = await page.locator('text=Cuisine').first().isVisible().catch(() => false);
+      log(`  Cuisine filter section: ${hasCuisine ? 'PASS' : 'FAIL'}`);
+
+      const hasMethod = await page.locator('text=Method').first().isVisible().catch(() => false);
+      log(`  Method filter section: ${hasMethod ? 'PASS' : 'FAIL'}`);
+
+      // Test clicking a protein filter
+      const chickenFilter = await page.locator('text=Chicken').nth(0).isVisible().catch(() => false);
+      if (chickenFilter) {
+        await page.locator('text=Chicken').nth(0).click();
+        await page.waitForTimeout(2000);
+        const bodyAfterFilter = await page.textContent('body');
+        const stillHasRecipes = bodyAfterFilter.includes('min');
+        log(`  Protein filter applies: ${stillHasRecipes ? 'PASS' : 'FAIL'}`);
+        // Clear
+        await page.locator('text=Chicken').nth(0).click();
+        await page.waitForTimeout(500);
+      }
+    } catch (filterErr) {
+      log(`  Filter panel: FAIL (${filterErr.message.substring(0, 80)})`);
+    }
+
+    // =========================================================
+    // TEST 21: Recipe favorites section
+    // =========================================================
+    log('\n=== TEST 21: Recipe favorites section ===');
+    // Favorites section only shows if user has favorites
+    const hasFavSection = await page.locator('text=My Favorites').first().isVisible().catch(() => false);
+    log(`  My Favorites section: ${hasFavSection ? 'PASS' : 'SKIP (no favorites yet)'}`);
+
+    // =========================================================
+    // TEST 22: Recipe detail — inventory indicators
+    // =========================================================
+    log('\n=== TEST 22: Recipe detail inventory indicators ===');
+    await clickTab(page, 'Recipes');
+    await page.waitForTimeout(2000);
+
+    try {
+      // Click first recipe card
+      const recipeCard = page.locator('text=/\\d+ cal/').first();
+      if (await recipeCard.isVisible().catch(() => false)) {
+        await recipeCard.click();
+        await page.waitForTimeout(3000);
+        await page.screenshot({ path: `${SCREENSHOT_DIR}/22-recipe-inventory-indicators.png`, fullPage: true });
+
+        const hasInventoryIndicator = await page.locator('text=/in inventory/').first().isVisible().catch(() => false);
+        log(`  Inventory indicator shown: ${hasInventoryIndicator ? 'PASS' : 'FAIL'}`);
+
+        const hasAddMissing = await page.locator('text=Missing to Shopping List').first().isVisible().catch(() => false);
+        const hasReadyCook = await page.locator('text=Ready to cook').first().isVisible().catch(() => false);
+        log(`  Missing/Ready button: ${hasAddMissing || hasReadyCook ? 'PASS' : 'FAIL'}`);
+
+        await page.goBack();
+        await page.waitForTimeout(1000);
+      } else {
+        log(`  Inventory indicator shown: SKIP (no recipes visible)`);
+        log(`  Missing/Ready button: SKIP`);
+      }
+    } catch (detErr) {
+      log(`  Recipe detail error: FAIL (${detErr.message.substring(0, 80)})`);
+    }
+
+    // =========================================================
+    // TEST 23: Inventory quick add + photo scan buttons
+    // =========================================================
+    log('\n=== TEST 23: Inventory quick add + scan buttons ===');
+    await clickTab(page, 'Inventory');
+    await page.waitForTimeout(2000);
+
+    const quickAddBtn = await page.locator('text=Quick Add').first().isVisible().catch(() => false);
+    log(`  Quick Add button: ${quickAddBtn ? 'PASS' : 'FAIL'}`);
+
+    const scanBtn = await page.locator('text=Scan').first().isVisible().catch(() => false);
+    log(`  Scan button: ${scanBtn ? 'PASS' : 'FAIL'}`);
+
+    // =========================================================
+    // TEST 24: Backend API — new filter endpoints
+    // =========================================================
+    log('\n=== TEST 24: Backend advanced filter API ===');
+    try {
+      // Test proteinType filter
+      const proteinRes = await globalThis.fetch('http://localhost:3001/api/recipes?proteinType=chicken&limit=5');
+      const proteinData = await proteinRes.json();
+      log(`  proteinType=chicken filter: ${proteinData.recipes?.length > 0 ? 'PASS' : 'FAIL'} (${proteinData.recipes?.length || 0} results)`);
+
+      // Test cuisineStyle filter
+      const cuisineRes = await globalThis.fetch('http://localhost:3001/api/recipes?cuisineStyle=mexican&limit=5');
+      const cuisineData = await cuisineRes.json();
+      log(`  cuisineStyle=mexican filter: ${cuisineData.recipes?.length > 0 ? 'PASS' : 'FAIL'} (${cuisineData.recipes?.length || 0} results)`);
+
+      // Test cookingMethod filter
+      const methodRes = await globalThis.fetch('http://localhost:3001/api/recipes?cookingMethod=oven&limit=5');
+      const methodData = await methodRes.json();
+      log(`  cookingMethod=oven filter: ${methodData.recipes?.length > 0 ? 'PASS' : 'FAIL'} (${methodData.recipes?.length || 0} results)`);
+
+      // Test combined filters
+      const comboRes = await globalThis.fetch('http://localhost:3001/api/recipes?proteinType=chicken&cuisineStyle=mexican&limit=5');
+      const comboData = await comboRes.json();
+      log(`  Combined protein+cuisine: ${comboData.pagination ? 'PASS' : 'FAIL'} (${comboData.recipes?.length || 0} results)`);
+
+      // Test purchase-preview endpoint (requires auth, 401 = route exists)
+      const purchaseRes = await globalThis.fetch('http://localhost:3001/api/shopping-lists/fake-id/purchase-preview');
+      log(`  Purchase preview endpoint: ${purchaseRes.status === 401 ? 'PASS' : 'FAIL'} (status: ${purchaseRes.status})`);
+
+    } catch (apiErr) {
+      log(`  Backend API error: FAIL (${apiErr.message.substring(0, 80)})`);
+    }
+
+    // =========================================================
     // Console Errors
     // =========================================================
     log('\n=== Console Errors ===');

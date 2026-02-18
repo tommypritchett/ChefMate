@@ -27,12 +27,15 @@ interface ChatState {
   isLoadingThreads: boolean;
   isSending: boolean;
   streamingContent: string;
+  error: string | null;
 
   loadThreads: () => Promise<void>;
   createThread: () => Promise<string>;
   selectThread: (threadId: string) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
+  retryLastMessage: () => Promise<void>;
+  clearError: () => void;
   appendStreamToken: (token: string) => void;
   finalizeStream: (messageId: string, content: string, metadata?: any) => void;
   clearStreamingContent: () => void;
@@ -45,6 +48,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isLoadingThreads: false,
   isSending: false,
   streamingContent: '',
+  error: null,
 
   loadThreads: async () => {
     set({ isLoadingThreads: true });
@@ -132,15 +136,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
             response.assistantMessage,
           ],
           isSending: false,
+          error: null,
         };
       });
 
       // Update thread title in the list
       get().loadThreads();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to send message:', error);
-      set({ isSending: false });
+      let errorMsg = 'Something went wrong. Tap "Retry" to try again.';
+      if (error?.code === 'ERR_NETWORK' || error?.message?.includes('Network Error')) {
+        errorMsg = 'Cannot connect to server. Make sure the backend is running.';
+      } else if (error?.code === 'ECONNABORTED') {
+        errorMsg = 'Request timed out. The AI may be processing — tap Retry.';
+      } else if (error?.response?.status === 500) {
+        errorMsg = 'Server error. The AI may be temporarily unavailable — tap Retry.';
+      } else if (error?.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      }
+      set({ isSending: false, error: errorMsg });
     }
+  },
+
+  retryLastMessage: async () => {
+    const state = get();
+    // Find the last user message to retry
+    const lastUserMsg = [...state.messages].reverse().find((m) => m.role === 'user');
+    if (!lastUserMsg) return;
+    // Clear error and remove the failed user message, then resend
+    set({ error: null });
+    await get().sendMessage(lastUserMsg.message);
+  },
+
+  clearError: () => {
+    set({ error: null });
   },
 
   appendStreamToken: (token: string) => {

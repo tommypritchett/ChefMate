@@ -14,11 +14,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { inventoryApi, conversationsApi } from '../../src/services/api';
 import useSpeechRecognition from '../../src/hooks/useSpeechRecognition';
 
 const STORAGE_LOCATIONS = ['fridge', 'freezer', 'pantry'] as const;
 const CATEGORIES = ['produce', 'dairy', 'meat', 'grains', 'condiments', 'beverages', 'other'];
+const SORT_OPTIONS = ['location', 'category', 'expiry'] as const;
+type SortMode = typeof SORT_OPTIONS[number];
 
 interface InventoryItem {
   id: string;
@@ -52,6 +55,19 @@ export default function InventoryScreen() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('location');
+  const [actionItem, setActionItem] = useState<InventoryItem | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [expiringItems, setExpiringItems] = useState<InventoryItem[]>([]);
+  const [showExpiryBanner, setShowExpiryBanner] = useState(true);
+
+  // Edit form state
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('other');
+  const [editLocation, setEditLocation] = useState('fridge');
+  const [editQuantity, setEditQuantity] = useState('');
+  const [editUnit, setEditUnit] = useState('');
+  const [editExpiry, setEditExpiry] = useState('');
 
   // Add form state
   const [newName, setNewName] = useState('');
@@ -95,20 +111,30 @@ export default function InventoryScreen() {
     }
   }, [transcript, showConvoModal, convoMode]);
 
-  const fetchItems = useCallback(async () => {
+  const fetchItems = useCallback(async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       const data = await inventoryApi.getInventory();
-      setItems(data.items || []);
+      const allItems = data.items || [];
+      setItems(allItems);
+      // Compute expiring items for notification banner (fridge/pantry within 3 days, freezer within 4 months)
+      const expiring = allItems.filter((i: InventoryItem) => {
+        if (!i.expiresAt) return false;
+        const loc = i.storageLocation;
+        const thresholdDays = loc === 'freezer' ? 120 : 3;
+        const diff = new Date(i.expiresAt).getTime() - Date.now();
+        return diff > 0 && diff < thresholdDays * 24 * 60 * 60 * 1000;
+      });
+      setExpiringItems(expiring);
     } catch (err) {
       console.error('Failed to fetch inventory:', err);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchItems();
+    fetchItems(true);
   }, []);
 
   const handleAdd = async () => {
@@ -133,22 +159,69 @@ export default function InventoryScreen() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    Alert.alert('Delete Item', `Remove "${name}" from inventory?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await inventoryApi.deleteItem(id);
-            setItems(prev => prev.filter(i => i.id !== id));
-          } catch (err) {
-            console.error('Failed to delete:', err);
-          }
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+
+  const handleDelete = (id: string, name: string) => {
+    if (Platform.OS === 'web') {
+      // Web: use custom modal (Alert.alert doesn't work on web)
+      setDeleteConfirm({ id, name });
+    } else {
+      Alert.alert('Delete Item', `Remove "${name}" from inventory?`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => confirmDelete(id),
         },
-      },
-    ]);
+      ]);
+    }
+  };
+
+  const confirmDelete = async (id: string) => {
+    setDeleteConfirm(null);
+    setActionItem(null);
+    try {
+      await inventoryApi.deleteItem(id);
+      setItems(prev => prev.filter(i => i.id !== id));
+    } catch (err) {
+      console.error('Failed to delete:', err);
+    }
+  };
+
+  // Track which item is being edited
+  const [editingItemId, setEditingItemId] = useState<string>('');
+
+  const openEditItem = (item: InventoryItem) => {
+    setEditName(item.name);
+    setEditCategory(item.category || 'other');
+    setEditLocation(item.storageLocation || 'fridge');
+    setEditQuantity(item.quantity ? String(item.quantity) : '');
+    setEditUnit(item.unit || '');
+    setEditExpiry(item.expiresAt ? item.expiresAt.split('T')[0] : '');
+    setEditingItemId(item.id);
+    setActionItem(null);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingItemId || !editName.trim()) return;
+    setAdding(true);
+    try {
+      await inventoryApi.updateItem(editingItemId, {
+        name: editName.trim(),
+        category: editCategory,
+        storageLocation: editLocation,
+        quantity: editQuantity ? parseFloat(editQuantity) : undefined,
+        unit: editUnit || undefined,
+        expiresAt: editExpiry || null,
+      });
+      setShowEditModal(false);
+      fetchItems();
+    } catch (err) {
+      console.error('Failed to edit item:', err);
+    } finally {
+      setAdding(false);
+    }
   };
 
   const resetForm = () => {
@@ -161,6 +234,38 @@ export default function InventoryScreen() {
   };
 
   // ─── Photo Analysis ────────────────────────────────────────────
+
+  // Preprocess image: resize if too large, compress to JPEG
+  const preprocessImage = async (uri: string): Promise<string> => {
+    const MAX_DIMENSION = 1500;
+    const manipulated = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: MAX_DIMENSION } }],
+      { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+    );
+    return manipulated.base64 || '';
+  };
+
+  // Analyze photo with retry logic
+  const analyzeWithRetry = async (base64: string, maxRetries = 1): Promise<any> => {
+    let lastError: any;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await inventoryApi.analyzePhoto(base64);
+      } catch (err: any) {
+        lastError = err;
+        const retryable = err?.response?.data?.retryable;
+        const status = err?.response?.status;
+        // Only retry on retryable errors (timeout, rate limit, server error)
+        if (attempt < maxRetries && (retryable || status === 504 || status === 500 || status === 429)) {
+          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastError;
+  };
 
   const startPhotoAnalysis = async (source: 'camera' | 'library') => {
     try {
@@ -175,8 +280,7 @@ export default function InventoryScreen() {
           return;
         }
         result = await ImagePicker.launchCameraAsync({
-          base64: true,
-          quality: 0.7,
+          quality: 0.8,
         });
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -187,12 +291,11 @@ export default function InventoryScreen() {
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
-          base64: true,
-          quality: 0.7,
+          quality: 0.8,
         });
       }
 
-      if (result.canceled || !result.assets?.[0]?.base64) return;
+      if (result.canceled || !result.assets?.[0]?.uri) return;
 
       // Show modal with analyzing state
       setPhotoState('analyzing');
@@ -200,7 +303,15 @@ export default function InventoryScreen() {
       setPhotoItems([]);
       setShowPhotoModal(true);
 
-      const analysis = await inventoryApi.analyzePhoto(result.assets[0].base64);
+      // Preprocess: resize + compress + convert to base64
+      const base64 = await preprocessImage(result.assets[0].uri);
+      if (!base64) {
+        setPhotoError('Could not process the image. Please try a different photo.');
+        setPhotoState('error');
+        return;
+      }
+
+      const analysis = await analyzeWithRetry(base64);
       const detectedItems = (analysis.items || []).map((item: any) => ({
         name: item.name || 'Unknown item',
         quantity: item.quantity || 1,
@@ -212,7 +323,7 @@ export default function InventoryScreen() {
       }));
 
       if (detectedItems.length === 0) {
-        setPhotoError('No food items could be identified in the photo. Try a clearer photo or add items manually.');
+        setPhotoError(analysis.message || 'No food items could be identified in the photo. Try a clearer photo or add items manually.');
         setPhotoState('error');
       } else {
         setPhotoItems(detectedItems);
@@ -220,11 +331,20 @@ export default function InventoryScreen() {
       }
     } catch (err: any) {
       console.error('Photo analysis error:', err);
-      const message = err?.response?.status === 504 || err?.message?.includes('timeout') || err?.code === 'ECONNABORTED'
-        ? 'Photo analysis timed out. Try a smaller or clearer photo, or add items manually.'
-        : err?.response?.status === 500
-        ? 'Analysis failed on the server. Please try again or add items manually.'
-        : 'Failed to analyze photo. Please check your connection and try again.';
+      const status = err?.response?.status;
+      const code = err?.response?.data?.code;
+      let message: string;
+      if (status === 504 || code === 'TIMEOUT' || err?.code === 'ECONNABORTED') {
+        message = 'Photo analysis timed out. Try a smaller or clearer photo, or add items manually.';
+      } else if (status === 413 || code === 'IMAGE_TOO_LARGE') {
+        message = 'Image is too large. Please use a smaller photo.';
+      } else if (status === 400 || code === 'INVALID_IMAGE') {
+        message = 'This image format is not supported. Try a JPEG or PNG photo.';
+      } else if (status === 429 || code === 'RATE_LIMITED') {
+        message = 'Too many requests. Please wait a moment and try again.';
+      } else {
+        message = 'Failed to analyze photo. Please check your connection and try again.';
+      }
       setPhotoError(message);
       setPhotoState('error');
       setShowPhotoModal(true);
@@ -343,29 +463,128 @@ export default function InventoryScreen() {
 
   // ─── Helpers ──────────────────────────────────────────────────
 
-  const isExpiringSoon = (expiresAt: string | null) => {
+  const isExpiringSoon = (expiresAt: string | null, storageLocation?: string) => {
     if (!expiresAt) return false;
+    // Frozen items last much longer — use 4-month (120-day) window; fridge/pantry use 3 days
+    const thresholdDays = storageLocation === 'freezer' ? 120 : 3;
     const diff = new Date(expiresAt).getTime() - Date.now();
-    return diff > 0 && diff < 3 * 24 * 60 * 60 * 1000;
+    return diff > 0 && diff < thresholdDays * 24 * 60 * 60 * 1000;
   };
 
-  const isExpired = (expiresAt: string | null) => {
+  const isExpired = (expiresAt: string | null, storageLocation?: string) => {
     if (!expiresAt) return false;
+    // Frozen items: don't show expired until 4 months past date
+    if (storageLocation === 'freezer') {
+      const gracePeriod = 120 * 24 * 60 * 60 * 1000;
+      return new Date(expiresAt).getTime() + gracePeriod < Date.now();
+    }
     return new Date(expiresAt).getTime() < Date.now();
   };
 
-  // Group items by storage location
-  const sections = STORAGE_LOCATIONS.map(loc => ({
-    title: loc.charAt(0).toUpperCase() + loc.slice(1),
-    icon: loc === 'fridge' ? 'snow-outline' : loc === 'freezer' ? 'cube-outline' : 'file-tray-stacked-outline',
-    data: items.filter(i => (i.storageLocation || 'pantry').toLowerCase() === loc),
-  })).filter(s => s.data.length > 0);
+  // Group items based on sort mode
+  const sections = (() => {
+    if (sortMode === 'category') {
+      const CATEGORY_LABELS: Record<string, { label: string; icon: string }> = {
+        meat: { label: 'Meat & Protein', icon: 'flame-outline' },
+        produce: { label: 'Produce', icon: 'leaf-outline' },
+        dairy: { label: 'Dairy', icon: 'water-outline' },
+        grains: { label: 'Grains & Bread', icon: 'nutrition-outline' },
+        condiments: { label: 'Condiments & Sauces', icon: 'flask-outline' },
+        beverages: { label: 'Beverages', icon: 'cafe-outline' },
+        other: { label: 'Other', icon: 'ellipsis-horizontal-outline' },
+      };
+      return CATEGORIES.map(cat => ({
+        title: CATEGORY_LABELS[cat]?.label || cat,
+        icon: CATEGORY_LABELS[cat]?.icon || 'ellipsis-horizontal-outline',
+        data: items.filter(i => (i.category || 'other').toLowerCase() === cat),
+      })).filter(s => s.data.length > 0);
+    }
+    if (sortMode === 'expiry') {
+      const expired: InventoryItem[] = [];
+      const expiringSoon: InventoryItem[] = [];
+      const hasDate: InventoryItem[] = [];
+      const noDate: InventoryItem[] = [];
+      for (const item of items) {
+        if (isExpired(item.expiresAt, item.storageLocation)) expired.push(item);
+        else if (isExpiringSoon(item.expiresAt, item.storageLocation)) expiringSoon.push(item);
+        else if (item.expiresAt) hasDate.push(item);
+        else noDate.push(item);
+      }
+      // Sort by expiry date ascending
+      hasDate.sort((a, b) => new Date(a.expiresAt!).getTime() - new Date(b.expiresAt!).getTime());
+      return [
+        { title: 'Expired', icon: 'alert-circle-outline', data: expired },
+        { title: 'Expiring Soon', icon: 'warning-outline', data: expiringSoon },
+        { title: 'Has Expiry Date', icon: 'calendar-outline', data: hasDate },
+        { title: 'No Expiry Set', icon: 'help-circle-outline', data: noDate },
+      ].filter(s => s.data.length > 0);
+    }
+    // Default: by storage location, sub-sorted by category within each location
+    const CATEGORY_SORT_ORDER = ['meat', 'produce', 'dairy', 'grains', 'condiments', 'beverages', 'other'];
+    const locationSections: { title: string; icon: string; data: InventoryItem[] }[] = [];
+    for (const loc of STORAGE_LOCATIONS) {
+      const locItems = items.filter(i => (i.storageLocation || 'pantry').toLowerCase() === loc);
+      if (locItems.length === 0) continue;
+      // Sub-sort by category
+      locItems.sort((a, b) => {
+        const catA = CATEGORY_SORT_ORDER.indexOf((a.category || 'other').toLowerCase());
+        const catB = CATEGORY_SORT_ORDER.indexOf((b.category || 'other').toLowerCase());
+        return (catA === -1 ? 99 : catA) - (catB === -1 ? 99 : catB);
+      });
+      locationSections.push({
+        title: loc.charAt(0).toUpperCase() + loc.slice(1),
+        icon: loc === 'fridge' ? 'snow-outline' : loc === 'freezer' ? 'cube-outline' : 'file-tray-stacked-outline',
+        data: locItems,
+      });
+    }
+    return locationSections;
+  })();
 
   return (
     <View className="flex-1 bg-gray-50">
+      {/* Expiry notification banner */}
+      {showExpiryBanner && expiringItems.length > 0 && (
+        <View className="mx-4 mt-2 mb-1 bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex-row items-center">
+          <Ionicons name="warning-outline" size={20} color="#f59e0b" />
+          <View className="flex-1 ml-2">
+            <Text className="text-sm font-medium text-yellow-800">
+              {expiringItems.length} item{expiringItems.length !== 1 ? 's' : ''} expiring soon
+            </Text>
+            <Text className="text-xs text-yellow-600 mt-0.5" numberOfLines={1}>
+              {expiringItems.slice(0, 3).map(i => i.name).join(', ')}{expiringItems.length > 3 ? '...' : ''}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => { setSortMode('expiry'); setShowExpiryBanner(false); }}
+            className="bg-yellow-100 px-2 py-1 rounded-lg mr-1"
+          >
+            <Text className="text-xs text-yellow-700 font-medium">View</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowExpiryBanner(false)}>
+            <Ionicons name="close" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Summary bar */}
       <View className="flex-row justify-between items-center px-4 py-3 bg-white border-b border-gray-200">
-        <Text className="text-sm text-gray-500">{items.length} items total</Text>
+        <View className="flex-row items-center gap-2">
+          <Text className="text-sm text-gray-500">{items.length} items</Text>
+          {/* Sort toggle */}
+          <View className="flex-row bg-gray-100 rounded-lg overflow-hidden">
+            {SORT_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt}
+                onPress={() => setSortMode(opt)}
+                className={`px-2.5 py-1 ${sortMode === opt ? 'bg-primary-500' : ''}`}
+              >
+                <Text className={`text-[10px] capitalize ${sortMode === opt ? 'text-white font-medium' : 'text-gray-500'}`}>
+                  {opt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={() => {
@@ -441,11 +660,15 @@ export default function InventoryScreen() {
             </View>
           )}
           renderItem={({ item }) => {
-            const expiring = isExpiringSoon(item.expiresAt);
-            const expired = isExpired(item.expiresAt);
+            const expiring = isExpiringSoon(item.expiresAt, item.storageLocation);
+            const expired = isExpired(item.expiresAt, item.storageLocation);
 
             return (
-              <View className={`mx-4 mb-2 p-3 bg-white rounded-xl flex-row items-center ${expired ? 'border border-red-200' : expiring ? 'border border-yellow-200' : ''}`}>
+              <TouchableOpacity
+                className={`mx-4 mb-2 p-3 bg-white rounded-xl flex-row items-center ${expired ? 'border border-red-200' : expiring ? 'border border-yellow-200' : ''}`}
+                onPress={() => setActionItem(item)}
+                activeOpacity={0.7}
+              >
                 <View className="flex-1">
                   <View className="flex-row items-center">
                     <Text className="text-sm font-medium text-gray-800">{item.name}</Text>
@@ -477,12 +700,19 @@ export default function InventoryScreen() {
                   </View>
                 </View>
                 <TouchableOpacity
+                  onPress={() => openEditItem(item)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  className="mr-2"
+                >
+                  <Ionicons name="pencil-outline" size={16} color="#9ca3af" />
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={() => handleDelete(item.id, item.name)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Ionicons name="trash-outline" size={18} color="#d1d5db" />
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
@@ -875,6 +1105,184 @@ export default function InventoryScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+      {/* ═══ Edit Item Modal ═══ */}
+      <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowEditModal(false)}>
+        <View className="flex-1 bg-gray-50">
+          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+            <TouchableOpacity onPress={() => setShowEditModal(false)}>
+              <Text className="text-gray-500">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="text-lg font-semibold text-gray-800">Edit Item</Text>
+            <TouchableOpacity onPress={handleSaveEdit} disabled={!editName.trim() || adding}>
+              <Text className={`font-medium ${editName.trim() && !adding ? 'text-primary-500' : 'text-gray-300'}`}>
+                {adding ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView className="px-4 pt-4" contentContainerStyle={{ gap: 16 }}>
+            <View>
+              <Text className="text-sm font-medium text-gray-700 mb-1">Item Name *</Text>
+              <TextInput
+                className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                value={editName}
+                onChangeText={setEditName}
+                autoFocus
+              />
+            </View>
+            <View>
+              <Text className="text-sm font-medium text-gray-700 mb-1">Storage Location</Text>
+              <View className="flex-row gap-2">
+                {STORAGE_LOCATIONS.map(loc => (
+                  <TouchableOpacity
+                    key={loc}
+                    className={`flex-1 py-2.5 rounded-xl items-center ${
+                      editLocation === loc ? 'bg-primary-500' : 'bg-white border border-gray-200'
+                    }`}
+                    onPress={() => setEditLocation(loc)}
+                  >
+                    <Text className={`text-sm ${editLocation === loc ? 'text-white font-medium' : 'text-gray-600'}`}>
+                      {loc.charAt(0).toUpperCase() + loc.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View>
+              <Text className="text-sm font-medium text-gray-700 mb-1">Category</Text>
+              <View className="flex-row flex-wrap gap-2">
+                {CATEGORIES.map(cat => (
+                  <TouchableOpacity
+                    key={cat}
+                    className={`px-3 py-1.5 rounded-full ${
+                      editCategory === cat ? 'bg-primary-500' : 'bg-white border border-gray-200'
+                    }`}
+                    onPress={() => setEditCategory(cat)}
+                  >
+                    <Text className={`text-xs ${editCategory === cat ? 'text-white' : 'text-gray-600'}`}>
+                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <Text className="text-sm font-medium text-gray-700 mb-1">Quantity</Text>
+                <TextInput
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                  placeholder="e.g. 2"
+                  placeholderTextColor="#9ca3af"
+                  value={editQuantity}
+                  onChangeText={setEditQuantity}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>
+                <TextInput
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                  placeholder="e.g. lbs"
+                  placeholderTextColor="#9ca3af"
+                  value={editUnit}
+                  onChangeText={setEditUnit}
+                />
+              </View>
+            </View>
+            <View>
+              <Text className="text-sm font-medium text-gray-700 mb-1">Expiry Date</Text>
+              <TextInput
+                className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor="#9ca3af"
+                value={editExpiry}
+                onChangeText={setEditExpiry}
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ═══ Delete Confirmation Modal (web) ═══ */}
+      <Modal
+        visible={!!deleteConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteConfirm(null)}
+      >
+        <TouchableOpacity
+          className="flex-1 bg-black/40 justify-center items-center"
+          activeOpacity={1}
+          onPress={() => setDeleteConfirm(null)}
+        >
+          <View className="bg-white rounded-2xl px-6 py-5 mx-8 w-72">
+            <Text className="text-base font-semibold text-gray-800 text-center">Delete Item</Text>
+            <Text className="text-sm text-gray-500 text-center mt-2">
+              Remove "{deleteConfirm?.name}" from inventory?
+            </Text>
+            <View className="flex-row justify-center gap-3 mt-4">
+              <TouchableOpacity
+                className="flex-1 py-2.5 rounded-lg bg-gray-100"
+                onPress={() => setDeleteConfirm(null)}
+              >
+                <Text className="text-sm text-gray-600 text-center font-medium">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 py-2.5 rounded-lg bg-red-500"
+                onPress={() => deleteConfirm && confirmDelete(deleteConfirm.id)}
+              >
+                <Text className="text-sm text-white text-center font-medium">Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ═══ Item Action Sheet ═══ */}
+      <Modal
+        visible={!!actionItem}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActionItem(null)}
+      >
+        <TouchableOpacity
+          className="flex-1 bg-black/40 justify-end"
+          activeOpacity={1}
+          onPress={() => setActionItem(null)}
+        >
+          <View className="bg-white rounded-t-2xl px-4 pt-4 pb-8">
+            <Text className="text-base font-semibold text-gray-800 text-center mb-4">
+              {actionItem?.name}
+            </Text>
+            <TouchableOpacity
+              className="flex-row items-center py-3 border-b border-gray-100"
+              onPress={() => { if (actionItem) openEditItem(actionItem); }}
+            >
+              <Ionicons name="pencil-outline" size={20} color="#6b7280" />
+              <Text className="text-sm text-gray-700 ml-3">Edit Item</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="flex-row items-center py-3 border-b border-gray-100"
+              onPress={() => {
+                if (actionItem) {
+                  const item = actionItem;
+                  setActionItem(null);
+                  handleDelete(item.id, item.name);
+                }
+              }}
+            >
+              <Ionicons name="trash-outline" size={20} color="#ef4444" />
+              <Text className="text-sm text-red-500 ml-3">Delete Item</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="py-3 mt-1"
+              onPress={() => setActionItem(null)}
+            >
+              <Text className="text-sm text-gray-400 text-center">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );

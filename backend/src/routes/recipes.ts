@@ -13,6 +13,10 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res) => {
       difficulty,
       search,
       tags,
+      proteinType,
+      cuisineStyle,
+      cookingMethod,
+      minIngredientMatch,
       page = '1',
       limit = '20',
       featured
@@ -30,19 +34,19 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res) => {
     if (brand) where.brand = brand;
     if (difficulty) where.difficulty = difficulty;
     if (featured === 'true') where.isFeatured = true;
-    
+    if (proteinType) where.proteinType = proteinType;
+    if (cuisineStyle) where.cuisineStyle = cuisineStyle;
+    if (cookingMethod) where.cookingMethod = cookingMethod;
+
     // Tag filter - dietaryTags is stored as JSON string, use contains for basic filtering
     if (tags) {
       const tagList = (tags as string).split(',').map(t => t.trim().toLowerCase());
-      // For SQLite, we do a simple contains check on the JSON string
-      // This will match recipes that have the tag anywhere in their dietaryTags array
       where.AND = tagList.map(tag => ({
         dietaryTags: { contains: tag }
       }));
     }
-    
+
     if (search) {
-      // SQLite doesn't support mode: 'insensitive', but LIKE is case-insensitive by default
       where.OR = [
         { title: { contains: search as string } },
         { description: { contains: search as string } },
@@ -50,42 +54,90 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res) => {
       ];
     }
 
+    // Ingredient match requires user auth + inventory lookup
+    const minMatch = minIngredientMatch ? parseInt(minIngredientMatch as string) : 0;
+    let inventoryNames: Set<string> | null = null;
+    if (minMatch > 0 && req.user) {
+      const items = await prisma.inventoryItem.findMany({
+        where: { userId: req.user.userId },
+        select: { name: true },
+      });
+      inventoryNames = new Set(items.map(i => i.name.toLowerCase()));
+    }
+
+    const selectFields = {
+      id: true,
+      title: true,
+      slug: true,
+      description: true,
+      brand: true,
+      category: true,
+      imageUrl: true,
+      prepTimeMinutes: true,
+      cookTimeMinutes: true,
+      difficulty: true,
+      servings: true,
+      averageRating: true,
+      viewCount: true,
+      saveCount: true,
+      nutrition: true,
+      dietaryTags: true,
+      proteinType: true,
+      cuisineStyle: true,
+      cookingMethod: true,
+      ingredients: minMatch > 0 ? true : false,
+      createdAt: true
+    };
+
     const [recipes, total] = await Promise.all([
       prisma.recipe.findMany({
         where,
-        skip,
-        take: limitNum,
+        skip: minMatch > 0 ? undefined : skip,
+        take: minMatch > 0 ? undefined : limitNum,
         orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          description: true,
-          brand: true,
-          category: true,
-          imageUrl: true,
-          prepTimeMinutes: true,
-          cookTimeMinutes: true,
-          difficulty: true,
-          servings: true,
-          averageRating: true,
-          viewCount: true,
-          saveCount: true,
-          nutrition: true,
-          dietaryTags: true,
-          createdAt: true
-        }
+        select: selectFields as any,
       }),
       prisma.recipe.count({ where })
     ]);
 
-    // Parse JSON strings for dietary tags, nutrition, and ingredient costs
-    const recipesWithParsedData = recipes.map(recipe => ({
-      ...recipe,
-      nutrition: recipe.nutrition ? JSON.parse(recipe.nutrition) : null,
-      dietaryTags: recipe.dietaryTags ? JSON.parse(recipe.dietaryTags) : [],
-      ingredientCosts: null
-    }));
+    // Parse JSON strings and compute ingredient match %
+    let recipesWithParsedData = recipes.map((recipe: any) => {
+      const parsed: any = {
+        ...recipe,
+        nutrition: recipe.nutrition ? JSON.parse(recipe.nutrition) : null,
+        dietaryTags: recipe.dietaryTags ? JSON.parse(recipe.dietaryTags) : [],
+      };
+
+      if (inventoryNames && recipe.ingredients) {
+        const ings = typeof recipe.ingredients === 'string' ? JSON.parse(recipe.ingredients) : recipe.ingredients;
+        const totalIngs = ings.length;
+        const matchCount = ings.filter((ing: any) => {
+          const name = (ing.name || '').toLowerCase();
+          return Array.from(inventoryNames!).some(inv => name.includes(inv) || inv.includes(name));
+        }).length;
+        parsed.ingredientMatch = totalIngs > 0 ? Math.round((matchCount / totalIngs) * 100) : 0;
+        parsed.ingredientMatchCount = matchCount;
+        parsed.ingredientTotal = totalIngs;
+      }
+
+      // Remove raw ingredients from response when not needed
+      delete parsed.ingredients;
+      return parsed;
+    });
+
+    // Filter by minimum ingredient match
+    if (minMatch > 0) {
+      recipesWithParsedData = recipesWithParsedData.filter((r: any) => (r.ingredientMatch || 0) >= minMatch);
+      // Sort by match % descending
+      recipesWithParsedData.sort((a: any, b: any) => (b.ingredientMatch || 0) - (a.ingredientMatch || 0));
+      // Manual pagination after filtering
+      const filteredTotal = recipesWithParsedData.length;
+      recipesWithParsedData = recipesWithParsedData.slice(skip, skip + limitNum);
+      return res.json({
+        recipes: recipesWithParsedData,
+        pagination: { page: pageNum, limit: limitNum, total: filteredTotal, pages: Math.ceil(filteredTotal / limitNum) }
+      });
+    }
 
     res.json({
       recipes: recipesWithParsedData,

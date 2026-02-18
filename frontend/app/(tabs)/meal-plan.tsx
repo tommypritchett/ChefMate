@@ -44,6 +44,7 @@ export default function MealPlanScreen() {
   const [recipes, setRecipes] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [creating, setCreating] = useState(false);
+  const [selectedServings, setSelectedServings] = useState(1);
 
   const weekDates = getWeekDates(weekOffset);
   const weekLabel = `${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
@@ -108,8 +109,10 @@ export default function MealPlanScreen() {
         recipeId,
         date: formatDate(selectedDay),
         mealType: selectedMealType,
+        servings: selectedServings,
       });
       setShowAddModal(false);
+      setSelectedServings(1);
       fetchPlan();
     } catch (err) {
       console.error('Failed to add slot:', err);
@@ -227,6 +230,11 @@ export default function MealPlanScreen() {
                             <Text className="text-xs text-primary-700" numberOfLines={1}>
                               {slot.recipe?.title || slot.customName || 'Meal'}
                             </Text>
+                            {slot.servings && slot.servings > 1 && (
+                              <View className="ml-1 bg-primary-200 rounded px-1">
+                                <Text className="text-[9px] text-primary-800 font-medium">{slot.servings}x</Text>
+                              </View>
+                            )}
                           </TouchableOpacity>
                         ))}
                         <TouchableOpacity
@@ -263,6 +271,59 @@ export default function MealPlanScreen() {
               {selectedDay.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
             </Text>
           )}
+
+          {/* Servings picker */}
+          <View className="px-4 pt-2">
+            <Text className="text-xs text-gray-500 mb-1.5">Servings</Text>
+            <View className="flex-row gap-2">
+              {[1, 2, 4].map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  onPress={() => setSelectedServings(s)}
+                  className={`flex-1 py-2 rounded-lg border items-center ${
+                    selectedServings === s
+                      ? 'bg-primary-50 border-primary-400'
+                      : 'bg-white border-gray-200'
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${
+                    selectedServings === s ? 'text-primary-700' : 'text-gray-600'
+                  }`}>{s}</Text>
+                  <Text className={`text-[10px] ${
+                    selectedServings === s ? 'text-primary-500' : 'text-gray-400'
+                  }`}>
+                    {s === 1 ? 'Single' : s === 2 ? 'Leftovers' : 'Meal prep'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.prompt?.(
+                    'Custom servings',
+                    'How many servings?',
+                    (text: string) => {
+                      const n = parseInt(text);
+                      if (n > 0) setSelectedServings(n);
+                    }
+                  ) || setSelectedServings(selectedServings);
+                }}
+                className={`flex-1 py-2 rounded-lg border items-center ${
+                  ![1, 2, 4].includes(selectedServings)
+                    ? 'bg-primary-50 border-primary-400'
+                    : 'bg-white border-gray-200'
+                }`}
+              >
+                <Text className={`text-sm font-medium ${
+                  ![1, 2, 4].includes(selectedServings) ? 'text-primary-700' : 'text-gray-600'
+                }`}>
+                  {![1, 2, 4].includes(selectedServings) ? selectedServings : '...'}
+                </Text>
+                <Text className={`text-[10px] ${
+                  ![1, 2, 4].includes(selectedServings) ? 'text-primary-500' : 'text-gray-400'
+                }`}>Custom</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {/* Search */}
           <View className="px-4 py-2">

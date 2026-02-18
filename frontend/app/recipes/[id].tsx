@@ -1,22 +1,59 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { recipesApi, favoritesApi } from '../../src/services/api';
+import { recipesApi, favoritesApi, inventoryApi, shoppingApi } from '../../src/services/api';
+
+type IngredientStatus = {
+  name: string;
+  amount: number;
+  unit: string;
+  notes?: string;
+  inInventory: boolean;
+  inventoryName?: string;
+};
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [recipe, setRecipe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [ingredientStatuses, setIngredientStatuses] = useState<IngredientStatus[]>([]);
+  const [showListPicker, setShowListPicker] = useState(false);
+  const [shoppingLists, setShoppingLists] = useState<any[]>([]);
+  const [addingToList, setAddingToList] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     (async () => {
       try {
-        const data = await recipesApi.getRecipe(id);
-        setRecipe(data.recipe);
+        const [recipeData, inventoryData] = await Promise.all([
+          recipesApi.getRecipe(id),
+          inventoryApi.getInventory(),
+        ]);
+        setRecipe(recipeData.recipe);
+
+        // Compare ingredients against inventory
+        const inventoryItems = inventoryData.items || [];
+        const invNames = inventoryItems.map((i: any) => i.name.toLowerCase());
+        const ings = recipeData.recipe.ingredients || [];
+        const statuses: IngredientStatus[] = ings.map((ing: any) => {
+          const ingName = (ing.name || '').toLowerCase();
+          const match = invNames.find((inv: string) =>
+            inv.includes(ingName) || ingName.includes(inv) ||
+            ingName.split(' ').some((w: string) => w.length > 3 && inv.includes(w))
+          );
+          return {
+            name: ing.name,
+            amount: ing.amount,
+            unit: ing.unit,
+            notes: ing.notes,
+            inInventory: !!match,
+            inventoryName: match || undefined,
+          };
+        });
+        setIngredientStatuses(statuses);
       } catch (err) {
         console.error('Failed to load recipe:', err);
       } finally {
@@ -24,6 +61,63 @@ export default function RecipeDetailScreen() {
       }
     })();
   }, [id]);
+
+  const missingItems = ingredientStatuses.filter(i => !i.inInventory);
+  const haveCount = ingredientStatuses.filter(i => i.inInventory).length;
+  const totalCount = ingredientStatuses.length;
+  const coveragePercent = totalCount > 0 ? Math.round((haveCount / totalCount) * 100) : 0;
+
+  const handleAddMissing = async () => {
+    try {
+      const data = await shoppingApi.getLists();
+      setShoppingLists(data.lists || []);
+      setShowListPicker(true);
+    } catch (err) {
+      console.error('Failed to fetch lists:', err);
+    }
+  };
+
+  const handleAddToList = async (listId: string) => {
+    setAddingToList(true);
+    try {
+      for (const item of missingItems) {
+        await shoppingApi.addItem(listId, {
+          name: item.name,
+          quantity: item.amount || undefined,
+          unit: item.unit || undefined,
+        });
+      }
+      setShowListPicker(false);
+      Alert.alert('Added!', `${missingItems.length} missing item(s) added to your shopping list.`);
+    } catch (err) {
+      console.error('Failed to add items:', err);
+      Alert.alert('Error', 'Failed to add items to shopping list.');
+    } finally {
+      setAddingToList(false);
+    }
+  };
+
+  const handleCreateListAndAdd = async () => {
+    setAddingToList(true);
+    try {
+      const result = await shoppingApi.createList({
+        name: `${recipe?.title || 'Recipe'} Ingredients`,
+        sourceType: 'recipe',
+        items: missingItems.map(i => ({
+          name: i.name,
+          quantity: i.amount || undefined,
+          unit: i.unit || undefined,
+        })),
+      });
+      setShowListPicker(false);
+      Alert.alert('Created!', `New list "${result.list.name}" with ${missingItems.length} item(s).`);
+    } catch (err) {
+      console.error('Failed to create list:', err);
+      Alert.alert('Error', 'Failed to create shopping list.');
+    } finally {
+      setAddingToList(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!recipe) return;
@@ -145,22 +239,65 @@ export default function RecipeDetailScreen() {
           </View>
         )}
 
-        {/* Ingredients */}
+        {/* Ingredients with Inventory Indicators */}
         <View className="bg-white rounded-xl p-4 mt-3">
-          <Text className="text-base font-semibold text-gray-800 mb-3">
-            Ingredients ({ingredients.length})
-          </Text>
-          {ingredients.map((ing: any, i: number) => (
-            <View key={i} className="flex-row items-start py-2 border-b border-gray-100">
-              <View className="w-5 h-5 rounded-full bg-primary-100 items-center justify-center mr-3 mt-0.5">
-                <View className="w-2 h-2 rounded-full bg-primary-500" />
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="text-base font-semibold text-gray-800">
+              Ingredients ({totalCount})
+            </Text>
+            {totalCount > 0 && (
+              <View className="flex-row items-center bg-gray-50 px-2.5 py-1 rounded-lg">
+                <Ionicons
+                  name={coveragePercent === 100 ? 'checkmark-circle' : 'pie-chart-outline'}
+                  size={14}
+                  color={coveragePercent === 100 ? '#10b981' : coveragePercent >= 50 ? '#f59e0b' : '#ef4444'}
+                />
+                <Text className={`text-xs font-medium ml-1 ${
+                  coveragePercent === 100 ? 'text-primary-600' : coveragePercent >= 50 ? 'text-amber-600' : 'text-red-500'
+                }`}>
+                  {haveCount}/{totalCount} in inventory ({coveragePercent}%)
+                </Text>
               </View>
-              <Text className="flex-1 text-sm text-gray-700">
+            )}
+          </View>
+          {ingredientStatuses.map((ing, i) => (
+            <View key={i} className="flex-row items-start py-2 border-b border-gray-100">
+              <View className={`w-5 h-5 rounded-full items-center justify-center mr-3 mt-0.5 ${
+                ing.inInventory ? 'bg-primary-100' : 'bg-red-50'
+              }`}>
+                <Ionicons
+                  name={ing.inInventory ? 'checkmark' : 'close'}
+                  size={12}
+                  color={ing.inInventory ? '#10b981' : '#ef4444'}
+                />
+              </View>
+              <Text className={`flex-1 text-sm ${ing.inInventory ? 'text-gray-700' : 'text-gray-500'}`}>
                 <Text className="font-medium">{ing.amount} {ing.unit}</Text> {ing.name}
                 {ing.notes ? <Text className="text-gray-400"> ({ing.notes})</Text> : null}
               </Text>
             </View>
           ))}
+
+          {/* Add Missing to Shopping List button */}
+          {missingItems.length > 0 && (
+            <TouchableOpacity
+              onPress={handleAddMissing}
+              className="flex-row items-center justify-center bg-primary-50 border border-primary-200 rounded-xl py-3 mt-3"
+            >
+              <Ionicons name="cart-outline" size={18} color="#10b981" />
+              <Text className="text-sm font-medium text-primary-600 ml-2">
+                Add {missingItems.length} Missing to Shopping List
+              </Text>
+            </TouchableOpacity>
+          )}
+          {missingItems.length === 0 && totalCount > 0 && (
+            <View className="flex-row items-center justify-center bg-primary-50 rounded-xl py-3 mt-3">
+              <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+              <Text className="text-sm font-medium text-primary-600 ml-2">
+                You have everything! Ready to cook
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Instructions */}
@@ -184,6 +321,72 @@ export default function RecipeDetailScreen() {
           ))}
         </View>
       </View>
+
+      {/* Shopping List Picker Modal */}
+      <Modal
+        visible={showListPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowListPicker(false)}
+      >
+        <TouchableOpacity
+          className="flex-1 bg-black/40 justify-end"
+          activeOpacity={1}
+          onPress={() => !addingToList && setShowListPicker(false)}
+        >
+          <View className="bg-white rounded-t-2xl px-4 pt-4 pb-8">
+            <Text className="text-base font-semibold text-gray-800 text-center mb-1">
+              Add to Shopping List
+            </Text>
+            <Text className="text-sm text-gray-500 text-center mb-4">
+              {missingItems.length} missing ingredient{missingItems.length !== 1 ? 's' : ''}
+            </Text>
+
+            {addingToList ? (
+              <View className="items-center py-6">
+                <ActivityIndicator size="small" color="#10b981" />
+                <Text className="text-sm text-gray-400 mt-2">Adding items...</Text>
+              </View>
+            ) : (
+              <>
+                {shoppingLists.map((list: any) => (
+                  <TouchableOpacity
+                    key={list.id}
+                    className="flex-row items-center py-3 border-b border-gray-100"
+                    onPress={() => handleAddToList(list.id)}
+                  >
+                    <Ionicons name="list-outline" size={20} color="#6b7280" />
+                    <View className="flex-1 ml-3">
+                      <Text className="text-sm font-medium text-gray-800">{list.name}</Text>
+                      <Text className="text-xs text-gray-400">
+                        {list.items?.length || 0} items
+                      </Text>
+                    </View>
+                    <Ionicons name="add-circle-outline" size={20} color="#10b981" />
+                  </TouchableOpacity>
+                ))}
+
+                <TouchableOpacity
+                  className="flex-row items-center py-3 mt-1"
+                  onPress={handleCreateListAndAdd}
+                >
+                  <Ionicons name="add-outline" size={20} color="#10b981" />
+                  <Text className="text-sm font-medium text-primary-600 ml-3">
+                    Create New List
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="mt-2 py-2"
+                  onPress={() => setShowListPicker(false)}
+                >
+                  <Text className="text-sm text-gray-400 text-center">Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
   );
 }

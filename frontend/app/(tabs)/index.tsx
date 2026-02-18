@@ -26,9 +26,12 @@ export default function ChatScreen() {
     activeThreadId,
     isSending,
     streamingContent,
+    error,
     loadThreads,
     sendMessage,
     createThread,
+    retryLastMessage,
+    clearError,
   } = useChatStore();
 
   const [showThreads, setShowThreads] = useState(false);
@@ -149,6 +152,29 @@ export default function ChatScreen() {
                   </View>
                   <View className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3">
                     <ActivityIndicator size="small" color="#10b981" />
+                  </View>
+                </View>
+              ) : null}
+              {/* Error message with retry */}
+              {error && !isSending ? (
+                <View className="mx-4 mb-3 bg-red-50 border border-red-200 rounded-xl p-3">
+                  <View className="flex-row items-center mb-1">
+                    <Ionicons name="alert-circle" size={16} color="#ef4444" />
+                    <Text className="text-sm text-red-600 ml-1.5 flex-1">{error}</Text>
+                  </View>
+                  <View className="flex-row gap-2 mt-2">
+                    <TouchableOpacity
+                      className="bg-red-100 px-3 py-1.5 rounded-lg"
+                      onPress={() => retryLastMessage()}
+                    >
+                      <Text className="text-xs text-red-700 font-medium">Retry</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className="px-3 py-1.5 rounded-lg"
+                      onPress={() => clearError()}
+                    >
+                      <Text className="text-xs text-gray-500">Dismiss</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               ) : null}

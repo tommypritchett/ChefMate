@@ -25,12 +25,49 @@ const DIETARY_TAGS = [
   'keto', 'dairy-free', 'quick', 'meal-prep', 'budget-friendly',
 ];
 
+const PROTEIN_TYPES = [
+  { value: '', label: 'Any Protein' },
+  { value: 'chicken', label: 'Chicken' },
+  { value: 'beef', label: 'Beef' },
+  { value: 'pork', label: 'Pork' },
+  { value: 'fish', label: 'Fish' },
+  { value: 'shrimp', label: 'Shrimp' },
+  { value: 'turkey', label: 'Turkey' },
+  { value: 'tofu', label: 'Tofu' },
+  { value: 'eggs', label: 'Eggs' },
+  { value: 'none', label: 'No Meat' },
+];
+
+const CUISINE_STYLES = [
+  { value: '', label: 'Any Cuisine' },
+  { value: 'american', label: 'American' },
+  { value: 'mexican', label: 'Mexican' },
+  { value: 'italian', label: 'Italian' },
+  { value: 'asian', label: 'Asian' },
+  { value: 'mediterranean', label: 'Mediterranean' },
+  { value: 'indian', label: 'Indian' },
+];
+
+const COOKING_METHODS = [
+  { value: '', label: 'Any Method' },
+  { value: 'stovetop', label: 'Stovetop' },
+  { value: 'oven', label: 'Oven' },
+  { value: 'grill', label: 'Grill' },
+  { value: 'crockpot', label: 'Crockpot' },
+  { value: 'air-fryer', label: 'Air Fryer' },
+  { value: 'sheet-pan', label: 'Sheet Pan' },
+  { value: 'no-cook', label: 'No Cook' },
+];
+
 export default function RecipesScreen() {
   const [recipes, setRecipes] = useState<RecipeCard[]>([]);
   const [favorites, setFavorites] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [proteinType, setProteinType] = useState('');
+  const [cuisineStyle, setCuisineStyle] = useState('');
+  const [cookingMethod, setCookingMethod] = useState('');
   const [showTagFilters, setShowTagFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -43,6 +80,9 @@ export default function RecipesScreen() {
       if (category !== 'All') params.category = category;
       if (search.trim()) params.search = search.trim();
       if (selectedTags.length > 0) params.tags = selectedTags.join(',');
+      if (proteinType) params.proteinType = proteinType;
+      if (cuisineStyle) params.cuisineStyle = cuisineStyle;
+      if (cookingMethod) params.cookingMethod = cookingMethod;
 
       const data = await recipesApi.getRecipes(params);
       const newRecipes = data.recipes || [];
@@ -59,7 +99,7 @@ export default function RecipesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [category, search, selectedTags]);
+  }, [category, search, selectedTags, proteinType, cuisineStyle, cookingMethod]);
 
   const fetchFavorites = useCallback(async () => {
     try {
@@ -76,7 +116,7 @@ export default function RecipesScreen() {
 
   useEffect(() => {
     fetchRecipes(1);
-  }, [category, selectedTags]);
+  }, [category, selectedTags, proteinType, cuisineStyle, cookingMethod]);
 
   const handleSearch = () => {
     fetchRecipes(1);
@@ -229,7 +269,7 @@ export default function RecipesScreen() {
             <Ionicons
               name="options-outline"
               size={20}
-              color={selectedTags.length > 0 ? '#10b981' : '#9ca3af'}
+              color={(selectedTags.length > 0 || proteinType || cuisineStyle || cookingMethod) ? '#10b981' : '#9ca3af'}
             />
           </TouchableOpacity>
         </View>
@@ -256,11 +296,12 @@ export default function RecipesScreen() {
         )}
       />
 
-      {/* Dietary tag filters (expandable) */}
+      {/* Expandable filter panel */}
       {showTagFilters && (
         <View className="px-3 pb-2 bg-gray-50">
-          <Text className="text-xs font-medium text-gray-500 mb-1.5 px-1">Dietary Filters</Text>
-          <View className="flex-row flex-wrap gap-1.5">
+          {/* Dietary Tags */}
+          <Text className="text-xs font-medium text-gray-500 mb-1.5 px-1">Dietary</Text>
+          <View className="flex-row flex-wrap gap-1.5 mb-2">
             {DIETARY_TAGS.map(tag => {
               const isActive = selectedTags.includes(tag);
               return (
@@ -277,15 +318,91 @@ export default function RecipesScreen() {
                 </TouchableOpacity>
               );
             })}
-            {selectedTags.length > 0 && (
-              <TouchableOpacity
-                className="px-3 py-1 rounded-full bg-gray-100"
-                onPress={() => setSelectedTags([])}
-              >
-                <Text className="text-xs text-red-500 font-medium">Clear</Text>
-              </TouchableOpacity>
-            )}
           </View>
+
+          {/* Protein Type */}
+          <Text className="text-xs font-medium text-gray-500 mb-1.5 px-1">Protein</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
+            <View className="flex-row gap-1.5">
+              {PROTEIN_TYPES.map(p => {
+                const isActive = proteinType === p.value;
+                return (
+                  <TouchableOpacity
+                    key={p.value}
+                    className={`px-3 py-1 rounded-full ${
+                      isActive ? 'bg-blue-500' : 'bg-white border border-gray-200'
+                    }`}
+                    onPress={() => setProteinType(isActive ? '' : p.value)}
+                  >
+                    <Text className={`text-xs ${isActive ? 'text-white font-medium' : 'text-gray-600'}`}>
+                      {p.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {/* Cuisine Style */}
+          <Text className="text-xs font-medium text-gray-500 mb-1.5 px-1">Cuisine</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
+            <View className="flex-row gap-1.5">
+              {CUISINE_STYLES.map(c => {
+                const isActive = cuisineStyle === c.value;
+                return (
+                  <TouchableOpacity
+                    key={c.value}
+                    className={`px-3 py-1 rounded-full ${
+                      isActive ? 'bg-orange-500' : 'bg-white border border-gray-200'
+                    }`}
+                    onPress={() => setCuisineStyle(isActive ? '' : c.value)}
+                  >
+                    <Text className={`text-xs ${isActive ? 'text-white font-medium' : 'text-gray-600'}`}>
+                      {c.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {/* Cooking Method */}
+          <Text className="text-xs font-medium text-gray-500 mb-1.5 px-1">Method</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
+            <View className="flex-row gap-1.5">
+              {COOKING_METHODS.map(m => {
+                const isActive = cookingMethod === m.value;
+                return (
+                  <TouchableOpacity
+                    key={m.value}
+                    className={`px-3 py-1 rounded-full ${
+                      isActive ? 'bg-purple-500' : 'bg-white border border-gray-200'
+                    }`}
+                    onPress={() => setCookingMethod(isActive ? '' : m.value)}
+                  >
+                    <Text className={`text-xs ${isActive ? 'text-white font-medium' : 'text-gray-600'}`}>
+                      {m.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {/* Clear all filters */}
+          {(selectedTags.length > 0 || proteinType || cuisineStyle || cookingMethod) && (
+            <TouchableOpacity
+              className="px-3 py-1.5 rounded-full bg-gray-100 self-start"
+              onPress={() => {
+                setSelectedTags([]);
+                setProteinType('');
+                setCuisineStyle('');
+                setCookingMethod('');
+              }}
+            >
+              <Text className="text-xs text-red-500 font-medium">Clear All Filters</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
