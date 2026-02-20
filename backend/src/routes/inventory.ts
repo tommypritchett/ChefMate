@@ -20,21 +20,67 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// Default expiry days by category (matches ai-tools.ts CATEGORY_DEFAULTS)
+const CATEGORY_EXPIRY_DAYS: Record<string, number> = {
+  produce: 7, 'meat/protein': 4, protein: 4, meat: 4, dairy: 14,
+  grains: 180, frozen: 120, canned: 365, condiments: 90,
+  snacks: 60, beverages: 30, other: 30,
+};
+
+// Infer category from item name (mirrors ai-tools.ts inferCategory)
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley'],
+  'meat/protein': ['chicken', 'beef', 'pork', 'fish', 'salmon', 'shrimp', 'turkey', 'steak', 'bacon', 'sausage', 'ground', 'meat', 'tofu', 'egg'],
+  dairy: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream', 'cottage', 'mozzarella', 'cheddar', 'parmesan'],
+  grains: ['rice', 'pasta', 'bread', 'flour', 'oat', 'cereal', 'tortilla', 'noodle', 'quinoa'],
+  frozen: ['frozen', 'ice cream', 'pizza rolls'],
+  canned: ['canned', 'beans', 'soup', 'tuna can', 'tomato sauce', 'tomato paste'],
+  condiments: ['sauce', 'ketchup', 'mustard', 'mayo', 'dressing', 'vinegar', 'oil', 'olive oil', 'soy sauce', 'hot sauce', 'sriracha', 'salsa'],
+  snacks: ['chips', 'crackers', 'nuts', 'granola', 'popcorn', 'cookie', 'bar'],
+  beverages: ['juice', 'soda', 'water', 'coffee', 'tea', 'wine', 'beer'],
+};
+
+function inferCategoryFromName(name: string): string {
+  const lower = name.toLowerCase();
+  for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (keywords.some(kw => lower.includes(kw))) return cat;
+  }
+  return 'other';
+}
+
 // POST /api/inventory
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { name, category, storageLocation, quantity, unit, purchasedAt, expiresAt } = req.body;
-    
+
+    // If category is generic/other, try to infer a better one from the name
+    let effectiveCategory = category;
+    if (!effectiveCategory || effectiveCategory.toLowerCase() === 'other') {
+      const inferred = inferCategoryFromName(name || '');
+      if (inferred !== 'other') effectiveCategory = inferred;
+    }
+
+    // Apply default expiry if none provided
+    // Freezer items get 120 days regardless of category
+    let computedExpiry: Date | null = expiresAt ? new Date(expiresAt) : null;
+    if (!computedExpiry) {
+      const loc = (storageLocation || 'pantry').toLowerCase();
+      const days = loc === 'freezer' ? 120
+        : CATEGORY_EXPIRY_DAYS[(effectiveCategory || 'other').toLowerCase()] || CATEGORY_EXPIRY_DAYS.other;
+      computedExpiry = new Date();
+      computedExpiry.setDate(computedExpiry.getDate() + days);
+    }
+
     const item = await prisma.inventoryItem.create({
       data: {
         userId: req.user!.userId,
         name,
-        category,
+        category: effectiveCategory,
         storageLocation,
         quantity: quantity ? parseFloat(quantity) : null,
         unit,
         purchasedAt: purchasedAt ? new Date(purchasedAt) : null,
-        expiresAt: expiresAt ? new Date(expiresAt) : null
+        expiresAt: computedExpiry
       }
     });
     
@@ -169,7 +215,7 @@ For each food item found, provide:
 - name: specific food name (e.g., "chicken breast" not just "chicken")
 - quantity: estimated count or amount (number)
 - unit: appropriate unit (lbs, oz, count, bunch, bag, bottle, etc.)
-- category: one of [produce, protein, dairy, grains, frozen, canned, condiments, snacks, beverages, other]
+- category: one of [produce, meat/protein, dairy, grains, frozen, canned, condiments, snacks, beverages, other]
 - storageLocation: one of [fridge, freezer, pantry]
 - confidence: 0-1 confidence score (lower for partially visible or ambiguous items)
 
@@ -194,7 +240,7 @@ Return ONLY valid JSON: {"items": [...]}`;
               role: 'user',
               content: [
                 { type: 'text', text: 'Identify all food items in this photo:' },
-                { type: 'image_url', image_url: { url: imageUrl, detail: 'low' } },
+                { type: 'image_url', image_url: { url: imageUrl, detail: 'auto' } },
               ],
             },
           ],
@@ -271,8 +317,9 @@ Return ONLY valid JSON: {"items": [...]}`;
       });
     }
 
+    const detail = errorMsg.length > 200 ? errorMsg.substring(0, 200) : errorMsg;
     res.status(500).json({
-      error: 'Failed to analyze photo. Please try again.',
+      error: `Photo analysis failed: ${detail}`,
       code: 'INTERNAL_ERROR',
       retryable: true,
     });
@@ -280,7 +327,7 @@ Return ONLY valid JSON: {"items": [...]}`;
     // Outer catch for unexpected errors (base64 validation, etc.)
     console.error('📸 Unexpected photo analysis error:', error?.message || error);
     res.status(500).json({
-      error: 'Failed to analyze photo. Please try again.',
+      error: `Unexpected error: ${(error?.message || 'Unknown error').substring(0, 200)}`,
       code: 'INTERNAL_ERROR',
       retryable: true,
     });

@@ -413,7 +413,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
                 category: {
                   type: 'string',
                   description: 'Food category',
-                  enum: ['produce', 'protein', 'dairy', 'grains', 'frozen', 'canned', 'condiments', 'snacks', 'beverages', 'other'],
+                  enum: ['produce', 'meat/protein', 'dairy', 'grains', 'frozen', 'canned', 'condiments', 'snacks', 'beverages', 'other'],
                 },
                 storageLocation: {
                   type: 'string',
@@ -431,6 +431,57 @@ export const toolDefinitions: ChatCompletionTool[] = [
           },
         },
         required: ['items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estimate_recipe_cost',
+      description:
+        'Estimate the cost of a recipe\'s ingredients at the nearest store. Use when the user asks how much a recipe costs, wants a budget estimate, or is comparing recipe costs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipeId: {
+            type: 'string',
+            description: 'The recipe ID to estimate cost for',
+          },
+          lat: {
+            type: 'number',
+            description: 'User latitude for nearest store pricing',
+          },
+          lng: {
+            type: 'number',
+            description: 'User longitude for nearest store pricing',
+          },
+        },
+        required: ['recipeId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_sale_items',
+      description:
+        'Get items currently on sale at the nearest store. Use for budget meal planning, when the user asks about deals, what\'s on sale, or wants to save money on groceries.',
+      parameters: {
+        type: 'object',
+        properties: {
+          lat: {
+            type: 'number',
+            description: 'User latitude',
+          },
+          lng: {
+            type: 'number',
+            description: 'User longitude',
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of deals to return (default 20)',
+          },
+        },
       },
     },
   },
@@ -496,6 +547,10 @@ export async function executeTool(
       return parseNaturalInventoryInput(args, userId);
     case 'bulk_add_inventory':
       return bulkAddInventory(args, userId);
+    case 'estimate_recipe_cost':
+      return estimateRecipeCost(args, userId);
+    case 'get_sale_items':
+      return getSaleItems(args, userId);
     case 'get_nutrition_summary':
       return getNutritionSummary(args, userId);
     default:
@@ -1939,10 +1994,10 @@ async function generateSmartShoppingList(args: Record<string, any>, userId: stri
 // Default expiry days and storage by category
 const CATEGORY_DEFAULTS: Record<string, { storageLocation: string; expiresInDays: number }> = {
   produce: { storageLocation: 'fridge', expiresInDays: 7 },
-  protein: { storageLocation: 'fridge', expiresInDays: 4 },
+  'meat/protein': { storageLocation: 'fridge', expiresInDays: 4 },
   dairy: { storageLocation: 'fridge', expiresInDays: 14 },
   grains: { storageLocation: 'pantry', expiresInDays: 180 },
-  frozen: { storageLocation: 'freezer', expiresInDays: 90 },
+  frozen: { storageLocation: 'freezer', expiresInDays: 120 },
   canned: { storageLocation: 'pantry', expiresInDays: 365 },
   condiments: { storageLocation: 'fridge', expiresInDays: 90 },
   snacks: { storageLocation: 'pantry', expiresInDays: 60 },
@@ -1953,7 +2008,7 @@ const CATEGORY_DEFAULTS: Record<string, { storageLocation: string; expiresInDays
 // Keyword-based category inference
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley'],
-  protein: ['chicken', 'beef', 'pork', 'fish', 'salmon', 'shrimp', 'turkey', 'steak', 'bacon', 'sausage', 'ground', 'meat', 'tofu', 'egg'],
+  'meat/protein': ['chicken', 'beef', 'pork', 'fish', 'salmon', 'shrimp', 'turkey', 'steak', 'bacon', 'sausage', 'ground', 'meat', 'tofu', 'egg'],
   dairy: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream', 'cottage', 'mozzarella', 'cheddar', 'parmesan'],
   grains: ['rice', 'pasta', 'bread', 'flour', 'oat', 'cereal', 'tortilla', 'noodle', 'quinoa'],
   frozen: ['frozen', 'ice cream', 'pizza rolls'],
@@ -2071,7 +2126,7 @@ async function bulkAddInventory(args: Record<string, any>, userId: string) {
     const category = item.category || inferCategory(item.name);
     const defaults = CATEGORY_DEFAULTS[category] || CATEGORY_DEFAULTS.other;
     const storageLocation = item.storageLocation || defaults.storageLocation;
-    const expiresInDays = item.expiresInDays || defaults.expiresInDays;
+    const expiresInDays = item.expiresInDays || (storageLocation === 'freezer' ? 120 : defaults.expiresInDays);
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + expiresInDays);
@@ -2186,5 +2241,134 @@ async function getNutritionSummary(args: Record<string, any>, userId: string) {
       mealCount: meals.length,
     },
     metadata: { type: 'nutrition' },
+  };
+}
+
+async function estimateRecipeCost(args: Record<string, any>, _userId: string) {
+  const { recipeId, lat, lng } = args;
+
+  if (!recipeId) return { result: { error: 'recipeId is required.' } };
+
+  const recipe = await prisma.recipe.findFirst({
+    where: { id: recipeId },
+    select: { id: true, title: true, ingredients: true, servings: true },
+  });
+
+  if (!recipe) return { result: { error: 'Recipe not found.' } };
+
+  let ingredients: Array<{ name: string; amount?: number; unit?: string }>;
+  try {
+    ingredients = JSON.parse(recipe.ingredients);
+  } catch {
+    return { result: { recipeTitle: recipe.title, totalCost: 0, perServing: 0, ingredients: [], message: 'Could not parse ingredients' } };
+  }
+
+  const { getPricesForItem, getKrogerPrices, findNearestKrogerLocationCached } = await import('../services/grocery-prices');
+
+  let locationId: string | undefined;
+  let storeName = 'Estimated';
+  let chain: string | undefined;
+
+  if (lat && lng && process.env.KROGER_CLIENT_ID) {
+    const location = await findNearestKrogerLocationCached(lat, lng);
+    if (location) {
+      locationId = location.locationId;
+      storeName = location.chain;
+      chain = location.chain;
+    }
+  }
+
+  const costResults: Array<{ name: string; price: number; unit: string; isEstimated: boolean }> = [];
+  const batchSize = 5;
+
+  for (let i = 0; i < ingredients.length; i += batchSize) {
+    const batch = ingredients.slice(i, i + batchSize);
+    const results = await Promise.allSettled(
+      batch.map(async (ing) => {
+        if (locationId) {
+          const krogerPrices = await getKrogerPrices(ing.name, locationId, chain);
+          if (krogerPrices && krogerPrices.length > 0) {
+            return { name: ing.name, price: krogerPrices[0].price, unit: krogerPrices[0].unit, isEstimated: false };
+          }
+        }
+        const mockResult = getPricesForItem(ing.name);
+        return { name: ing.name, price: mockResult.bestPrice.price, unit: mockResult.bestPrice.unit, isEstimated: true };
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        costResults.push(result.value);
+      }
+    }
+  }
+
+  const totalCost = Math.round(costResults.reduce((sum, c) => sum + c.price, 0) * 100) / 100;
+  const perServing = Math.round((totalCost / (recipe.servings || 1)) * 100) / 100;
+
+  return {
+    result: {
+      recipeId: recipe.id,
+      recipeTitle: recipe.title,
+      storeName,
+      totalCost,
+      perServing,
+      servings: recipe.servings,
+      ingredients: costResults,
+      message: `Estimated cost for "${recipe.title}" at ${storeName}: $${totalCost} total ($${perServing}/serving).`,
+    },
+    metadata: { type: 'recipe_cost', recipeId: recipe.id },
+  };
+}
+
+async function getSaleItems(args: Record<string, any>, userId: string) {
+  const { lat, lng, limit = 20 } = args;
+
+  if (!lat || !lng) {
+    return { result: { deals: [], message: 'Location (lat/lng) required for deals. Ask the user to share their location.' } };
+  }
+
+  if (!process.env.KROGER_CLIENT_ID) {
+    return { result: { deals: [], message: 'Store API not configured. Deals feature requires Kroger API credentials.' } };
+  }
+
+  const { findNearestKrogerLocationCached, getKrogerSaleItems } = await import('../services/grocery-prices');
+
+  const location = await findNearestKrogerLocationCached(lat, lng);
+  if (!location) {
+    return { result: { deals: [], message: 'No nearby store found.' } };
+  }
+
+  const deals = await getKrogerSaleItems(location.locationId, limit);
+
+  // Cross-reference with recipe DB to suggest recipes using sale items
+  const saleNames = deals.map(d => d.name.toLowerCase());
+  const matchingRecipes = await prisma.recipe.findMany({
+    where: {
+      isPublished: true,
+      OR: saleNames.slice(0, 5).map(name => ({
+        ingredients: { contains: name.split(' ')[0] },
+      })),
+    },
+    take: 5,
+    select: { id: true, title: true, slug: true, difficulty: true, prepTimeMinutes: true, cookTimeMinutes: true },
+  });
+
+  return {
+    result: {
+      storeName: location.chain,
+      storeAddress: location.address,
+      deals: deals.map(d => ({
+        name: d.name,
+        brand: d.brand,
+        price: d.price,
+        savings: d.saleSavings,
+        imageUrl: d.imageUrl,
+      })),
+      totalDeals: deals.length,
+      suggestedRecipes: matchingRecipes.length > 0 ? matchingRecipes : undefined,
+      message: `Found ${deals.length} item(s) on sale at ${location.chain}. ${matchingRecipes.length > 0 ? `I also found ${matchingRecipes.length} recipe(s) that use these sale items!` : ''}`,
+    },
+    metadata: { type: 'deals' },
   };
 }

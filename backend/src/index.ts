@@ -15,6 +15,7 @@ import conversationRoutes from './routes/conversations';
 import mealPlanRoutes from './routes/mealplans';
 import healthGoalRoutes from './routes/health-goals';
 import groceryRoutes from './routes/grocery';
+import krogerRoutes from './routes/kroger';
 
 // Load environment variables
 dotenv.config();
@@ -51,6 +52,7 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/meal-plans', mealPlanRoutes);
 app.use('/api/health-goals', healthGoalRoutes);
 app.use('/api/grocery', groceryRoutes);
+app.use('/api/kroger', krogerRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

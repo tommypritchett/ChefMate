@@ -45,7 +45,6 @@ export default function MealPlanScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [selectedServings, setSelectedServings] = useState(1);
-
   const weekDates = getWeekDates(weekOffset);
   const weekLabel = `${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 

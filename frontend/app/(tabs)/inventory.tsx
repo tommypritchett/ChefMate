@@ -19,7 +19,7 @@ import { inventoryApi, conversationsApi } from '../../src/services/api';
 import useSpeechRecognition from '../../src/hooks/useSpeechRecognition';
 
 const STORAGE_LOCATIONS = ['fridge', 'freezer', 'pantry'] as const;
-const CATEGORIES = ['produce', 'dairy', 'meat', 'grains', 'condiments', 'beverages', 'other'];
+const CATEGORIES = ['produce', 'dairy', 'meat/protein', 'grains', 'condiments', 'beverages', 'other'];
 const SORT_OPTIONS = ['location', 'category', 'expiry'] as const;
 type SortMode = typeof SORT_OPTIONS[number];
 
@@ -178,13 +178,16 @@ export default function InventoryScreen() {
   };
 
   const confirmDelete = async (id: string) => {
-    setDeleteConfirm(null);
-    setActionItem(null);
+    const itemId = id; // capture before clearing state
     try {
-      await inventoryApi.deleteItem(id);
-      setItems(prev => prev.filter(i => i.id !== id));
+      await inventoryApi.deleteItem(itemId);
+      setItems(prev => prev.filter(i => i.id !== itemId));
+      await fetchItems(); // re-sync with backend
     } catch (err) {
       console.error('Failed to delete:', err);
+    } finally {
+      setDeleteConfirm(null);
+      setActionItem(null);
     }
   };
 
@@ -304,7 +307,15 @@ export default function InventoryScreen() {
       setShowPhotoModal(true);
 
       // Preprocess: resize + compress + convert to base64
-      const base64 = await preprocessImage(result.assets[0].uri);
+      let base64: string;
+      try {
+        base64 = await preprocessImage(result.assets[0].uri);
+      } catch (preprocessErr: any) {
+        console.error('Image preprocess error:', preprocessErr);
+        setPhotoError('Could not process the image. Please try a different photo.');
+        setPhotoState('error');
+        return;
+      }
       if (!base64) {
         setPhotoError('Could not process the image. Please try a different photo.');
         setPhotoState('error');
@@ -343,7 +354,8 @@ export default function InventoryScreen() {
       } else if (status === 429 || code === 'RATE_LIMITED') {
         message = 'Too many requests. Please wait a moment and try again.';
       } else {
-        message = 'Failed to analyze photo. Please check your connection and try again.';
+        const serverMsg = err?.response?.data?.error;
+        message = serverMsg || 'Failed to analyze photo. Please check your connection and try again.';
       }
       setPhotoError(message);
       setPhotoState('error');
@@ -465,8 +477,8 @@ export default function InventoryScreen() {
 
   const isExpiringSoon = (expiresAt: string | null, storageLocation?: string) => {
     if (!expiresAt) return false;
-    // Frozen items last much longer — use 4-month (120-day) window; fridge/pantry use 3 days
-    const thresholdDays = storageLocation === 'freezer' ? 120 : 3;
+    // Warn when close to expiry: freezer 14 days, fridge/pantry 3 days
+    const thresholdDays = storageLocation === 'freezer' ? 14 : 3;
     const diff = new Date(expiresAt).getTime() - Date.now();
     return diff > 0 && diff < thresholdDays * 24 * 60 * 60 * 1000;
   };
@@ -485,7 +497,7 @@ export default function InventoryScreen() {
   const sections = (() => {
     if (sortMode === 'category') {
       const CATEGORY_LABELS: Record<string, { label: string; icon: string }> = {
-        meat: { label: 'Meat & Protein', icon: 'flame-outline' },
+        'meat/protein': { label: 'Meat & Protein', icon: 'flame-outline' },
         produce: { label: 'Produce', icon: 'leaf-outline' },
         dairy: { label: 'Dairy', icon: 'water-outline' },
         grains: { label: 'Grains & Bread', icon: 'nutrition-outline' },
@@ -493,10 +505,14 @@ export default function InventoryScreen() {
         beverages: { label: 'Beverages', icon: 'cafe-outline' },
         other: { label: 'Other', icon: 'ellipsis-horizontal-outline' },
       };
+      const normalizeCategory = (c: string | null | undefined) => {
+        const lower = (c || 'other').toLowerCase();
+        return lower === 'meat' || lower === 'protein' ? 'meat/protein' : lower;
+      };
       return CATEGORIES.map(cat => ({
         title: CATEGORY_LABELS[cat]?.label || cat,
         icon: CATEGORY_LABELS[cat]?.icon || 'ellipsis-horizontal-outline',
-        data: items.filter(i => (i.category || 'other').toLowerCase() === cat),
+        data: items.filter(i => normalizeCategory(i.category) === cat),
       })).filter(s => s.data.length > 0);
     }
     if (sortMode === 'expiry') {
@@ -520,17 +536,37 @@ export default function InventoryScreen() {
       ].filter(s => s.data.length > 0);
     }
     // Default: by storage location, sub-sorted by category within each location
-    const CATEGORY_SORT_ORDER = ['meat', 'produce', 'dairy', 'grains', 'condiments', 'beverages', 'other'];
+    const CATEGORY_SORT_ORDER = ['meat/protein', 'produce', 'dairy', 'grains', 'condiments', 'beverages', 'other'];
+    const CATEGORY_LABELS: Record<string, string> = {
+      'meat/protein': 'Meat & Protein', meat: 'Meat & Protein', protein: 'Meat & Protein',
+      produce: 'Produce', dairy: 'Dairy', grains: 'Grains & Pasta',
+      condiments: 'Condiments', beverages: 'Beverages', other: 'Other',
+      frozen: 'Frozen', canned: 'Canned', snacks: 'Snacks',
+    };
     const locationSections: { title: string; icon: string; data: InventoryItem[] }[] = [];
     for (const loc of STORAGE_LOCATIONS) {
       const locItems = items.filter(i => (i.storageLocation || 'pantry').toLowerCase() === loc);
       if (locItems.length === 0) continue;
+      // Normalize old meat/protein categories
+      const normCat = (c: string | null | undefined) => {
+        const l = (c || 'other').toLowerCase();
+        return l === 'meat' || l === 'protein' ? 'meat/protein' : l;
+      };
       // Sub-sort by category
       locItems.sort((a, b) => {
-        const catA = CATEGORY_SORT_ORDER.indexOf((a.category || 'other').toLowerCase());
-        const catB = CATEGORY_SORT_ORDER.indexOf((b.category || 'other').toLowerCase());
+        const catA = CATEGORY_SORT_ORDER.indexOf(normCat(a.category));
+        const catB = CATEGORY_SORT_ORDER.indexOf(normCat(b.category));
         return (catA === -1 ? 99 : catA) - (catB === -1 ? 99 : catB);
       });
+      // Mark first item of each category group for sub-header rendering
+      let lastCat = '';
+      for (const item of locItems) {
+        const cat = normCat(item.category);
+        if (cat !== lastCat) {
+          (item as any)._categoryLabel = CATEGORY_LABELS[cat] || cat.charAt(0).toUpperCase() + cat.slice(1);
+          lastCat = cat;
+        }
+      }
       locationSections.push({
         title: loc.charAt(0).toUpperCase() + loc.slice(1),
         icon: loc === 'fridge' ? 'snow-outline' : loc === 'freezer' ? 'cube-outline' : 'file-tray-stacked-outline',
@@ -662,8 +698,15 @@ export default function InventoryScreen() {
           renderItem={({ item }) => {
             const expiring = isExpiringSoon(item.expiresAt, item.storageLocation);
             const expired = isExpired(item.expiresAt, item.storageLocation);
+            const categoryLabel = (item as any)._categoryLabel;
 
             return (
+              <View>
+                {categoryLabel && sortMode === 'location' && (
+                  <Text className="text-xs font-medium text-gray-400 uppercase tracking-wide mx-5 mt-2 mb-1">
+                    {categoryLabel}
+                  </Text>
+                )}
               <TouchableOpacity
                 className={`mx-4 mb-2 p-3 bg-white rounded-xl flex-row items-center ${expired ? 'border border-red-200' : expiring ? 'border border-yellow-200' : ''}`}
                 onPress={() => setActionItem(item)}
@@ -713,6 +756,7 @@ export default function InventoryScreen() {
                   <Ionicons name="trash-outline" size={18} color="#d1d5db" />
                 </TouchableOpacity>
               </TouchableOpacity>
+              </View>
             );
           }}
         />

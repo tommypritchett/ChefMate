@@ -3,7 +3,8 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Ale
 import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { recipesApi, favoritesApi, inventoryApi, shoppingApi } from '../../src/services/api';
+import * as Location from 'expo-location';
+import { recipesApi, favoritesApi, inventoryApi, shoppingApi, recipeCostApi } from '../../src/services/api';
 
 type IngredientStatus = {
   name: string;
@@ -23,6 +24,8 @@ export default function RecipeDetailScreen() {
   const [showListPicker, setShowListPicker] = useState(false);
   const [shoppingLists, setShoppingLists] = useState<any[]>([]);
   const [addingToList, setAddingToList] = useState(false);
+  const [costData, setCostData] = useState<any>(null);
+  const [loadingCost, setLoadingCost] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -61,6 +64,29 @@ export default function RecipeDetailScreen() {
       }
     })();
   }, [id]);
+
+  // Fetch cost estimation when recipe loads
+  useEffect(() => {
+    if (!recipe?.id) return;
+    (async () => {
+      setLoadingCost(true);
+      try {
+        let lat: number | undefined, lng: number | undefined;
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          lat = loc.coords.latitude;
+          lng = loc.coords.longitude;
+        }
+        const data = await recipeCostApi.getRecipeCost(recipe.id, lat, lng);
+        setCostData(data);
+      } catch {
+        // Cost estimation unavailable — not critical
+      } finally {
+        setLoadingCost(false);
+      }
+    })();
+  }, [recipe?.id]);
 
   const missingItems = ingredientStatuses.filter(i => !i.inInventory);
   const haveCount = ingredientStatuses.filter(i => i.inInventory).length;
@@ -299,6 +325,55 @@ export default function RecipeDetailScreen() {
             </View>
           )}
         </View>
+
+        {/* Cost Estimation Card */}
+        {(costData || loadingCost) && (
+          <View className="bg-white rounded-xl p-4 mt-3">
+            <View className="flex-row items-center justify-between mb-2">
+              <View className="flex-row items-center">
+                <Ionicons name="pricetag-outline" size={18} color="#10b981" />
+                <Text className="text-base font-semibold text-gray-800 ml-2">Estimated Cost</Text>
+              </View>
+              {costData?.storeName && (
+                <Text className="text-xs text-gray-400">at {costData.storeName}</Text>
+              )}
+            </View>
+            {loadingCost ? (
+              <View className="items-center py-4">
+                <ActivityIndicator size="small" color="#10b981" />
+                <Text className="text-xs text-gray-400 mt-2">Estimating cost...</Text>
+              </View>
+            ) : costData ? (
+              <>
+                <View className="flex-row items-baseline gap-3 mb-3">
+                  <Text className="text-2xl font-bold text-gray-800">
+                    ${costData.totalCost?.toFixed(2)}
+                  </Text>
+                  {costData.perServing != null && (
+                    <Text className="text-sm text-gray-500">
+                      ${costData.perServing.toFixed(2)}/serving
+                    </Text>
+                  )}
+                </View>
+                {costData.ingredients?.map((ing: any, i: number) => (
+                  <View key={i} className="flex-row items-center justify-between py-1.5 border-t border-gray-50">
+                    <View className="flex-1 flex-row items-center">
+                      <Text className="text-sm text-gray-600">{ing.name}</Text>
+                      {ing.isEstimated && (
+                        <View className="ml-1.5 bg-amber-50 px-1 py-0.5 rounded">
+                          <Text className="text-[8px] text-amber-600 font-medium">EST</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text className="text-sm font-medium text-gray-700">
+                      {ing.price != null ? `$${ing.price.toFixed(2)}` : '—'}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            ) : null}
+          </View>
+        )}
 
         {/* Instructions */}
         <View className="bg-white rounded-xl p-4 mt-3 mb-8">

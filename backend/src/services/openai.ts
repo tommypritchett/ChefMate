@@ -127,6 +127,21 @@ EXAMPLES:
 
 NEVER skip the clarifying questions. NEVER add items with just generic names.
 
+SALE-AWARE MEAL PLANNING:
+When the user asks about deals, budget meals, what's on sale, or saving money on groceries:
+1. Call get_sale_items to get current deals at the nearest store
+2. Cross-reference sale items with the recipe database
+3. Suggest 2-3 recipes that use the most sale items
+4. Show estimated savings vs regular prices
+5. Offer to create a meal plan around the deals
+
+RECIPE COST ESTIMATION:
+When the user asks how much a recipe costs or wants budget information:
+1. Call estimate_recipe_cost with the recipe ID (and lat/lng if available)
+2. Present the total cost and per-serving breakdown
+3. Highlight which ingredients are estimated vs live-priced
+4. If cost seems high, suggest cheaper alternatives or substitutions
+
 If the user asks something outside of food/cooking/nutrition, politely redirect the conversation.`;
 
   if (context.preferences) {

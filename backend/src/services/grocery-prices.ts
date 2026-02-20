@@ -6,12 +6,21 @@
  * in .env to enable real-time pricing from Kroger.
  */
 
+import prisma from '../lib/prisma';
+
 interface StorePrice {
   store: string;
   price: number;
   unit: string;
   deepLink: string;
   logoColor: string;
+  imageUrl?: string;
+  regularPrice?: number;
+  promoPrice?: number;
+  onSale?: boolean;
+  saleSavings?: number;
+  inStock?: boolean;
+  fulfillmentTypes?: string[];
 }
 
 interface PriceResult {
@@ -481,13 +490,26 @@ const SYNONYMS: Record<string, string> = {
 // Generate a reasonable fallback price for items not in our mock DB
 function generateFallbackPrice(itemName: string): StorePrice[] {
   const encoded = encodeURIComponent(itemName);
-  const basePrice = 2 + Math.abs(hashCode(itemName) % 800) / 100; // $2.00 - $9.99
+  // Narrower range: $2.50 - $6.99 (more realistic grocery spread)
+  const hash = Math.abs(hashCode(itemName));
+  const basePrice = 2.50 + (hash % 450) / 100; // $2.50 - $6.99
+
+  // Round to common price endings (.29, .49, .79, .99)
+  const endings = [0.29, 0.49, 0.79, 0.99];
+  function toRetailPrice(raw: number): number {
+    const whole = Math.floor(raw);
+    const frac = raw - whole;
+    const ending = endings.reduce((best, e) => Math.abs(frac - e) < Math.abs(frac - best) ? e : best);
+    return whole + ending;
+  }
+
+  // Store-specific multipliers (Aldi cheapest, Target priciest)
   return [
-    { store: 'Kroger', price: round(basePrice * 1.05), unit: 'each', deepLink: STORES.kroger.deepLink(encoded), logoColor: STORES.kroger.logoColor },
-    { store: 'Walmart', price: round(basePrice * 0.95), unit: 'each', deepLink: STORES.walmart.deepLink(encoded), logoColor: STORES.walmart.logoColor },
-    { store: 'Target', price: round(basePrice * 1.08), unit: 'each', deepLink: STORES.target.deepLink(encoded), logoColor: STORES.target.logoColor },
-    { store: 'Aldi', price: round(basePrice * 0.85), unit: 'each', deepLink: STORES.aldi.deepLink(encoded), logoColor: STORES.aldi.logoColor },
-    { store: 'Amazon Fresh', price: round(basePrice * 1.12), unit: 'each', deepLink: STORES.amazon.deepLink(encoded), logoColor: STORES.amazon.logoColor },
+    { store: 'Kroger', price: toRetailPrice(basePrice * 1.02), unit: 'each', deepLink: STORES.kroger.deepLink(encoded), logoColor: STORES.kroger.logoColor },
+    { store: 'Walmart', price: toRetailPrice(basePrice * 0.96), unit: 'each', deepLink: STORES.walmart.deepLink(encoded), logoColor: STORES.walmart.logoColor },
+    { store: 'Target', price: toRetailPrice(basePrice * 1.10), unit: 'each', deepLink: STORES.target.deepLink(encoded), logoColor: STORES.target.logoColor },
+    { store: 'Aldi', price: toRetailPrice(basePrice * 0.88), unit: 'each', deepLink: STORES.aldi.deepLink(encoded), logoColor: STORES.aldi.logoColor },
+    { store: 'Amazon Fresh', price: toRetailPrice(basePrice * 1.08), unit: 'each', deepLink: STORES.amazon.deepLink(encoded), logoColor: STORES.amazon.logoColor },
   ];
 }
 
@@ -504,25 +526,43 @@ function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// Common adjectives that shouldn't be sole matchers in word overlap
+const FILLER_WORDS = new Set(['frozen', 'organic', 'fresh', 'canned', 'dried', 'raw', 'whole', 'sliced', 'diced', 'chopped', 'ground', 'crushed', 'large', 'small', 'medium']);
+
 function findMockPrices(key: string): StorePrice[] | null {
-  // Exact match
+  // Tier 1: Exact match
   if (MOCK_PRICES[key]) return MOCK_PRICES[key];
 
-  // Synonym match
+  // Tier 2: Synonym match
   if (SYNONYMS[key] && MOCK_PRICES[SYNONYMS[key]]) return MOCK_PRICES[SYNONYMS[key]];
 
-  // Partial match — item contains a known key or vice versa
+  // Tier 3: Partial match — mock key is contained in search key (not reverse unless short)
+  // Require mock key to be at least 60% the length of the search key
   for (const [mockKey, mockStores] of Object.entries(MOCK_PRICES)) {
-    if (key.includes(mockKey) || mockKey.includes(key)) {
+    if (key.includes(mockKey) && mockKey.length >= key.length * 0.6) {
+      return mockStores;
+    }
+    // Only allow reverse (search inside mock) for short single-word searches
+    if (mockKey.includes(key) && key.length >= 4 && !key.includes(' ')) {
       return mockStores;
     }
   }
 
-  // Word overlap
-  const words = key.split(/\s+/);
+  // Tier 4: Word overlap — require all words of the shorter side to match the longer side
+  // Filter out common filler words from being sole matchers
+  const words = key.split(/\s+/).filter(w => w.length > 2);
+  const meaningfulWords = words.filter(w => !FILLER_WORDS.has(w));
+
   for (const [mockKey, mockStores] of Object.entries(MOCK_PRICES)) {
-    const mockWords = mockKey.split(/\s+/);
-    if (words.some(w => mockWords.includes(w) && w.length > 2)) {
+    const mockWords = mockKey.split(/\s+/).filter(w => w.length > 2);
+    const meaningfulMockWords = mockWords.filter(w => !FILLER_WORDS.has(w));
+
+    // Count how many meaningful words overlap
+    const overlapping = meaningfulWords.filter(w => meaningfulMockWords.includes(w));
+
+    // Require ALL meaningful words of the shorter side to match
+    const shorter = Math.min(meaningfulWords.length, meaningfulMockWords.length);
+    if (shorter > 0 && overlapping.length >= shorter) {
       return mockStores;
     }
   }
@@ -550,6 +590,7 @@ export function getPricesForList(items: string[]): {
   items: PriceResult[];
   storeTotals: Record<string, number>;
   storeLinks: Record<string, { homeUrl: string; searchUrl: string }>;
+  itemSearchUrls: Record<string, Record<string, string>>;
   bestStore: { name: string; total: number };
   totalSavings: number;
 } {
@@ -577,6 +618,15 @@ export function getPricesForList(items: string[]): {
     };
   }
 
+  // Build per-item search URLs: storeName → itemName → searchUrl
+  const itemSearchUrls: Record<string, Record<string, string>> = {};
+  for (const [key, cfg] of Object.entries(STORES)) {
+    itemSearchUrls[cfg.name] = {};
+    for (const item of items) {
+      itemSearchUrls[cfg.name][item] = cfg.searchUrl(encodeURIComponent(item));
+    }
+  }
+
   // Find best store
   const bestEntry = Object.entries(storeTotals).reduce((best, [name, total]) =>
     total < best.total ? { name, total } : best,
@@ -588,30 +638,29 @@ export function getPricesForList(items: string[]): {
     items: results,
     storeTotals,
     storeLinks,
+    itemSearchUrls,
     bestStore: bestEntry,
     totalSavings: round(worstTotal - bestEntry.total),
   };
 }
 
-/**
- * Kroger API Integration (scaffolded — requires API keys)
- * Set KROGER_CLIENT_ID and KROGER_CLIENT_SECRET in .env to enable.
- *
- * Kroger API docs: https://developer.kroger.com
- * - Product search: GET /v1/products?filter.term={query}
- * - Pricing requires location ID for accurate store pricing
- */
-export async function getKrogerPrices(query: string): Promise<StorePrice[] | null> {
+// ─── Kroger API Integration ────────────────────────────────────────────
+// Set KROGER_CLIENT_ID and KROGER_CLIENT_SECRET in .env to enable.
+// Kroger API docs: https://developer.kroger.com
+
+// Module-level token cache (Kroger tokens last 30 min, refresh at 25 min)
+let _krogerToken: string | null = null;
+let _krogerTokenExpiry = 0;
+
+async function getKrogerToken(): Promise<string | null> {
+  if (_krogerToken && Date.now() < _krogerTokenExpiry) return _krogerToken;
+
   const clientId = process.env.KROGER_CLIENT_ID;
   const clientSecret = process.env.KROGER_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    return null; // Kroger API not configured, use mock data
-  }
+  if (!clientId || !clientSecret) return null;
 
   try {
-    // Step 1: Get OAuth token
-    const tokenRes = await fetch('https://api.kroger.com/v1/connect/oauth2/token', {
+    const res = await fetch('https://api.kroger.com/v1/connect/oauth2/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -619,41 +668,189 @@ export async function getKrogerPrices(query: string): Promise<StorePrice[] | nul
       },
       body: 'grant_type=client_credentials&scope=product.compact',
     });
+    if (!res.ok) return null;
+    const json = await res.json() as { access_token: string; expires_in: number };
+    _krogerToken = json.access_token;
+    // Refresh 5 min before expiry
+    _krogerTokenExpiry = Date.now() + (json.expires_in - 300) * 1000;
+    return _krogerToken;
+  } catch (err) {
+    console.error('Kroger token error:', err);
+    return null;
+  }
+}
 
-    if (!tokenRes.ok) return null;
-    const tokenJson = await tokenRes.json() as { access_token: string };
+interface KrogerLocation {
+  locationId: string;
+  chain: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
 
-    // Step 2: Search products
-    const searchRes = await fetch(
-      `https://api.kroger.com/v1/products?filter.term=${encodeURIComponent(query)}&filter.limit=3`,
-      {
-        headers: { Authorization: `Bearer ${tokenJson.access_token}`, Accept: 'application/json' },
-      }
+// Kroger-family banner websites for deep links
+const KROGER_BANNERS: Record<string, { name: string; searchUrl: (q: string) => string }> = {
+  KROGER:      { name: 'Kroger',        searchUrl: (q) => `https://www.kroger.com/search?query=${q}&searchType=default_search` },
+  MARIANOS:    { name: "Mariano's",     searchUrl: (q) => `https://www.marianos.com/search?query=${q}&searchType=default_search` },
+  KINGSOOPERS: { name: 'King Soopers',  searchUrl: (q) => `https://www.kingsoopers.com/search?query=${q}&searchType=default_search` },
+  FRED:        { name: 'Fred Meyer',    searchUrl: (q) => `https://www.fredmeyer.com/search?query=${q}&searchType=default_search` },
+  RALPHS:      { name: 'Ralphs',        searchUrl: (q) => `https://www.ralphs.com/search?query=${q}&searchType=default_search` },
+  SMITHS:      { name: "Smith's",       searchUrl: (q) => `https://www.smithsfoodanddrug.com/search?query=${q}&searchType=default_search` },
+  FRYS:        { name: "Fry's",         searchUrl: (q) => `https://www.frysfood.com/search?query=${q}&searchType=default_search` },
+  QFC:         { name: 'QFC',           searchUrl: (q) => `https://www.qfc.com/search?query=${q}&searchType=default_search` },
+  HARRISTEETER:{ name: 'Harris Teeter', searchUrl: (q) => `https://www.harristeeter.com/search?query=${q}&searchType=default_search` },
+  DILLONS:     { name: "Dillons",       searchUrl: (q) => `https://www.dillons.com/search?query=${q}&searchType=default_search` },
+};
+
+export function getBannerInfo(chain: string): { name: string; searchUrl: (q: string) => string } {
+  return KROGER_BANNERS[chain] || KROGER_BANNERS['KROGER'];
+}
+
+async function findNearestKrogerLocation(token: string, lat: number, lng: number): Promise<KrogerLocation | null> {
+  try {
+    // No chain filter — picks up all Kroger-family banners (Mariano's, Fred Meyer, King Soopers, Ralphs, etc.)
+    const res = await fetch(
+      `https://api.kroger.com/v1/locations?filter.latLong.near=${lat},${lng}&filter.limit=1`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
     );
+    if (!res.ok) return null;
+    const json = await res.json() as { data: any[] };
+    const loc = json.data?.[0];
+    if (!loc) return null;
+    const chain = loc.chain || loc.name || 'Kroger';
+    return {
+      locationId: loc.locationId,
+      chain,
+      address: [loc.address?.addressLine1, loc.address?.city, loc.address?.state].filter(Boolean).join(', '),
+      lat: loc.geolocation?.latitude ?? lat,
+      lng: loc.geolocation?.longitude ?? lng,
+    };
+  } catch (err) {
+    console.error('Kroger location error:', err);
+    return null;
+  }
+}
 
-    if (!searchRes.ok) return null;
-    const searchJson = await searchRes.json() as { data: any[] };
-    const data = searchJson.data;
+export async function getKrogerPrices(query: string, locationId?: string, chain?: string): Promise<StorePrice[] | null> {
+  const token = await getKrogerToken();
+  if (!token) return null;
 
-    if (!data?.length) return null;
+  try {
+    let url = `https://api.kroger.com/v1/products?filter.term=${encodeURIComponent(query)}&filter.limit=1`;
+    if (locationId) url += `&filter.locationId=${locationId}`;
 
-    // Return the first product's price
-    const product = data[0];
-    const price = product.items?.[0]?.price?.regular || 0;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const json = await res.json() as { data: any[] };
+    const product = json.data?.[0];
+    if (!product) return null;
+
+    const priceInfo = product.items?.[0]?.price;
+    const regularPrice = priceInfo?.regular || 0;
+    const promoPrice = priceInfo?.promo || null;
+    const displayPrice = promoPrice || regularPrice;
+    if (displayPrice === 0) return null;
+
+    // Extract image URL (front perspective, thumbnail size)
+    const frontImage = product.images?.find((img: any) => img.perspective === 'front');
+    const thumbnail = frontImage?.sizes?.find((s: any) => s.size === 'thumbnail');
+    const imageUrl = thumbnail?.url || frontImage?.sizes?.[0]?.url || undefined;
+
+    // Extract fulfillment/stock info
+    const fulfillment = product.items?.[0]?.fulfillment;
+    const fulfillmentTypes: string[] = [];
+    let inStock = true;
+    if (fulfillment) {
+      if (fulfillment.inStore) fulfillmentTypes.push('inStore');
+      if (fulfillment.delivery) fulfillmentTypes.push('delivery');
+      if (fulfillment.shipToHome) fulfillmentTypes.push('shipToHome');
+      if (fulfillment.curbside) fulfillmentTypes.push('pickup');
+      // If no fulfillment options, it's out of stock
+      inStock = fulfillmentTypes.length > 0;
+    }
+
+    const onSale = promoPrice != null && promoPrice < regularPrice;
+    const saleSavings = onSale ? round(regularPrice - promoPrice!) : undefined;
+
+    const banner = getBannerInfo(chain || 'KROGER');
     const size = product.items?.[0]?.size || 'each';
 
-    return [
-      {
-        store: 'Kroger',
-        price: round(price),
-        unit: size,
-        deepLink: STORES.kroger.searchUrl(encodeURIComponent(query)),
-        logoColor: STORES.kroger.logoColor,
-      },
-    ];
+    // Fire-and-forget price history recording
+    if (locationId) {
+      recordPriceHistory(query, banner.name, displayPrice, promoPrice, locationId).catch(() => {});
+    }
+
+    return [{
+      store: banner.name,
+      price: round(displayPrice),
+      unit: size,
+      deepLink: banner.searchUrl(encodeURIComponent(query)),
+      logoColor: STORES.kroger.logoColor,
+      imageUrl,
+      regularPrice: regularPrice > 0 ? round(regularPrice) : undefined,
+      promoPrice: promoPrice ? round(promoPrice) : undefined,
+      onSale,
+      saleSavings,
+      inStock,
+      fulfillmentTypes: fulfillmentTypes.length > 0 ? fulfillmentTypes : undefined,
+    }];
   } catch (err) {
     console.error('Kroger API error:', err);
     return null;
+  }
+}
+
+/**
+ * Enrich price results with live Kroger pricing for the user's nearest store.
+ * Replaces mock Kroger entries with real data; falls back silently on error.
+ */
+export async function enrichWithKrogerPrices(
+  results: PriceResult[],
+  lat: number,
+  lng: number,
+): Promise<PriceResult[]> {
+  try {
+    const token = await getKrogerToken();
+    if (!token) return results;
+
+    const location = await findNearestKrogerLocation(token, lat, lng);
+    if (!location) return results;
+
+    const banner = getBannerInfo(location.chain);
+    console.log(`Kroger: using ${location.chain} (${banner.name}) store ${location.locationId} at ${location.address}`);
+
+    // Fetch real prices for each item in parallel
+    const enriched = await Promise.all(
+      results.map(async (result) => {
+        try {
+          const krogerPrices = await getKrogerPrices(result.item, location.locationId, location.chain);
+          if (!krogerPrices || krogerPrices.length === 0) return result;
+
+          const realKroger = krogerPrices[0];
+          // Replace the mock Kroger entry with real banner-specific data
+          const newStores = result.stores.map((s) =>
+            s.store === 'Kroger' ? { ...realKroger } : s,
+          );
+
+          // Recalculate best price and savings
+          const sorted = [...newStores].sort((a, b) => a.price - b.price);
+          const bestPrice = sorted[0];
+          const worstPrice = sorted[sorted.length - 1];
+          const savings = round(worstPrice.price - bestPrice.price);
+
+          return { ...result, stores: newStores, bestPrice, savings };
+        } catch {
+          return result; // Keep mock data for this item on error
+        }
+      }),
+    );
+
+    return enriched;
+  } catch (err) {
+    console.error('Kroger enrichment error:', err);
+    return results; // Graceful fallback
   }
 }
 
@@ -748,7 +945,7 @@ export function getNearestStores(userLat: number, userLng: number, maxMiles: num
 export function scoreStores(
   storeTotals: Record<string, number>,
   distances: StoreDistance[],
-  _preferredStores: string[] = [],
+  _preferredStores?: string[],
 ): Array<{ store: string; total: number; distance: number; score: number; recommended: boolean; cheapest?: boolean; closest?: boolean }> {
   const distMap: Record<string, number> = {};
   for (const d of distances) {
@@ -777,7 +974,7 @@ export function scoreStores(
 
   // Flag closest physical store (exclude Amazon Fresh / delivery)
   const closestPhysical = [...entries]
-    .filter(e => e.distance > 0 || e.store === 'Amazon Fresh' ? false : true)
+    .filter(e => e.store !== 'Amazon Fresh' && e.distance > 0)
     .sort((a, b) => a.distance - b.distance);
   // If all have 0 distance (e.g. exact location match), just pick first non-Amazon
   const physicalStores = entries.filter(e => e.store !== 'Amazon Fresh');
@@ -787,4 +984,313 @@ export function scoreStores(
   if (closestStore) closestStore.closest = true;
 
   return entries;
+}
+
+// ─── Kroger Product Search ───────────────────────────────────────────────
+
+export interface KrogerProductResult {
+  krogerProductId: string;
+  name: string;
+  brand: string;
+  size: string;
+  price: number;
+  regularPrice?: number;
+  promoPrice?: number;
+  onSale?: boolean;
+  saleSavings?: number;
+  imageUrl?: string;
+  inStock?: boolean;
+}
+
+// 10-minute in-memory cache for product search
+const _searchCache: Map<string, { data: KrogerProductResult[]; ts: number }> = new Map();
+const SEARCH_CACHE_TTL = 10 * 60 * 1000;
+
+// 1-hour location cache
+const _locationCache: Map<string, { data: KrogerLocation; ts: number }> = new Map();
+const LOCATION_CACHE_TTL = 60 * 60 * 1000;
+
+export async function findNearestKrogerLocationCached(lat: number, lng: number): Promise<KrogerLocation | null> {
+  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  const cached = _locationCache.get(key);
+  if (cached && Date.now() - cached.ts < LOCATION_CACHE_TTL) return cached.data;
+
+  const token = await getKrogerToken();
+  if (!token) return null;
+  const loc = await findNearestKrogerLocation(token, lat, lng);
+  if (loc) _locationCache.set(key, { data: loc, ts: Date.now() });
+  return loc;
+}
+
+export async function searchKrogerProducts(query: string, locationId: string, limit = 5): Promise<KrogerProductResult[]> {
+  const cacheKey = `${query.toLowerCase()}|${locationId}|${limit}`;
+  const cached = _searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < SEARCH_CACHE_TTL) return cached.data;
+
+  const token = await getKrogerToken();
+  if (!token) return [];
+
+  try {
+    const url = `https://api.kroger.com/v1/products?filter.term=${encodeURIComponent(query)}&filter.locationId=${locationId}&filter.limit=${limit}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) return [];
+    const json = await res.json() as { data: any[] };
+
+    const results: KrogerProductResult[] = (json.data || []).map((product: any) => {
+      const priceInfo = product.items?.[0]?.price;
+      const regular = priceInfo?.regular || 0;
+      const promo = priceInfo?.promo || null;
+      const onSale = promo != null && promo < regular;
+
+      const frontImage = product.images?.find((img: any) => img.perspective === 'front');
+      const thumbnail = frontImage?.sizes?.find((s: any) => s.size === 'thumbnail');
+      const imageUrl = thumbnail?.url || frontImage?.sizes?.[0]?.url || undefined;
+
+      const fulfillment = product.items?.[0]?.fulfillment;
+      const inStock = fulfillment ? (fulfillment.inStore || fulfillment.delivery || fulfillment.curbside) : undefined;
+
+      return {
+        krogerProductId: product.productId || product.upc || '',
+        name: product.description || '',
+        brand: product.brand || '',
+        size: product.items?.[0]?.size || '',
+        price: round(promo || regular),
+        regularPrice: regular > 0 ? round(regular) : undefined,
+        promoPrice: promo ? round(promo) : undefined,
+        onSale,
+        saleSavings: onSale ? round(regular - promo!) : undefined,
+        imageUrl,
+        inStock,
+      };
+    }).filter((p: KrogerProductResult) => p.price > 0);
+
+    _searchCache.set(cacheKey, { data: results, ts: Date.now() });
+    return results;
+  } catch (err) {
+    console.error('Kroger product search error:', err);
+    return [];
+  }
+}
+
+// ─── Price History ────────────────────────────────────────────────────────
+
+export async function recordPriceHistory(
+  item: string,
+  store: string,
+  price: number,
+  promoPrice: number | null,
+  locationId?: string,
+): Promise<void> {
+  try {
+    await prisma.priceHistory.create({
+      data: {
+        item: item.toLowerCase().trim(),
+        store,
+        locationId: locationId || null,
+        price,
+        promoPrice: promoPrice || null,
+      },
+    });
+  } catch (err) {
+    // Silently fail — don't block price responses
+    console.error('Price history record error:', err);
+  }
+}
+
+export async function getPriceHistory(
+  item: string,
+  days = 30,
+): Promise<Array<{ store: string; price: number; promoPrice: number | null; fetchedAt: Date }>> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  return prisma.priceHistory.findMany({
+    where: {
+      item: item.toLowerCase().trim(),
+      fetchedAt: { gte: since },
+    },
+    orderBy: { fetchedAt: 'desc' },
+    select: { store: true, price: true, promoPrice: true, fetchedAt: true },
+  });
+}
+
+export function calculateTrend(
+  history: Array<{ price: number; fetchedAt: Date }>,
+): { direction: 'up' | 'down' | 'stable'; percentChange: number; avgPrice: number } {
+  if (history.length < 2) {
+    const avg = history.length === 1 ? history[0].price : 0;
+    return { direction: 'stable', percentChange: 0, avgPrice: round(avg) };
+  }
+
+  const sorted = [...history].sort((a, b) => a.fetchedAt.getTime() - b.fetchedAt.getTime());
+  const mid = Math.floor(sorted.length / 2);
+  const olderHalf = sorted.slice(0, mid);
+  const recentHalf = sorted.slice(mid);
+
+  const olderAvg = olderHalf.reduce((s, h) => s + h.price, 0) / olderHalf.length;
+  const recentAvg = recentHalf.reduce((s, h) => s + h.price, 0) / recentHalf.length;
+  const totalAvg = sorted.reduce((s, h) => s + h.price, 0) / sorted.length;
+
+  const pctChange = olderAvg > 0 ? round(((recentAvg - olderAvg) / olderAvg) * 100) : 0;
+  const direction = pctChange > 2 ? 'up' : pctChange < -2 ? 'down' : 'stable';
+
+  return { direction, percentChange: Math.abs(pctChange), avgPrice: round(totalAvg) };
+}
+
+// ─── Sale Items / Deals ──────────────────────────────────────────────────
+
+// 4-hour cache for sale items
+const _saleCache: Map<string, { data: KrogerProductResult[]; ts: number }> = new Map();
+const SALE_CACHE_TTL = 4 * 60 * 60 * 1000;
+
+const DEAL_SEARCH_TERMS = ['produce', 'chicken', 'beef', 'milk', 'eggs', 'bread', 'cheese', 'pasta', 'rice', 'yogurt'];
+
+export async function getKrogerSaleItems(locationId: string, limit = 20): Promise<KrogerProductResult[]> {
+  const cached = _saleCache.get(locationId);
+  if (cached && Date.now() - cached.ts < SALE_CACHE_TTL) return cached.data.slice(0, limit);
+
+  const token = await getKrogerToken();
+  if (!token) return [];
+
+  const allDeals: KrogerProductResult[] = [];
+  const seen = new Set<string>();
+
+  // Search common categories and filter for sale items
+  for (const term of DEAL_SEARCH_TERMS) {
+    if (allDeals.length >= limit * 2) break;
+    try {
+      const url = `https://api.kroger.com/v1/products?filter.term=${encodeURIComponent(term)}&filter.locationId=${locationId}&filter.limit=5`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      if (!res.ok) continue;
+      const json = await res.json() as { data: any[] };
+
+      for (const product of json.data || []) {
+        const priceInfo = product.items?.[0]?.price;
+        const regular = priceInfo?.regular || 0;
+        const promo = priceInfo?.promo || null;
+        if (!promo || promo >= regular || regular === 0) continue;
+
+        const id = product.productId || product.upc || product.description;
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        const frontImage = product.images?.find((img: any) => img.perspective === 'front');
+        const thumbnail = frontImage?.sizes?.find((s: any) => s.size === 'thumbnail');
+
+        allDeals.push({
+          krogerProductId: id,
+          name: product.description || '',
+          brand: product.brand || '',
+          size: product.items?.[0]?.size || '',
+          price: round(promo),
+          regularPrice: round(regular),
+          promoPrice: round(promo),
+          onSale: true,
+          saleSavings: round(regular - promo),
+          imageUrl: thumbnail?.url || frontImage?.sizes?.[0]?.url || undefined,
+          inStock: true,
+        });
+      }
+    } catch {
+      // Continue with next category
+    }
+  }
+
+  // Sort by savings descending
+  allDeals.sort((a, b) => (b.saleSavings || 0) - (a.saleSavings || 0));
+
+  _saleCache.set(locationId, { data: allDeals, ts: Date.now() });
+  return allDeals.slice(0, limit);
+}
+
+// ─── Kroger User OAuth (Cart Integration) ────────────────────────────────
+
+export function getKrogerAuthUrl(state?: string): string | null {
+  const clientId = process.env.KROGER_CLIENT_ID;
+  if (!clientId) return null;
+  const redirectUri = process.env.KROGER_REDIRECT_URI || 'http://localhost:3001/api/kroger/callback';
+  const scope = 'cart.basic:write profile.compact';
+  let url = `https://api.kroger.com/v1/connect/oauth2/authorize?scope=${encodeURIComponent(scope)}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+  if (state) url += `&state=${encodeURIComponent(state)}`;
+  return url;
+}
+
+export async function exchangeKrogerAuthCode(code: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number } | null> {
+  const clientId = process.env.KROGER_CLIENT_ID;
+  const clientSecret = process.env.KROGER_CLIENT_SECRET;
+  const redirectUri = process.env.KROGER_REDIRECT_URI || 'http://localhost:3001/api/kroger/callback';
+  if (!clientId || !clientSecret) return null;
+
+  try {
+    const res = await fetch('https://api.kroger.com/v1/connect/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      },
+      body: `grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+    });
+    if (!res.ok) return null;
+    const json = await res.json() as any;
+    return {
+      accessToken: json.access_token,
+      refreshToken: json.refresh_token,
+      expiresIn: json.expires_in,
+    };
+  } catch (err) {
+    console.error('Kroger auth code exchange error:', err);
+    return null;
+  }
+}
+
+export async function refreshKrogerUserToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number } | null> {
+  const clientId = process.env.KROGER_CLIENT_ID;
+  const clientSecret = process.env.KROGER_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  try {
+    const res = await fetch('https://api.kroger.com/v1/connect/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      },
+      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
+    });
+    if (!res.ok) return null;
+    const json = await res.json() as any;
+    return {
+      accessToken: json.access_token,
+      refreshToken: json.refresh_token,
+      expiresIn: json.expires_in,
+    };
+  } catch (err) {
+    console.error('Kroger token refresh error:', err);
+    return null;
+  }
+}
+
+export async function addToKrogerCart(
+  accessToken: string,
+  items: Array<{ upc: string; quantity: number }>,
+): Promise<boolean> {
+  try {
+    const res = await fetch('https://api.kroger.com/v1/cart/add', {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ items }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('Kroger add to cart error:', err);
+    return false;
+  }
 }

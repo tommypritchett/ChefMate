@@ -368,8 +368,17 @@ export const shoppingApi = {
     return response.data;
   },
 
-  searchProducts: async (query: string): Promise<{ products: Array<{ name: string; category: string; defaultUnit: string; commonUnits?: string[]; source?: string }> }> => {
-    const response = await api.get('/shopping-lists/search-products', { params: { q: query } });
+  searchProducts: async (query: string, options?: { kroger?: boolean; lat?: number; lng?: number }): Promise<{ products: Array<{ name: string; category: string; defaultUnit: string; commonUnits?: string[]; source?: string; imageUrl?: string; price?: number; promoPrice?: number; size?: string; brand?: string }> }> => {
+    const params: any = { q: query };
+    if (options?.kroger) params.kroger = 'true';
+    if (options?.lat) params.lat = options.lat;
+    if (options?.lng) params.lng = options.lng;
+    const response = await api.get('/shopping-lists/search-products', { params });
+    return response.data;
+  },
+
+  bulkAddItems: async (listId: string, items: string): Promise<{ count: number; items: any[]; list: any }> => {
+    const response = await api.post(`/shopping-lists/${listId}/items/bulk`, { items });
     return response.data;
   },
 };
@@ -439,6 +448,7 @@ export const groceryApi = {
     items: any[];
     storeTotals: Record<string, number>;
     storeLinks?: Record<string, { homeUrl: string; searchUrl: string }>;
+    itemSearchUrls?: Record<string, Record<string, string>>;
     bestStore?: { name: string; total: number };
     totalSavings?: number;
     storeDistances?: Array<{ chain: string; distance: number; address: string; logoColor: string; homeUrl: string }>;
@@ -449,6 +459,66 @@ export const groceryApi = {
       ...(location && { lat: location.lat, lng: location.lng }),
       ...(preferredStores && { preferredStores }),
     });
+    return response.data;
+  },
+
+  getDeals: async (lat: number, lng: number, limit?: number): Promise<{
+    storeName: string;
+    storeAddress?: string;
+    deals: Array<{ krogerProductId: string; name: string; brand: string; size: string; price: number; promoPrice?: number; onSale?: boolean; saleSavings?: number; imageUrl?: string; inStock?: boolean }>;
+  }> => {
+    const response = await api.get('/grocery/deals', { params: { lat, lng, limit } });
+    return response.data;
+  },
+
+  getPriceHistory: async (item: string, days?: number): Promise<{
+    item: string;
+    days: number;
+    history: any[];
+    trend: { direction: 'up' | 'down' | 'stable'; percentChange: number; avgPrice: number };
+  }> => {
+    const response = await api.get('/grocery/price-history', { params: { item, days } });
+    return response.data;
+  },
+};
+
+// Recipe Cost API
+export const recipeCostApi = {
+  getRecipeCost: async (id: string, lat?: number, lng?: number): Promise<{
+    recipeTitle: string;
+    storeName: string;
+    totalCost: number;
+    perServing: number;
+    servings: number;
+    ingredients: Array<{ name: string; price: number; unit: string; isEstimated: boolean }>;
+  }> => {
+    const params: any = {};
+    if (lat) params.lat = lat;
+    if (lng) params.lng = lng;
+    const response = await api.get(`/recipes/${id}/cost`, { params });
+    return response.data;
+  },
+};
+
+// Kroger API
+export const krogerApi = {
+  getStatus: async (): Promise<{ isLinked: boolean; isExpired: boolean | null }> => {
+    const response = await api.get('/kroger/status');
+    return response.data;
+  },
+
+  getAuthUrl: async (): Promise<{ url: string }> => {
+    const response = await api.get('/kroger/auth-url');
+    return response.data;
+  },
+
+  callback: async (code: string): Promise<{ success: boolean }> => {
+    const response = await api.post('/kroger/callback', { code });
+    return response.data;
+  },
+
+  addToCart: async (items: Array<{ upc: string; quantity: number }>): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post('/kroger/add-to-cart', { items });
     return response.data;
   },
 };

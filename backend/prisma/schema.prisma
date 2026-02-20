@@ -26,6 +26,11 @@ model User {
   updatedAt             DateTime @updatedAt
   lastLoginAt           DateTime?
 
+  // Kroger OAuth (cart integration)
+  krogerAccessToken    String?
+  krogerRefreshToken   String?
+  krogerTokenExpiresAt DateTime?
+
   // Relations
   savedRecipes        UserSavedRecipe[]
   folders             RecipeFolder[]
@@ -385,4 +390,18 @@ model Payment {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("payments")
+}
+
+model PriceHistory {
+  id         String   @id @default(uuid())
+  item       String
+  store      String
+  locationId String?
+  price      Float
+  promoPrice Float?
+  fetchedAt  DateTime @default(now())
+
+  @@index([item, store])
+  @@index([item, fetchedAt])
+  @@map("price_history")
 }

@@ -12,8 +12,11 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { shoppingApi, mealPlansApi, inventoryApi, groceryApi } from '../../src/services/api';
+import * as Clipboard from 'expo-clipboard';
+import * as WebBrowser from 'expo-web-browser';
+import { shoppingApi, mealPlansApi, inventoryApi, groceryApi, krogerApi } from '../../src/services/api';
 
 const CATEGORY_ORDER = ['produce', 'dairy', 'meat', 'grains', 'condiments', 'beverages', 'other'];
 
@@ -40,6 +43,8 @@ const STORAGE_ICONS: Record<string, string> = {
   pantry: 'file-tray-stacked-outline',
 };
 
+const KROGER_BANNERS = ['Kroger', "Mariano's", 'King Soopers', 'Fred Meyer', 'Ralphs', "Fry's", 'QFC', "Smith's", 'Dillons', "Pick 'n Save", 'Metro Market', 'Harris Teeter', 'Food 4 Less'];
+
 export default function ShoppingScreen() {
   const [lists, setLists] = useState<any[]>([]);
   const [activeList, setActiveList] = useState<any>(null);
@@ -52,7 +57,7 @@ export default function ShoppingScreen() {
   const [showStoragePicker, setShowStoragePicker] = useState<{ itemId: string; itemName: string } | null>(null);
   const [showEditItem, setShowEditItem] = useState<any>(null);
   const [showCompletedLists, setShowCompletedLists] = useState(false);
-  const [listFilter, setListFilter] = useState<'active' | 'completed' | 'all'>('active');
+  const [listFilter, setListFilter] = useState<'active' | 'completed' | 'new' | 'all'>('active');
   const [actionSheetItem, setActionSheetItem] = useState<any>(null);
   const [purchasePreview, setPurchasePreview] = useState<Array<{ id: string; name: string; quantity: number; unit: string; category: string; storageLocation: string }>>([]);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
@@ -64,8 +69,17 @@ export default function ShoppingScreen() {
   const [editQty, setEditQty] = useState('');
   const [editUnit, setEditUnit] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkText, setBulkText] = useState('');
   const [priceData, setPriceData] = useState<any>(null);
   const [loadingPrices, setLoadingPrices] = useState(false);
+  const [selectedStore, setSelectedStore] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [deals, setDeals] = useState<any[]>([]);
+  const [loadingDeals, setLoadingDeals] = useState(false);
+  const [dealsStoreName, setDealsStoreName] = useState<string>('');
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [krogerLinked, setKrogerLinked] = useState(false);
 
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
@@ -96,6 +110,31 @@ export default function ShoppingScreen() {
 
   useEffect(() => {
     fetchLists(true);
+  }, []);
+
+  // Get user location for Kroger-enhanced autocomplete + deals
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+          setUserLocation(coords);
+          // Fetch deals from nearest Kroger-family store
+          setLoadingDeals(true);
+          try {
+            const data = await groceryApi.getDeals(coords.lat, coords.lng, 10);
+            setDeals(data.deals || []);
+            setDealsStoreName(data.storeName || '');
+          } catch {
+            // Deals unavailable — not critical
+          } finally {
+            setLoadingDeals(false);
+          }
+        }
+      } catch {}
+    })();
   }, []);
 
   const handleGenerateFromMealPlan = async () => {
@@ -213,7 +252,10 @@ export default function ShoppingScreen() {
     if (text.trim().length >= 2) {
       searchTimeout[0] = setTimeout(async () => {
         try {
-          const data = await shoppingApi.searchProducts(text.trim());
+          const opts = userLocation
+            ? { kroger: true, lat: userLocation.lat, lng: userLocation.lng }
+            : undefined;
+          const data = await shoppingApi.searchProducts(text.trim(), opts);
           setSuggestions(data.products || []);
         } catch {
           setSuggestions([]);
@@ -276,6 +318,22 @@ export default function ShoppingScreen() {
         items: (prev.items || []).filter((i: any) => i.id !== tempItem.id),
       }));
       Alert.alert('Error', 'Failed to add item.');
+    }
+  };
+
+  const handleBulkAdd = async () => {
+    if (!activeList || !bulkText.trim()) return;
+    const text = bulkText.trim();
+    setShowAddItem(false);
+    setBulkText('');
+    setBulkMode(false);
+    try {
+      const result = await shoppingApi.bulkAddItems(activeList.id, text);
+      Alert.alert('Added', `${result.count} item(s) added to your list.`);
+      fetchLists();
+    } catch (err) {
+      console.error('Failed to bulk add items:', err);
+      Alert.alert('Error', 'Failed to add items.');
     }
   };
 
@@ -371,6 +429,7 @@ export default function ShoppingScreen() {
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           location = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+          setUserLocation(location);
         }
       } catch {
         // Location not available — proceed without it
@@ -378,6 +437,12 @@ export default function ShoppingScreen() {
 
       const data = await groceryApi.comparePrices(unchecked, location);
       setPriceData(data);
+      // Auto-select the Kroger-family store (has live API data)
+      const ranked = data.rankedStores || [];
+      const krogerEntry = ranked.find((s: any) => KROGER_BANNERS.includes(s.store));
+      if (krogerEntry) {
+        setSelectedStore(krogerEntry.store);
+      }
     } catch (err) {
       console.error('Failed to compare prices:', err);
     } finally {
@@ -390,6 +455,89 @@ export default function ShoppingScreen() {
       await Linking.openURL(url);
     } catch {
       Alert.alert('Error', 'Could not open store link.');
+    }
+  };
+
+  // --- Kroger Cart (OAuth + Add to Cart) ---
+  const handleLinkKrogerAccount = async () => {
+    try {
+      const { url } = await krogerApi.getAuthUrl();
+      if (!url) {
+        Alert.alert('Unavailable', 'Kroger integration is not configured.');
+        return;
+      }
+      // Opens in-app browser; user signs in and authorizes
+      await WebBrowser.openBrowserAsync(url);
+      // After browser closes, check if linking succeeded
+      const { isLinked } = await krogerApi.getStatus();
+      setKrogerLinked(isLinked);
+      if (isLinked) {
+        Alert.alert('Linked!', 'Your store account is now connected. You can add items to your cart.');
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to open sign-in page.');
+    }
+  };
+
+  const handleAddToKrogerCart = async (storeName: string) => {
+    setAddingToCart(true);
+    try {
+      // Check link status first
+      const { isLinked } = await krogerApi.getStatus();
+      setKrogerLinked(isLinked);
+      if (!isLinked) {
+        Alert.alert(
+          `Link ${storeName} Account`,
+          `To add items to your ${storeName} cart, sign in to your account.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign In', onPress: handleLinkKrogerAccount },
+          ]
+        );
+        return;
+      }
+      // Build cart items from price data
+      const storeItems = priceData?.items?.map((item: any) => {
+        const sp = item.stores?.find((s: any) => s.store === storeName);
+        return { upc: sp?.krogerProductId || item.item, quantity: 1 };
+      }).filter((i: any) => i.upc) || [];
+
+      if (storeItems.length === 0) {
+        Alert.alert('No Items', 'No items available to add to cart.');
+        return;
+      }
+      await krogerApi.addToCart(storeItems);
+      Alert.alert('Added to Cart', `${storeItems.length} item(s) added to your ${storeName} cart!`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Failed to add items to cart.';
+      if (msg.includes('not linked') || msg.includes('expired')) {
+        Alert.alert('Sign In Required', 'Your session has expired. Please sign in again.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: handleLinkKrogerAccount },
+        ]);
+      } else {
+        Alert.alert('Error', msg);
+      }
+    } finally {
+      setAddingToCart(false);
+    }
+  };
+
+  // --- Add deal to shopping list ---
+  const handleAddDealToList = async (deal: any) => {
+    if (!activeList) {
+      Alert.alert('No List', 'Create or select a shopping list first.');
+      return;
+    }
+    try {
+      await shoppingApi.addItem(activeList.id, {
+        name: deal.name,
+        quantity: 1,
+        unit: deal.size || 'each',
+      });
+      fetchLists();
+    } catch {
+      Alert.alert('Error', 'Failed to add item.');
     }
   };
 
@@ -464,16 +612,23 @@ export default function ShoppingScreen() {
     );
   }
 
-  // A list is "completed" if: explicitly archived (isActive=false) OR all items are checked
+  // Completed = archived OR every item is checked (must have items)
   const isListCompleted = (list: any) => {
     if (list.isActive === false) return true;
     const items = list.items || [];
     return items.length > 0 && items.every((i: any) => i.isChecked);
   };
+  // New = has 0 items (just created, nothing added yet)
+  const isListNew = (list: any) => {
+    if (list.isActive === false) return false;
+    return (list.items || []).length === 0;
+  };
   const activeLists = lists.filter((l: any) => !isListCompleted(l));
+  const newLists = lists.filter((l: any) => isListNew(l));
   const completedLists = lists.filter((l: any) => isListCompleted(l));
   const filteredLists = listFilter === 'active' ? activeLists
     : listFilter === 'completed' ? completedLists
+    : listFilter === 'new' ? newLists
     : lists;
   const uncheckedItems = activeList?.items?.filter((i: any) => !i.isChecked) || [];
   const checkedItems = activeList?.items?.filter((i: any) => i.isChecked) || [];
@@ -494,8 +649,8 @@ export default function ShoppingScreen() {
         <View className="flex-row items-center justify-between px-4 py-2">
           {/* Filter: Active / Completed / All */}
           <View className="flex-row bg-gray-100 rounded-lg overflow-hidden">
-            {(['active', 'completed', 'all'] as const).map(filter => {
-              const count = filter === 'active' ? activeLists.length : filter === 'completed' ? completedLists.length : lists.length;
+            {(['active', 'new', 'completed', 'all'] as const).map(filter => {
+              const count = filter === 'active' ? activeLists.length : filter === 'new' ? newLists.length : filter === 'completed' ? completedLists.length : lists.length;
               return (
                 <TouchableOpacity
                   key={filter}
@@ -583,8 +738,8 @@ export default function ShoppingScreen() {
                   onPress={handleComparePrices}
                   className="flex-row items-center bg-blue-50 px-3 py-1.5 rounded-lg"
                 >
-                  <Ionicons name="storefront-outline" size={14} color="#3b82f6" />
-                  <Text className="text-xs text-blue-600 ml-1 font-medium">Order</Text>
+                  <Ionicons name="pricetags-outline" size={14} color="#3b82f6" />
+                  <Text className="text-xs text-blue-600 ml-1 font-medium">Compare</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -607,6 +762,69 @@ export default function ShoppingScreen() {
           </View>
 
           <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+            {/* On Sale Deals */}
+            {(deals.length > 0 || loadingDeals) && (
+              <View className="mt-2 mx-4">
+                <View className="flex-row items-center mb-2">
+                  <Ionicons name="flame" size={16} color="#ef4444" />
+                  <Text className="text-sm font-semibold text-gray-800 ml-1">
+                    On Sale{dealsStoreName ? ` at ${dealsStoreName}` : ''}
+                  </Text>
+                </View>
+                {loadingDeals ? (
+                  <ActivityIndicator size="small" color="#10b981" />
+                ) : (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View className="flex-row gap-2">
+                      {deals.map((deal: any, idx: number) => (
+                        <TouchableOpacity
+                          key={idx}
+                          className="bg-white rounded-xl p-2.5 w-36"
+                          onPress={() => handleAddDealToList(deal)}
+                          activeOpacity={0.7}
+                        >
+                          {deal.imageUrl ? (
+                            <Image
+                              source={{ uri: deal.imageUrl }}
+                              style={{ width: '100%', height: 72, borderRadius: 8 }}
+                              contentFit="contain"
+                              cachePolicy="memory-disk"
+                            />
+                          ) : (
+                            <View className="w-full h-[72px] rounded-lg bg-gray-100 items-center justify-center">
+                              <Ionicons name="pricetag" size={24} color="#d1d5db" />
+                            </View>
+                          )}
+                          <Text className="text-xs font-medium text-gray-800 mt-1.5" numberOfLines={2}>
+                            {deal.name}
+                          </Text>
+                          <View className="flex-row items-center mt-1">
+                            {deal.regularPrice != null && (
+                              <Text className="text-[10px] text-gray-400 line-through mr-1">
+                                ${deal.regularPrice.toFixed(2)}
+                              </Text>
+                            )}
+                            <Text className="text-sm font-bold text-red-600">
+                              ${deal.price.toFixed(2)}
+                            </Text>
+                          </View>
+                          {deal.saleSavings > 0 && (
+                            <View className="bg-red-50 self-start px-1.5 py-0.5 rounded mt-1">
+                              <Text className="text-[9px] text-red-600 font-medium">Save ${deal.saleSavings.toFixed(2)}</Text>
+                            </View>
+                          )}
+                          <View className="flex-row items-center mt-1">
+                            <Ionicons name="add-circle-outline" size={12} color="#10b981" />
+                            <Text className="text-[10px] text-primary-600 ml-0.5">Add to list</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                )}
+              </View>
+            )}
+
             {/* Unchecked items by category */}
             {sortedCategories.map(cat => (
               <View key={cat}>
@@ -808,10 +1026,7 @@ export default function ShoppingScreen() {
                           </View>
                           <TouchableOpacity
                             className="bg-primary-500 rounded-lg px-3 py-1.5 flex-row items-center"
-                            onPress={() => {
-                              const link = priceData.storeLinks?.[cheapest.store]?.homeUrl;
-                              if (link) handleOpenStore(link);
-                            }}
+                            onPress={() => setSelectedStore(cheapest.store)}
                           >
                             <Text className="text-white text-xs font-medium">Shop at {cheapest.store}</Text>
                           </TouchableOpacity>
@@ -846,10 +1061,7 @@ export default function ShoppingScreen() {
                           </View>
                           <TouchableOpacity
                             className="bg-blue-500 rounded-lg px-3 py-1.5 flex-row items-center"
-                            onPress={() => {
-                              const link = priceData.storeLinks?.[closestStore.store]?.homeUrl;
-                              if (link) handleOpenStore(link);
-                            }}
+                            onPress={() => setSelectedStore(closestStore.store)}
                           >
                             <Text className="text-white text-xs font-medium">Shop at {closestStore.store}</Text>
                           </TouchableOpacity>
@@ -873,9 +1085,9 @@ export default function ShoppingScreen() {
                 );
               })()}
 
-              {/* Estimated prices note */}
+              {/* Pricing note */}
               <Text className="text-[10px] text-gray-400 mx-4 mt-3 text-center italic">
-                Prices are estimates. Tap a store to see current prices.
+                LIVE = real-time API prices. EST = estimated prices.
               </Text>
 
               {/* Store Totals with Distance */}
@@ -902,7 +1114,7 @@ export default function ShoppingScreen() {
                       <TouchableOpacity
                         key={store}
                         className={`flex-row items-center px-4 py-3 ${idx > 0 ? 'border-t border-gray-100' : ''}`}
-                        onPress={() => storeHomeUrl && handleOpenStore(storeHomeUrl)}
+                        onPress={() => setSelectedStore(store)}
                       >
                         <View
                           className="w-8 h-8 rounded-full items-center justify-center mr-3"
@@ -911,7 +1123,18 @@ export default function ShoppingScreen() {
                           <Text className="text-white text-xs font-bold">{store[0]}</Text>
                         </View>
                         <View className="flex-1">
-                          <Text className="text-sm text-gray-800 font-medium">{store}</Text>
+                          <View className="flex-row items-center">
+                            <Text className="text-sm text-gray-800 font-medium">{store}</Text>
+                            {KROGER_BANNERS.includes(store) ? (
+                              <View className="bg-green-100 px-1.5 py-0.5 rounded ml-1.5">
+                                <Text className="text-[9px] text-green-700 font-semibold">LIVE</Text>
+                              </View>
+                            ) : (
+                              <View className="bg-gray-100 px-1.5 py-0.5 rounded ml-1.5">
+                                <Text className="text-[9px] text-gray-500 font-semibold">EST</Text>
+                              </View>
+                            )}
+                          </View>
                           {distInfo && distInfo.distance > 0 && (
                             <View className="flex-row items-center mt-0.5">
                               <Ionicons name="navigate-outline" size={10} color="#9ca3af" />
@@ -924,9 +1147,14 @@ export default function ShoppingScreen() {
                             <Text className="text-[10px] text-gray-400 mt-0.5">Delivery to your area</Text>
                           )}
                         </View>
-                        <Text className="text-base font-semibold text-gray-600">
-                          ${total?.toFixed(2)}
-                        </Text>
+                        <View className="items-end">
+                          <Text className="text-base font-semibold text-gray-600">
+                            ${total?.toFixed(2)}
+                          </Text>
+                          {distInfo && distInfo.distance > 0 && (
+                            <Text className="text-[10px] text-gray-400">{distInfo.distance} mi</Text>
+                          )}
+                        </View>
                         {entry.cheapest && (
                           <View className="ml-2 bg-primary-100 px-1.5 py-0.5 rounded">
                             <Text className="text-[9px] text-primary-700 font-semibold">CHEAPEST</Text>
@@ -937,7 +1165,7 @@ export default function ShoppingScreen() {
                             <Text className="text-[9px] text-blue-700 font-semibold">CLOSEST</Text>
                           </View>
                         )}
-                        <Ionicons name="open-outline" size={14} color="#9ca3af" style={{ marginLeft: 8 }} />
+                        <Ionicons name="chevron-forward" size={14} color="#9ca3af" style={{ marginLeft: 8 }} />
                       </TouchableOpacity>
                     );
                   });
@@ -971,16 +1199,62 @@ export default function ShoppingScreen() {
                             onPress={() => handleOpenStore(store.deepLink)}
                           >
                             <View className="flex-row items-center">
-                              <View
-                                className="w-4 h-4 rounded-full items-center justify-center mr-1.5"
-                                style={{ backgroundColor: store.logoColor || '#6b7280' }}
-                              >
-                                <Text className="text-white text-[8px] font-bold">{store.store[0]}</Text>
-                              </View>
-                              <Text className={`text-xs ${isBest ? 'text-primary-700 font-semibold' : 'text-gray-600'}`}>
-                                ${store.price.toFixed(2)}
-                              </Text>
-                              <Text className="text-[10px] text-gray-400 ml-1">/{store.unit}</Text>
+                              {store.imageUrl ? (
+                                <Image
+                                  source={{ uri: store.imageUrl }}
+                                  style={{ width: 28, height: 28, borderRadius: 4, marginRight: 6 }}
+                                  cachePolicy="memory-disk"
+                                />
+                              ) : (
+                                <View
+                                  className="w-4 h-4 rounded-full items-center justify-center mr-1.5"
+                                  style={{ backgroundColor: store.logoColor || '#6b7280' }}
+                                >
+                                  <Text className="text-white text-[8px] font-bold">{store.store[0]}</Text>
+                                </View>
+                              )}
+                              {KROGER_BANNERS.includes(store.store) ? (
+                                <View className="bg-green-100 px-1 py-0.5 rounded mr-1">
+                                  <Text className="text-[8px] text-green-700 font-bold">LIVE</Text>
+                                </View>
+                              ) : (
+                                <View className="bg-gray-100 px-1 py-0.5 rounded mr-1">
+                                  <Text className="text-[8px] text-gray-500 font-bold">EST</Text>
+                                </View>
+                              )}
+                              {store.onSale ? (
+                                <View>
+                                  <View className="flex-row items-center">
+                                    <Text className="text-xs text-gray-400 line-through mr-1">
+                                      ${store.regularPrice?.toFixed(2)}
+                                    </Text>
+                                    <Text className={`text-xs font-bold ${isBest ? 'text-primary-700' : 'text-red-600'}`}>
+                                      ${store.price.toFixed(2)}
+                                    </Text>
+                                    <Text className="text-[10px] text-gray-400 ml-1">/{store.unit}</Text>
+                                  </View>
+                                  <View className="flex-row items-center mt-0.5">
+                                    <View className="bg-red-500 px-1 py-0.5 rounded">
+                                      <Text className="text-[8px] text-white font-bold">SALE</Text>
+                                    </View>
+                                    {store.saleSavings > 0 && (
+                                      <Text className="text-[9px] text-red-500 ml-1">-${store.saleSavings.toFixed(2)}</Text>
+                                    )}
+                                  </View>
+                                </View>
+                              ) : (
+                                <View className="flex-row items-center">
+                                  <Text className={`text-xs ${isBest ? 'text-primary-700 font-semibold' : 'text-gray-600'}`}>
+                                    ${store.price.toFixed(2)}
+                                  </Text>
+                                  <Text className="text-[10px] text-gray-400 ml-1">/{store.unit}</Text>
+                                </View>
+                              )}
+                              {store.inStock === false && (
+                                <View className="bg-red-100 px-1 py-0.5 rounded ml-1">
+                                  <Text className="text-[8px] text-red-600 font-bold">OUT</Text>
+                                </View>
+                              )}
                             </View>
                             {distInfo && distInfo.distance > 0 && (
                               <View className="flex-row items-center mt-0.5">
@@ -1004,6 +1278,175 @@ export default function ShoppingScreen() {
             </View>
           )}
         </View>
+      </Modal>
+
+      {/* Send to Store Modal */}
+      <Modal
+        visible={!!selectedStore}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedStore(null)}
+      >
+        <TouchableOpacity
+          className="flex-1 bg-black/40 justify-end"
+          activeOpacity={1}
+          onPress={() => setSelectedStore(null)}
+        >
+          <View
+            className="bg-white rounded-t-2xl"
+            onStartShouldSetResponder={() => true}
+          >
+            {(() => {
+              if (!selectedStore || !priceData) return null;
+              const logoColor = priceData.items?.[0]?.stores?.find(
+                (s: any) => s.store === selectedStore
+              )?.logoColor || '#6b7280';
+              const storeTotal = priceData.storeTotals?.[selectedStore];
+              const homeUrl = priceData.storeLinks?.[selectedStore]?.homeUrl;
+              const itemSearchUrls = priceData.itemSearchUrls?.[selectedStore] || {};
+
+              const storeItems = priceData.items?.map((item: any) => {
+                const storePrice = item.stores?.find((s: any) => s.store === selectedStore);
+                return {
+                  name: item.item,
+                  price: storePrice?.price,
+                  unit: storePrice?.unit,
+                  searchUrl: itemSearchUrls[item.item] || storePrice?.deepLink,
+                  imageUrl: storePrice?.imageUrl,
+                  onSale: storePrice?.onSale,
+                  regularPrice: storePrice?.regularPrice,
+                  saleSavings: storePrice?.saleSavings,
+                  inStock: storePrice?.inStock,
+                  krogerProductId: storePrice?.krogerProductId,
+                };
+              }) || [];
+
+              const handleCopyList = async () => {
+                const lines = storeItems.map((item: any) =>
+                  `${item.name}${item.price ? ` — $${item.price.toFixed(2)}/${item.unit}` : ''}`
+                );
+                const text = `${selectedStore} Shopping List ($${storeTotal?.toFixed(2)} est.)\n${lines.join('\n')}`;
+                await Clipboard.setStringAsync(text);
+                Alert.alert('Copied', 'Shopping list copied to clipboard.');
+              };
+
+              return (
+                <>
+                  {/* Header */}
+                  <View className="flex-row items-center px-4 pt-4 pb-3 border-b border-gray-100">
+                    <View
+                      className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                      style={{ backgroundColor: logoColor }}
+                    >
+                      <Text className="text-white text-sm font-bold">{selectedStore[0]}</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-lg font-semibold text-gray-800">{selectedStore}</Text>
+                      {storeTotal != null && (
+                        <Text className="text-sm text-gray-500">Est. total: ${storeTotal.toFixed(2)}</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => setSelectedStore(null)}>
+                      <Ionicons name="close" size={24} color="#9ca3af" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Item list */}
+                  <ScrollView style={{ maxHeight: 380 }} contentContainerStyle={{ paddingBottom: 8 }}>
+                    {storeItems.map((item: any, idx: number) => (
+                      <TouchableOpacity
+                        key={idx}
+                        className={`flex-row items-center px-4 py-3 ${idx > 0 ? 'border-t border-gray-50' : ''}`}
+                        onPress={() => item.searchUrl && handleOpenStore(item.searchUrl)}
+                      >
+                        {item.imageUrl ? (
+                          <Image
+                            source={{ uri: item.imageUrl }}
+                            style={{ width: 32, height: 32, borderRadius: 4, marginRight: 8 }}
+                            cachePolicy="memory-disk"
+                          />
+                        ) : null}
+                        <View className="flex-1">
+                          <Text className="text-sm text-gray-800">{item.name}</Text>
+                          {item.onSale && (
+                            <View className="flex-row items-center mt-0.5">
+                              <View className="bg-red-500 px-1 py-0.5 rounded mr-1">
+                                <Text className="text-[8px] text-white font-bold">SALE</Text>
+                              </View>
+                              {item.saleSavings > 0 && (
+                                <Text className="text-[9px] text-red-500">Save ${item.saleSavings.toFixed(2)}</Text>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                        {item.price != null && (
+                          <View className="items-end mr-2">
+                            {item.onSale && item.regularPrice != null ? (
+                              <>
+                                <Text className="text-[10px] text-gray-400 line-through">${item.regularPrice.toFixed(2)}</Text>
+                                <Text className="text-sm font-bold text-red-600">${item.price.toFixed(2)}</Text>
+                              </>
+                            ) : (
+                              <Text className="text-sm font-medium text-gray-600">${item.price.toFixed(2)}</Text>
+                            )}
+                            {item.unit && (
+                              <Text className="text-[10px] text-gray-400">/{item.unit}</Text>
+                            )}
+                          </View>
+                        )}
+                        {item.inStock === false && (
+                          <View className="bg-red-100 px-1.5 py-0.5 rounded mr-2">
+                            <Text className="text-[8px] text-red-600 font-bold">OUT</Text>
+                          </View>
+                        )}
+                        <Ionicons name="open-outline" size={14} color="#9ca3af" />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  {/* Actions */}
+                  <View className="px-4 pt-2 pb-8 border-t border-gray-100 gap-2">
+                    <View className="flex-row gap-2">
+                      <TouchableOpacity
+                        className="flex-1 flex-row items-center justify-center py-3 rounded-xl border border-gray-200"
+                        onPress={handleCopyList}
+                      >
+                        <Ionicons name="copy-outline" size={16} color="#6b7280" />
+                        <Text className="text-sm text-gray-600 ml-2 font-medium">Copy List</Text>
+                      </TouchableOpacity>
+                      {homeUrl && (
+                        <TouchableOpacity
+                          className="flex-1 flex-row items-center justify-center py-3 rounded-xl"
+                          style={{ backgroundColor: logoColor }}
+                          onPress={() => handleOpenStore(homeUrl)}
+                        >
+                          <Ionicons name="open-outline" size={16} color="white" />
+                          <Text className="text-sm text-white ml-2 font-medium">
+                            {selectedStore && KROGER_BANNERS.includes(selectedStore)
+                              ? `Shop at ${selectedStore}`
+                              : 'Open Store'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    {selectedStore && KROGER_BANNERS.includes(selectedStore) && (
+                      <TouchableOpacity
+                        className="flex-row items-center justify-center py-3 rounded-xl bg-blue-600"
+                        onPress={() => handleAddToKrogerCart(selectedStore)}
+                        disabled={addingToCart}
+                      >
+                        <Ionicons name="cart-outline" size={16} color="white" />
+                        <Text className="text-sm text-white ml-2 font-medium">
+                          {addingToCart ? 'Adding...' : `Add to ${selectedStore} Cart`}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </>
+              );
+            })()}
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* Create List Modal */}
@@ -1033,77 +1476,137 @@ export default function ShoppingScreen() {
       </Modal>
 
       {/* Add Item Modal */}
-      <Modal visible={showAddItem} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setShowAddItem(false); setSuggestions([]); }}>
+      <Modal visible={showAddItem} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setShowAddItem(false); setSuggestions([]); setBulkMode(false); }}>
         <View className="flex-1 bg-gray-50">
           <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => { setShowAddItem(false); setSuggestions([]); }}>
+            <TouchableOpacity onPress={() => { setShowAddItem(false); setSuggestions([]); setBulkMode(false); }}>
               <Text className="text-gray-500">Cancel</Text>
             </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">Add Item</Text>
-            <TouchableOpacity onPress={handleAddItem} disabled={!newItemName.trim()}>
-              <Text className={`font-medium ${newItemName.trim() ? 'text-primary-500' : 'text-gray-300'}`}>Add</Text>
+            <Text className="text-lg font-semibold text-gray-800">{bulkMode ? 'Add Items' : 'Add Item'}</Text>
+            <TouchableOpacity
+              onPress={bulkMode ? handleBulkAdd : handleAddItem}
+              disabled={bulkMode ? !bulkText.trim() : !newItemName.trim()}
+            >
+              <Text className={`font-medium ${(bulkMode ? bulkText.trim() : newItemName.trim()) ? 'text-primary-500' : 'text-gray-300'}`}>
+                Add
+              </Text>
             </TouchableOpacity>
           </View>
-          <View className="px-4 pt-4 gap-4">
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Item Name *</Text>
+
+          {/* Single / Bulk toggle */}
+          <View className="flex-row mx-4 mt-3 bg-gray-100 rounded-lg overflow-hidden">
+            <TouchableOpacity
+              onPress={() => setBulkMode(false)}
+              className={`flex-1 py-2 items-center ${!bulkMode ? 'bg-primary-500' : ''}`}
+            >
+              <Text className={`text-sm font-medium ${!bulkMode ? 'text-white' : 'text-gray-500'}`}>Single</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setBulkMode(true)}
+              className={`flex-1 py-2 items-center ${bulkMode ? 'bg-primary-500' : ''}`}
+            >
+              <Text className={`text-sm font-medium ${bulkMode ? 'text-white' : 'text-gray-500'}`}>Bulk</Text>
+            </TouchableOpacity>
+          </View>
+
+          {bulkMode ? (
+            <View className="px-4 pt-4 gap-2">
+              <Text className="text-sm font-medium text-gray-700">Type or paste items, one per line</Text>
               <TextInput
                 className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                placeholder="Start typing to search..."
+                placeholder={"chicken breast 3 lbs\nflour\nbread crumbs 2 cups"}
                 placeholderTextColor="#9ca3af"
-                value={newItemName}
-                onChangeText={handleItemNameChange}
+                value={bulkText}
+                onChangeText={setBulkText}
+                multiline
+                numberOfLines={8}
+                style={{ minHeight: 180, textAlignVertical: 'top' }}
                 autoFocus
               />
-              {/* Autocomplete suggestions */}
-              {suggestions.length > 0 && (
-                <View className="bg-white border border-gray-200 rounded-xl mt-1 overflow-hidden">
-                  {suggestions.map((product: any, idx: number) => (
-                    <TouchableOpacity
-                      key={`${product.name}-${idx}`}
-                      className={`flex-row items-center px-4 py-2.5 ${idx > 0 ? 'border-t border-gray-100' : ''}`}
-                      onPress={() => selectSuggestion(product)}
-                    >
-                      <View className="flex-1">
-                        <Text className="text-sm text-gray-800">{product.name}</Text>
-                        <Text className="text-[10px] text-gray-400">
-                          {product.category} · {product.defaultUnit}
-                        </Text>
-                      </View>
-                      {product.source === 'history' && (
-                        <View className="bg-blue-50 px-1.5 py-0.5 rounded">
-                          <Text className="text-[9px] text-blue-500">Recent</Text>
+              <Text className="text-[10px] text-gray-400">
+                Supports: "item name", "item qty unit", or "qty unit item"
+              </Text>
+            </View>
+          ) : (
+            <View className="px-4 pt-4 gap-4">
+              <View>
+                <Text className="text-sm font-medium text-gray-700 mb-1">Item Name *</Text>
+                <TextInput
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                  placeholder="Start typing to search..."
+                  placeholderTextColor="#9ca3af"
+                  value={newItemName}
+                  onChangeText={handleItemNameChange}
+                  autoFocus
+                />
+                {/* Autocomplete suggestions */}
+                {suggestions.length > 0 && (
+                  <View className="bg-white border border-gray-200 rounded-xl mt-1 overflow-hidden">
+                    {suggestions.map((product: any, idx: number) => (
+                      <TouchableOpacity
+                        key={`${product.name}-${idx}`}
+                        className={`flex-row items-center px-4 py-2.5 ${idx > 0 ? 'border-t border-gray-100' : ''}`}
+                        onPress={() => selectSuggestion(product)}
+                      >
+                        {product.imageUrl ? (
+                          <Image
+                            source={{ uri: product.imageUrl }}
+                            style={{ width: 32, height: 32, borderRadius: 4, marginRight: 8 }}
+                            cachePolicy="memory-disk"
+                          />
+                        ) : (
+                          <View className="w-8 h-8 rounded bg-gray-100 items-center justify-center mr-2">
+                            <Ionicons name="nutrition-outline" size={16} color="#9ca3af" />
+                          </View>
+                        )}
+                        <View className="flex-1">
+                          <Text className="text-sm text-gray-800">{product.name}</Text>
+                          <Text className="text-[10px] text-gray-400">
+                            {product.category} · {product.size || product.defaultUnit}
+                          </Text>
                         </View>
-                      )}
-                    </TouchableOpacity>
-                  ))}
+                        <View className="items-end">
+                          {product.price != null && (
+                            <Text className="text-xs font-medium text-gray-600">
+                              ${product.promoPrice != null ? product.promoPrice.toFixed(2) : product.price.toFixed(2)}
+                            </Text>
+                          )}
+                          {product.source === 'history' && (
+                            <View className="bg-blue-50 px-1.5 py-0.5 rounded mt-0.5">
+                              <Text className="text-[9px] text-blue-500">Recent</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+              <View className="flex-row gap-3">
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-700 mb-1">Quantity</Text>
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                    placeholder="e.g. 2"
+                    placeholderTextColor="#9ca3af"
+                    value={newItemQty}
+                    onChangeText={setNewItemQty}
+                    keyboardType="numeric"
+                  />
                 </View>
-              )}
-            </View>
-            <View className="flex-row gap-3">
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-700 mb-1">Quantity</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                  placeholder="e.g. 2"
-                  placeholderTextColor="#9ca3af"
-                  value={newItemQty}
-                  onChangeText={setNewItemQty}
-                  keyboardType="numeric"
-                />
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                  placeholder="e.g. gallons"
-                  placeholderTextColor="#9ca3af"
-                  value={newItemUnit}
-                  onChangeText={setNewItemUnit}
-                />
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                    placeholder="e.g. gallons"
+                    placeholderTextColor="#9ca3af"
+                    value={newItemUnit}
+                    onChangeText={setNewItemUnit}
+                  />
+                </View>
               </View>
             </View>
-          </View>
+          )}
         </View>
       </Modal>
 

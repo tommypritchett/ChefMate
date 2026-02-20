@@ -296,7 +296,40 @@ const GROCERY_PRODUCTS: Array<{ name: string; category: string; unit: string; co
 
 const router = express.Router();
 
+// ─── Search Relevance Helpers ─────────────────────────────────────────────
+
+// Score how well a product name matches the search query (higher = better)
+function scoreSearchRelevance(productName: string, query: string): number {
+  const name = productName.toLowerCase();
+  const q = query.toLowerCase();
+  if (name === q) return 100;
+  if (name.startsWith(q)) return 85;
+  if (name.includes(q)) return 70;
+  // All query words present in name
+  const words = q.split(/\s+/).filter(w => w.length > 1);
+  if (words.length > 0 && words.every(w => name.includes(w))) return 55;
+  // Partial word match — score by ratio of matched words
+  const matched = words.filter(w => name.includes(w)).length;
+  if (matched > 0) return 10 + Math.round((matched / words.length) * 30);
+  return 0;
+}
+
+// Smart dedup: two names are duplicates only if they normalize to the same item
+function isSearchDuplicate(newName: string, existingNames: Set<string>): boolean {
+  const norm = newName.toLowerCase().trim();
+  for (const existing of existingNames) {
+    if (norm === existing) return true;
+    // Only count as dupe if the shorter string is ≥50% of the longer string length
+    // This prevents "milk" from blocking "tru moo chocolate milk"
+    const shorter = norm.length < existing.length ? norm : existing;
+    const longer = norm.length < existing.length ? existing : norm;
+    if (longer.includes(shorter) && shorter.length >= longer.length * 0.5) return true;
+  }
+  return false;
+}
+
 // GET /api/shopping-lists/search-products — Autocomplete product search
+// Accepts optional ?kroger=true&lat=X&lng=Y for live Kroger product search
 router.get('/search-products', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const q = (req.query.q as string || '').toLowerCase().trim();
@@ -304,58 +337,91 @@ router.get('/search-products', requireAuth, async (req: AuthenticatedRequest, re
       return res.json({ products: [] });
     }
 
-    // Search local product database
-    const matches = GROCERY_PRODUCTS.filter(p => {
-      const name = p.name.toLowerCase();
-      // Starts with query or contains query word
-      return name.includes(q) || q.split(' ').every(word => name.includes(word));
-    })
-      .slice(0, 10)
-      .map(p => ({
-        name: p.name,
-        category: p.category,
-        defaultUnit: p.unit,
-        commonUnits: p.commonUnits,
-      }));
+    // Collect all candidates with relevance scores
+    const candidates: Array<{
+      name: string; category: string; defaultUnit: string;
+      source: string; score: number;
+      commonUnits?: string[]; imageUrl?: string;
+      price?: number; promoPrice?: number; size?: string;
+    }> = [];
 
-    // Also search user's previous shopping list items for personalized suggestions
+    // 1) Search local product database
+    const qWords = q.split(/\s+/).filter(w => w.length > 1);
+    for (const p of GROCERY_PRODUCTS) {
+      const name = p.name.toLowerCase();
+      const score = scoreSearchRelevance(name, q);
+      if (score > 0) {
+        candidates.push({
+          name: p.name, category: p.category, defaultUnit: p.unit,
+          commonUnits: p.commonUnits, source: 'database', score,
+        });
+      }
+    }
+
+    // 2) Search user's previous shopping list items
     const userItems = await prisma.shoppingListItem.findMany({
       where: {
         shoppingList: { userId: req.user!.userId },
         name: { contains: q },
       },
       distinct: ['name'],
-      take: 5,
+      take: 8,
       orderBy: { createdAt: 'desc' },
       select: { name: true, unit: true, category: true },
     });
+    for (const item of userItems) {
+      const score = scoreSearchRelevance(item.name, q) + 5; // small history bonus
+      candidates.push({
+        name: item.name,
+        category: item.category || inferItemCategory(item.name),
+        defaultUnit: item.unit || 'count',
+        source: 'history', score,
+      });
+    }
 
-    // Merge: user items first (personalized), then product DB (deduped)
+    // 3) Kroger API results (live prices — highest value for user)
+    const useKroger = req.query.kroger === 'true';
+    const lat = parseFloat(req.query.lat as string);
+    const lng = parseFloat(req.query.lng as string);
+
+    if (useKroger && !isNaN(lat) && !isNaN(lng) && q.length >= 3 && process.env.KROGER_CLIENT_ID) {
+      try {
+        const { findNearestKrogerLocationCached, searchKrogerProducts } = await import('../services/grocery-prices');
+        const location = await findNearestKrogerLocationCached(lat, lng);
+        if (location) {
+          const krogerResults = await searchKrogerProducts(q, location.locationId, 5);
+          for (const kr of krogerResults) {
+            const score = scoreSearchRelevance(kr.name, q) + 10; // Kroger bonus (real prices)
+            candidates.push({
+              name: kr.name,
+              category: inferItemCategory(kr.name),
+              defaultUnit: kr.size || 'each',
+              source: 'kroger', score,
+              imageUrl: kr.imageUrl,
+              price: kr.price,
+              promoPrice: kr.promoPrice,
+              size: kr.size,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Kroger product search in autocomplete failed:', err);
+      }
+    }
+
+    // Sort by score descending, then deduplicate keeping highest-scored version
+    candidates.sort((a, b) => b.score - a.score);
     const seenNames = new Set<string>();
     const products: any[] = [];
-
-    for (const item of userItems) {
-      const key = item.name.toLowerCase();
-      if (!seenNames.has(key)) {
-        seenNames.add(key);
-        products.push({
-          name: item.name,
-          category: item.category || inferItemCategory(item.name),
-          defaultUnit: item.unit || 'count',
-          source: 'history',
-        });
-      }
+    for (const c of candidates) {
+      if (isSearchDuplicate(c.name, seenNames)) continue;
+      seenNames.add(c.name.toLowerCase().trim());
+      const { score, ...product } = c;
+      products.push(product);
+      if (products.length >= 15) break;
     }
 
-    for (const match of matches) {
-      const key = match.name.toLowerCase();
-      if (!seenNames.has(key)) {
-        seenNames.add(key);
-        products.push({ ...match, source: 'database' });
-      }
-    }
-
-    res.json({ products: products.slice(0, 10) });
+    res.json({ products });
   } catch (error) {
     console.error('Search products error:', error);
     res.status(500).json({ error: 'Failed to search products' });
@@ -857,6 +923,106 @@ router.post('/:listId/purchase-all', requireAuth, async (req: AuthenticatedReque
   } catch (error) {
     console.error('Purchase all items error:', error);
     res.status(500).json({ error: 'Failed to purchase items' });
+  }
+});
+
+// POST /api/shopping-lists/:id/items/bulk
+// Parse raw text (one item per line or comma-separated) and add all items at once
+router.post('/:id/items/bulk', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { items: rawText } = req.body;
+
+    if (!rawText || typeof rawText !== 'string' || !rawText.trim()) {
+      return res.status(400).json({ error: 'Items text is required' });
+    }
+
+    // Verify ownership
+    const list = await prisma.shoppingList.findFirst({
+      where: { id, userId: req.user!.userId }
+    });
+
+    if (!list) {
+      return res.status(404).json({ error: 'Shopping list not found' });
+    }
+
+    // Split by newlines or commas, trim each line
+    const lines = rawText.split(/[\n,]+/).map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+
+    if (lines.length === 0) {
+      return res.status(400).json({ error: 'No items found in text' });
+    }
+
+    // Parse each line: "chicken breast 3 lbs" → name, qty, unit
+    // Regex: optional leading quantity + unit at the end, rest is name
+    const parsedItems = lines.map((line: string) => {
+      // Try pattern: "name qty unit" e.g. "chicken breast 3 lbs"
+      const trailingMatch = line.match(/^(.+?)\s+(\d+\.?\d*)\s*([a-zA-Z]+)$/);
+      if (trailingMatch) {
+        return {
+          name: trailingMatch[1].trim(),
+          quantity: parseFloat(trailingMatch[2]),
+          unit: trailingMatch[3],
+          category: inferItemCategory(trailingMatch[1].trim()),
+        };
+      }
+
+      // Try pattern: "qty unit name" e.g. "3 lbs chicken breast"
+      const leadingMatch = line.match(/^(\d+\.?\d*)\s*([a-zA-Z]+)\s+(.+)$/);
+      if (leadingMatch) {
+        return {
+          name: leadingMatch[3].trim(),
+          quantity: parseFloat(leadingMatch[1]),
+          unit: leadingMatch[2],
+          category: inferItemCategory(leadingMatch[3].trim()),
+        };
+      }
+
+      // Try pattern: "qty name" e.g. "3 chicken breasts"
+      const qtyOnlyMatch = line.match(/^(\d+\.?\d*)\s+(.+)$/);
+      if (qtyOnlyMatch) {
+        return {
+          name: qtyOnlyMatch[2].trim(),
+          quantity: parseFloat(qtyOnlyMatch[1]),
+          unit: null,
+          category: inferItemCategory(qtyOnlyMatch[2].trim()),
+        };
+      }
+
+      // Just a name
+      return {
+        name: line,
+        quantity: null,
+        unit: null,
+        category: inferItemCategory(line),
+      };
+    });
+
+    // Create all items
+    await prisma.shoppingListItem.createMany({
+      data: parsedItems.map((item: any) => ({
+        shoppingListId: id,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        category: item.category,
+      })),
+    });
+
+    // Fetch updated list
+    const updatedList = await prisma.shoppingList.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    res.status(201).json({
+      count: parsedItems.length,
+      items: parsedItems,
+      list: updatedList,
+    });
+  } catch (error) {
+    console.error('Bulk add items error:', error);
+    res.status(500).json({ error: 'Failed to add items' });
   }
 });
 

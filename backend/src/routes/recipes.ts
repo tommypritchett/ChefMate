@@ -47,11 +47,29 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search as string } },
-        { description: { contains: search as string } },
-        { brand: { contains: search as string } }
-      ];
+      // Split search into individual words so "chicken breast" matches
+      // recipes where both "chicken" AND "breast" appear in title/description/brand.
+      // SQLite's LIKE (used by Prisma `contains`) is case-insensitive for ASCII.
+      const searchWords = (search as string).trim().split(/\s+/).filter(w => w.length > 0);
+      if (searchWords.length === 1) {
+        where.OR = [
+          { title: { contains: searchWords[0] } },
+          { description: { contains: searchWords[0] } },
+          { brand: { contains: searchWords[0] } }
+        ];
+      } else if (searchWords.length > 1) {
+        // Each word must appear in at least one of title/description/brand
+        where.AND = [
+          ...(where.AND || []),
+          ...searchWords.map((word: string) => ({
+            OR: [
+              { title: { contains: word } },
+              { description: { contains: word } },
+              { brand: { contains: word } },
+            ]
+          }))
+        ];
+      }
     }
 
     // Ingredient match requires user auth + inventory lookup
@@ -264,6 +282,89 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     console.error('Create recipe error:', error);
     res.status(500).json({ error: 'Failed to create recipe' });
+  }
+});
+
+// GET /api/recipes/:id/cost?lat=X&lng=Y — Estimate recipe ingredient cost
+router.get('/:id/cost', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const lat = parseFloat(req.query.lat as string);
+    const lng = parseFloat(req.query.lng as string);
+
+    const recipe = await prisma.recipe.findFirst({
+      where: { OR: [{ id }, { slug: id }], isPublished: true },
+      select: { id: true, title: true, ingredients: true, servings: true },
+    });
+
+    if (!recipe) {
+      return res.status(404).json({ error: 'Recipe not found' });
+    }
+
+    let ingredients: Array<{ name: string; amount?: number; unit?: string }>;
+    try {
+      ingredients = JSON.parse(recipe.ingredients);
+    } catch {
+      return res.json({ recipeTitle: recipe.title, totalCost: 0, perServing: 0, ingredients: [], message: 'Could not parse ingredients' });
+    }
+
+    const { getPricesForItem, getKrogerPrices, findNearestKrogerLocationCached } = await import('../services/grocery-prices');
+
+    // Try to get Kroger location for live prices
+    let locationId: string | undefined;
+    let storeName = 'Estimated';
+    let chain: string | undefined;
+    if (!isNaN(lat) && !isNaN(lng) && process.env.KROGER_CLIENT_ID) {
+      const location = await findNearestKrogerLocationCached(lat, lng);
+      if (location) {
+        locationId = location.locationId;
+        storeName = location.chain;
+        chain = location.chain;
+      }
+    }
+
+    // Fetch prices for each ingredient (max 5 concurrent)
+    const costResults: Array<{ name: string; price: number; unit: string; isEstimated: boolean }> = [];
+    const batchSize = 5;
+
+    for (let i = 0; i < ingredients.length; i += batchSize) {
+      const batch = ingredients.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (ing) => {
+          // Try Kroger live price first
+          if (locationId) {
+            const krogerPrices = await getKrogerPrices(ing.name, locationId, chain);
+            if (krogerPrices && krogerPrices.length > 0) {
+              return { name: ing.name, price: krogerPrices[0].price, unit: krogerPrices[0].unit, isEstimated: false };
+            }
+          }
+          // Fallback to mock prices
+          const mockResult = getPricesForItem(ing.name);
+          return { name: ing.name, price: mockResult.bestPrice.price, unit: mockResult.bestPrice.unit, isEstimated: true };
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          costResults.push(result.value);
+        }
+      }
+    }
+
+    const totalCost = Math.round(costResults.reduce((sum, c) => sum + c.price, 0) * 100) / 100;
+    const perServing = Math.round((totalCost / (recipe.servings || 1)) * 100) / 100;
+
+    res.json({
+      recipeTitle: recipe.title,
+      storeName,
+      totalCost,
+      perServing,
+      servings: recipe.servings,
+      ingredients: costResults,
+    });
+  } catch (error) {
+    console.error('Recipe cost estimation error:', error);
+    res.status(500).json({ error: 'Failed to estimate recipe cost' });
   }
 });
 
