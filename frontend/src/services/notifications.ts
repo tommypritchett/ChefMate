@@ -115,6 +115,35 @@ export async function scheduleMealReminder(mealType: string, hour: number, minut
   });
 }
 
+// Schedule weight log reminder — daily at 8 AM
+export async function scheduleWeightLogReminder() {
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Log Your Weight',
+      body: "Hey! It's been a while since you logged your weight. Let's stay on track!",
+      data: { type: 'weight_reminder' },
+    },
+    trigger: {
+      hour: 8,
+      minute: 0,
+      repeats: true,
+      channelId: 'meals',
+    },
+  });
+}
+
+// Cancel weight log reminder
+export async function cancelWeightLogReminder() {
+  // Cancel all and re-schedule only non-weight reminders
+  // For simplicity, we just cancel all — callers should re-schedule other reminders if needed
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  for (const notif of scheduled) {
+    if ((notif.content.data as any)?.type === 'weight_reminder') {
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+    }
+  }
+}
+
 // Cancel all scheduled notifications
 export async function cancelAllNotifications() {
   await Notifications.cancelAllScheduledNotificationsAsync();

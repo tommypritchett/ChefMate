@@ -239,6 +239,11 @@ export const mealPlansApi = {
   deleteSlot: async (planId: string, slotId: string): Promise<void> => {
     await api.delete(`/meal-plans/${planId}/slots/${slotId}`);
   },
+
+  markSlotCompleted: async (planId: string, slotId: string, isCompleted: boolean): Promise<{ slot: any; mealLogCreated: boolean }> => {
+    const response = await api.patch(`/meal-plans/${planId}/slots/${slotId}`, { isCompleted });
+    return response.data;
+  },
 };
 
 // Favorites API
@@ -329,7 +334,7 @@ export const shoppingApi = {
     await api.delete(`/shopping-lists/${id}`);
   },
 
-  addItem: async (listId: string, data: { name: string; quantity?: number; unit?: string; category?: string }): Promise<{ item: any }> => {
+  addItem: async (listId: string, data: { name: string; quantity?: number; unit?: string; category?: string; krogerProductId?: string }): Promise<{ item: any }> => {
     const response = await api.post(`/shopping-lists/${listId}/items`, data);
     return response.data;
   },
@@ -339,7 +344,7 @@ export const shoppingApi = {
     return response.data;
   },
 
-  editItem: async (listId: string, itemId: string, data: { name?: string; quantity?: number; unit?: string; notes?: string }): Promise<{ item: any; listCompleted?: boolean }> => {
+  editItem: async (listId: string, itemId: string, data: { name?: string; quantity?: number; unit?: string; notes?: string; krogerProductId?: string }): Promise<{ item: any; listCompleted?: boolean }> => {
     const response = await api.patch(`/shopping-lists/${listId}/items/${itemId}`, data);
     return response.data;
   },
@@ -381,6 +386,23 @@ export const shoppingApi = {
     const response = await api.post(`/shopping-lists/${listId}/items/bulk`, { items });
     return response.data;
   },
+
+  setKrogerLocation: async (lat: number, lng: number): Promise<{ krogerLocation: any }> => {
+    const response = await api.post('/shopping-lists/set-kroger-location', { lat, lng });
+    return response.data;
+  },
+  markItemsCarted: async (listId: string, itemIds: string[]): Promise<{ success: boolean; count: number }> => {
+    const response = await api.post(`/shopping-lists/${listId}/mark-carted`, { itemIds });
+    return response.data;
+  },
+  smartSearch: async (items: string[]): Promise<{ results: any[]; storeName: string }> => {
+    const response = await api.post('/shopping-lists/smart-search', { items });
+    return response.data;
+  },
+  parseItems: async (text: string): Promise<{ items: string[] }> => {
+    const response = await api.post('/shopping-lists/parse-items', { text });
+    return response.data;
+  },
 };
 
 // Health Goals API
@@ -390,7 +412,7 @@ export const healthGoalsApi = {
     return response.data;
   },
 
-  createGoal: async (data: { goalType: string; targetValue: number; unit?: string; targetDate?: string }): Promise<{ goal: any }> => {
+  createGoal: async (data: { goalType: string; targetValue: number; unit?: string; targetDate?: string; startingWeight?: number; startWeightDate?: string }): Promise<{ goal: any }> => {
     const response = await api.post('/health-goals', data);
     return response.data;
   },
@@ -413,6 +435,25 @@ export const healthGoalsApi = {
     const response = await api.get('/health-goals/score-recipes');
     return response.data;
   },
+
+  logWeight: async (data: { weight: number; unit?: string; logDate: string; notes?: string }): Promise<{ log: any }> => {
+    const response = await api.post('/health-goals/weight-log', data);
+    return response.data;
+  },
+
+  getWeightLogs: async (days?: number): Promise<{ logs: any[]; stats: any }> => {
+    const response = await api.get('/health-goals/weight-logs', { params: { days } });
+    return response.data;
+  },
+
+  deleteWeightLog: async (id: string): Promise<void> => {
+    await api.delete(`/health-goals/weight-log/${id}`);
+  },
+
+  getCalendarData: async (month: string): Promise<{ days: Record<string, any> }> => {
+    const response = await api.get('/health-goals/calendar-data', { params: { month } });
+    return response.data;
+  },
 };
 
 // Nutrition API
@@ -425,6 +466,7 @@ export const nutritionApi = {
   logMeal: async (data: {
     mealType: string;
     mealDate: string;
+    mealTime?: string;
     recipeId?: string;
     mealName?: string;
     calories?: number;
@@ -433,6 +475,34 @@ export const nutritionApi = {
     fat?: number;
   }): Promise<{ mealLog: any }> => {
     const response = await api.post('/nutrition/log-meal', data);
+    return response.data;
+  },
+
+  searchRecipes: async (query: string): Promise<{ recipes: any[] }> => {
+    const response = await api.get('/nutrition/search-recipes', { params: { q: query } });
+    return response.data;
+  },
+
+  estimateNutrition: async (query: string): Promise<{ mealName: string; calories: number; protein: number; carbs: number; fat: number }> => {
+    const response = await api.get('/nutrition/estimate', { params: { q: query } });
+    return response.data;
+  },
+
+  updateMeal: async (id: string, data: {
+    mealType?: string;
+    mealName?: string;
+    mealTime?: string;
+    calories?: number | null;
+    protein?: number | null;
+    carbs?: number | null;
+    fat?: number | null;
+  }): Promise<{ mealLog: any }> => {
+    const response = await api.patch(`/nutrition/meal/${id}`, data);
+    return response.data;
+  },
+
+  deleteMeal: async (id: string): Promise<{ success: boolean }> => {
+    const response = await api.delete(`/nutrition/meal/${id}`);
     return response.data;
   },
 };
@@ -517,8 +587,8 @@ export const krogerApi = {
     return response.data;
   },
 
-  addToCart: async (items: Array<{ upc: string; quantity: number }>): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post('/kroger/add-to-cart', { items });
+  addToCart: async (items: Array<{ upc: string; quantity: number }>, options?: { listId?: string; itemIds?: string[] }): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post('/kroger/add-to-cart', { items, ...options });
     return response.data;
   },
 };

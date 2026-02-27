@@ -21,7 +21,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 // POST /api/health-goals — create or update a goal
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { goalType, targetValue, unit, targetDate } = req.body;
+    const { goalType, targetValue, unit, targetDate, startingWeight, startWeightDate } = req.body;
     if (!goalType || targetValue == null) {
       return res.status(400).json({ error: 'goalType and targetValue are required' });
     }
@@ -32,20 +32,219 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       data: { isActive: false },
     });
 
-    const goal = await prisma.healthGoal.create({
-      data: {
-        userId: req.user!.userId,
-        goalType,
-        targetValue: parseFloat(targetValue),
-        unit: unit || null,
-        targetDate: targetDate ? new Date(targetDate) : null,
-      },
-    });
+    const goalData: any = {
+      userId: req.user!.userId,
+      goalType,
+      targetValue: parseFloat(targetValue),
+      unit: unit || null,
+      targetDate: targetDate ? new Date(targetDate) : null,
+    };
+
+    // Weight goal — store starting weight info
+    if (goalType === 'weight' && startingWeight != null) {
+      goalData.startingWeight = parseFloat(startingWeight);
+      goalData.startWeightDate = startWeightDate ? new Date(startWeightDate) : new Date();
+      goalData.currentValue = parseFloat(startingWeight);
+    }
+
+    const goal = await prisma.healthGoal.create({ data: goalData });
+
+    // Auto-create first weight log entry
+    if (goalType === 'weight' && startingWeight != null) {
+      const logDate = goalData.startWeightDate || new Date();
+      logDate.setUTCHours(0, 0, 0, 0);
+      await prisma.weightLog.upsert({
+        where: { userId_logDate: { userId: req.user!.userId, logDate } },
+        update: { weight: parseFloat(startingWeight), unit: unit || 'lbs' },
+        create: {
+          userId: req.user!.userId,
+          weight: parseFloat(startingWeight),
+          unit: unit || 'lbs',
+          logDate,
+          notes: 'Starting weight',
+        },
+      });
+    }
 
     res.status(201).json({ goal });
   } catch (error) {
     console.error('Create health goal error:', error);
     res.status(500).json({ error: 'Failed to create health goal' });
+  }
+});
+
+// ─── Weight Log Endpoints (must be before /:id routes) ────────────────────
+
+// POST /api/health-goals/weight-log — upsert weight entry
+router.post('/weight-log', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { weight, unit, logDate, notes } = req.body;
+    if (weight == null || !logDate) {
+      return res.status(400).json({ error: 'weight and logDate are required' });
+    }
+
+    // Normalize to midnight UTC
+    const dateObj = new Date(logDate);
+    dateObj.setUTCHours(0, 0, 0, 0);
+
+    const log = await prisma.weightLog.upsert({
+      where: { userId_logDate: { userId: req.user!.userId, logDate: dateObj } },
+      update: { weight: parseFloat(weight), unit: unit || 'lbs', notes: notes || null },
+      create: {
+        userId: req.user!.userId,
+        weight: parseFloat(weight),
+        unit: unit || 'lbs',
+        logDate: dateObj,
+        notes: notes || null,
+      },
+    });
+
+    // Auto-update weight goal's currentValue to latest weight
+    const latestLog = await prisma.weightLog.findFirst({
+      where: { userId: req.user!.userId },
+      orderBy: { logDate: 'desc' },
+    });
+    if (latestLog) {
+      await prisma.healthGoal.updateMany({
+        where: { userId: req.user!.userId, goalType: 'weight', isActive: true },
+        data: { currentValue: latestLog.weight },
+      });
+    }
+
+    res.json({ log });
+  } catch (error) {
+    console.error('Log weight error:', error);
+    res.status(500).json({ error: 'Failed to log weight' });
+  }
+});
+
+// GET /api/health-goals/weight-logs?days=90 — weight history
+router.get('/weight-logs', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const days = parseInt(req.query.days as string) || 90;
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const logs = await prisma.weightLog.findMany({
+      where: { userId: req.user!.userId, logDate: { gte: since } },
+      orderBy: { logDate: 'asc' },
+    });
+
+    // Compute stats
+    const allLogs = await prisma.weightLog.findMany({
+      where: { userId: req.user!.userId },
+      orderBy: { logDate: 'asc' },
+    });
+
+    const startWeight = allLogs.length > 0 ? allLogs[0].weight : null;
+    const currentWeight = allLogs.length > 0 ? allLogs[allLogs.length - 1].weight : null;
+    const weights = allLogs.map(l => l.weight);
+    const lowest = weights.length > 0 ? Math.min(...weights) : null;
+    const highest = weights.length > 0 ? Math.max(...weights) : null;
+    const totalChange = startWeight != null && currentWeight != null ? currentWeight - startWeight : null;
+
+    // Streak: consecutive days with logs from today backwards
+    let streak = 0;
+    if (allLogs.length > 0) {
+      const logDates = new Set(allLogs.map(l => l.logDate.toISOString().split('T')[0]));
+      const d = new Date();
+      d.setUTCHours(0, 0, 0, 0);
+      while (logDates.has(d.toISOString().split('T')[0])) {
+        streak++;
+        d.setDate(d.getDate() - 1);
+      }
+    }
+
+    res.json({
+      logs,
+      stats: { startWeight, currentWeight, lowest, highest, totalChange, streak },
+    });
+  } catch (error) {
+    console.error('Get weight logs error:', error);
+    res.status(500).json({ error: 'Failed to fetch weight logs' });
+  }
+});
+
+// DELETE /api/health-goals/weight-log/:id
+router.delete('/weight-log/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const log = await prisma.weightLog.findFirst({
+      where: { id: req.params.id, userId: req.user!.userId },
+    });
+    if (!log) return res.status(404).json({ error: 'Weight log not found' });
+
+    await prisma.weightLog.delete({ where: { id: req.params.id } });
+
+    // Update weight goal currentValue to latest remaining
+    const latestLog2 = await prisma.weightLog.findFirst({
+      where: { userId: req.user!.userId },
+      orderBy: { logDate: 'desc' },
+    });
+    if (latestLog2) {
+      await prisma.healthGoal.updateMany({
+        where: { userId: req.user!.userId, goalType: 'weight', isActive: true },
+        data: { currentValue: latestLog2.weight },
+      });
+    }
+
+    res.json({ message: 'Weight log deleted' });
+  } catch (error) {
+    console.error('Delete weight log error:', error);
+    res.status(500).json({ error: 'Failed to delete weight log' });
+  }
+});
+
+// GET /api/health-goals/calendar-data?month=2026-02 — calendar nutrition data
+router.get('/calendar-data', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const monthStr = req.query.month as string; // YYYY-MM
+    if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) {
+      return res.status(400).json({ error: 'month query param required (YYYY-MM)' });
+    }
+
+    const [year, month] = monthStr.split('-').map(Number);
+    // Fetch full month + some padding for week view spanning months
+    const startDate = new Date(Date.UTC(year, month - 1, 1));
+    startDate.setDate(startDate.getDate() - 7);
+    const endDate = new Date(Date.UTC(year, month, 7)); // into next month
+
+    const [meals, wLogs] = await Promise.all([
+      prisma.mealLog.findMany({
+        where: {
+          userId: req.user!.userId,
+          mealDate: { gte: startDate, lte: endDate },
+        },
+      }),
+      prisma.weightLog.findMany({
+        where: {
+          userId: req.user!.userId,
+          logDate: { gte: startDate, lte: endDate },
+        },
+      }),
+    ]);
+
+    const days: Record<string, { calories: number; protein: number; carbs: number; fat: number; hasWeightLog: boolean; weight?: number }> = {};
+
+    for (const meal of meals) {
+      const key = meal.mealDate.toISOString().split('T')[0];
+      if (!days[key]) days[key] = { calories: 0, protein: 0, carbs: 0, fat: 0, hasWeightLog: false };
+      days[key].calories += meal.calories || 0;
+      days[key].protein += meal.proteinGrams || 0;
+      days[key].carbs += meal.carbsGrams || 0;
+      days[key].fat += meal.fatGrams || 0;
+    }
+
+    for (const wl of wLogs) {
+      const key = wl.logDate.toISOString().split('T')[0];
+      if (!days[key]) days[key] = { calories: 0, protein: 0, carbs: 0, fat: 0, hasWeightLog: false };
+      days[key].hasWeightLog = true;
+      days[key].weight = wl.weight;
+    }
+
+    res.json({ days });
+  } catch (error) {
+    console.error('Get calendar data error:', error);
+    res.status(500).json({ error: 'Failed to fetch calendar data' });
   }
 });
 

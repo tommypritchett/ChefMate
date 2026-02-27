@@ -1,5 +1,13 @@
 import prisma from '../lib/prisma';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions';
+import {
+  searchKrogerProducts,
+  goalBoostScore,
+  priceValueBonus,
+  parseSizeToOz,
+  getBannerInfo,
+  type KrogerProductResult,
+} from './grocery-prices';
 
 // ─── Tool Definitions (OpenAI function-calling schemas) ─────────────────────
 
@@ -19,8 +27,8 @@ export const toolDefinitions: ChatCompletionTool[] = [
           },
           category: {
             type: 'string',
-            description: 'Recipe category filter',
-            enum: ['burger', 'chicken', 'pizza', 'mexican', 'breakfast', 'salad', 'sides', 'dessert', 'drink'],
+            description: 'Recipe category filter — ALWAYS use this when the user asks for a specific type (e.g. "dessert", "soup", "snack")',
+            enum: ['burgers', 'chicken', 'pizza', 'mexican', 'breakfast', 'salad', 'sides', 'dessert', 'snack', 'soup', 'seafood', 'stir-fry', 'sandwich', 'grill', 'meal-prep', 'air-fryer', 'quick', 'vegetarian', 'pasta', 'bowls', 'sheet-pan', 'crockpot', 'trending'],
           },
           difficulty: {
             type: 'string',
@@ -225,6 +233,10 @@ export const toolDefinitions: ChatCompletionTool[] = [
             type: 'string',
             description: 'Unit for add_item (e.g. lbs, oz, count)',
           },
+          krogerProductId: {
+            type: 'string',
+            description: 'Kroger product UPC for cart integration (from kroger_product_search results)',
+          },
           items: {
             type: 'array',
             items: {
@@ -246,9 +258,21 @@ export const toolDefinitions: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'get_today_meals',
+      description:
+        "Fetch ALL meals logged today from the database. Call this BEFORE making dinner/meal suggestions to ensure you have the complete picture. This returns every meal logged today including ones from previous conversations. Always use this to verify your day breakdown is accurate and complete.",
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'log_meal',
       description:
-        "Record a meal the user ate. Use when the user says they ate something, had a meal, or wants to track what they've eaten.",
+        "Record a meal the user ate. Use when the user says they ate something, had a meal, or wants to track what they've eaten. IMPORTANT: You MUST always estimate and provide ALL four macro values (calories, protein, carbs, fat). Never leave any as null. Use the Atwater formula: calories = (protein × 4) + (carbs × 4) + (fat × 9).",
       parameters: {
         type: 'object',
         properties: {
@@ -260,12 +284,42 @@ export const toolDefinitions: ChatCompletionTool[] = [
             type: 'string',
             enum: ['breakfast', 'lunch', 'dinner', 'snack'],
           },
-          calories: { type: 'number' },
-          protein: { type: 'number' },
-          carbs: { type: 'number' },
-          fat: { type: 'number' },
+          calories: { type: 'number', description: 'Total calories (REQUIRED — always estimate)' },
+          protein: { type: 'number', description: 'Protein in grams (REQUIRED — always estimate)' },
+          carbs: { type: 'number', description: 'Carbs in grams (REQUIRED — always estimate, never leave null)' },
+          fat: { type: 'number', description: 'Fat in grams (REQUIRED — always estimate, never leave null)' },
         },
-        required: ['description', 'mealType'],
+        required: ['description', 'mealType', 'calories', 'protein', 'carbs', 'fat'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_meal',
+      description:
+        "Update or correct a previously logged meal. Use when the user says the macros are wrong, they want to fix a meal entry, or provides corrected nutritional info for a meal logged earlier in the conversation. This REPLACES the existing entry — it does NOT create a duplicate. You MUST provide the mealId from the original log_meal result or from TODAY'S LOGGED MEALS.",
+      parameters: {
+        type: 'object',
+        properties: {
+          mealId: {
+            type: 'string',
+            description: 'The ID of the meal to update (from log_meal result or TODAY\'S LOGGED MEALS)',
+          },
+          description: {
+            type: 'string',
+            description: 'Updated meal name/description',
+          },
+          mealType: {
+            type: 'string',
+            enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+          },
+          calories: { type: 'number', description: 'Updated calories' },
+          protein: { type: 'number', description: 'Updated protein in grams' },
+          carbs: { type: 'number', description: 'Updated carbs in grams' },
+          fat: { type: 'number', description: 'Updated fat in grams' },
+        },
+        required: ['mealId'],
       },
     },
   },
@@ -507,6 +561,60 @@ export const toolDefinitions: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'kroger_product_search',
+      description:
+        "Search for grocery products at the user's preferred Kroger-family store. Returns real products with prices, sizes, and images. Use this BEFORE adding items to the shopping list so the user can pick the exact product they want. Can search for multiple items at once.",
+      parameters: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'List of items to search for (e.g. ["chicken breast", "ground beef", "chocolate milk"])',
+          },
+        },
+        required: ['items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_custom_recipe',
+      description:
+        'Generate and save a custom recipe when no matching recipes exist in the database. Uses AI to create a recipe based on the user\'s request, dietary goals, and preferences. Use when search_recipes returns few/no results and the user wants something specific (e.g., "high-protein chocolate mousse", "Chick-fil-A style sandwich").',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Desired recipe title (e.g., "High-Protein Chocolate Mousse")',
+          },
+          requirements: {
+            type: 'string',
+            description: 'What the user wants — flavor profile, style, dietary needs, inspiration (e.g., "high protein dessert, chocolate, like a mousse but with Greek yogurt")',
+          },
+          category: {
+            type: 'string',
+            description: 'Recipe category',
+            enum: ['burgers', 'chicken', 'pizza', 'mexican', 'breakfast', 'salad', 'sides', 'dessert', 'snack', 'soup', 'seafood', 'stir-fry', 'sandwich', 'grill', 'meal-prep', 'air-fryer', 'quick', 'vegetarian', 'pasta', 'bowls', 'sheet-pan', 'crockpot', 'trending'],
+          },
+          proteinTarget: {
+            type: 'number',
+            description: 'Target protein per serving in grams (from user\'s health goals)',
+          },
+          calorieTarget: {
+            type: 'number',
+            description: 'Target calories per serving',
+          },
+        },
+        required: ['title', 'requirements'],
+      },
+    },
+  },
 ];
 
 // ─── Tool Executor ──────────────────────────────────────────────────────────
@@ -533,8 +641,12 @@ export async function executeTool(
       return generateShoppingList(args, userId);
     case 'manage_shopping_list':
       return manageShoppingList(args, userId);
+    case 'get_today_meals':
+      return getTodayMeals(userId);
     case 'log_meal':
       return logMeal(args, userId);
+    case 'update_meal':
+      return updateMealTool(args, userId);
     case 'get_recipe_detail':
       return getRecipeDetail(args, userId);
     case 'compare_recipe_ingredients':
@@ -553,6 +665,10 @@ export async function executeTool(
       return getSaleItems(args, userId);
     case 'get_nutrition_summary':
       return getNutritionSummary(args, userId);
+    case 'kroger_product_search':
+      return krogerProductSearch(args, userId);
+    case 'create_custom_recipe':
+      return createCustomRecipe(args, userId);
     default:
       return { result: { error: `Unknown tool: ${toolName}` } };
   }
@@ -1372,7 +1488,7 @@ async function generateShoppingList(args: Record<string, any>, userId: string) {
 }
 
 async function manageShoppingList(args: Record<string, any>, userId: string) {
-  const { action, listId, listName, itemName, quantity, unit } = args;
+  const { action, listId, listName, itemName, quantity, unit, krogerProductId } = args;
 
   switch (action) {
     case 'view_lists': {
@@ -1450,11 +1566,12 @@ async function manageShoppingList(args: Record<string, any>, userId: string) {
             name: itemName || 'item',
             quantity: quantity || null,
             unit: unit || null,
+            krogerProductId: krogerProductId || null,
           },
         });
         return {
           result: {
-            item: { id: item.id, name: item.name, quantity: item.quantity, unit: item.unit },
+            item: { id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, krogerProductId: item.krogerProductId },
             listName: list.name,
             message: `Added "${item.name}" to "${list.name}".`,
           },
@@ -1468,11 +1585,12 @@ async function manageShoppingList(args: Record<string, any>, userId: string) {
           name: itemName || 'item',
           quantity: quantity || null,
           unit: unit || null,
+          krogerProductId: krogerProductId || null,
         },
       });
       return {
         result: {
-          item: { id: item.id, name: item.name, quantity: item.quantity, unit: item.unit },
+          item: { id: item.id, name: item.name, quantity: item.quantity, unit: item.unit, krogerProductId: item.krogerProductId },
           message: `Added "${item.name}" to the list.`,
         },
         metadata: { type: 'shopping_list', listId },
@@ -1514,6 +1632,52 @@ async function manageShoppingList(args: Record<string, any>, userId: string) {
   }
 }
 
+async function getTodayMeals(userId: string) {
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+  const meals = await prisma.mealLog.findMany({
+    where: { userId, mealDate: { gte: dayStart, lt: dayEnd } },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      mealType: true,
+      mealName: true,
+      calories: true,
+      proteinGrams: true,
+      carbsGrams: true,
+      fatGrams: true,
+      mealTime: true,
+    },
+  });
+
+  const totals = meals.reduce((acc, m) => ({
+    calories: acc.calories + (m.calories || 0),
+    protein: acc.protein + (m.proteinGrams || 0),
+    carbs: acc.carbs + (m.carbsGrams || 0),
+    fat: acc.fat + (m.fatGrams || 0),
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+  return {
+    result: {
+      meals: meals.map(m => ({
+        id: m.id,
+        mealType: m.mealType,
+        mealName: m.mealName,
+        calories: m.calories,
+        protein: m.proteinGrams,
+        carbs: m.carbsGrams,
+        fat: m.fatGrams,
+      })),
+      totals,
+      count: meals.length,
+    },
+    metadata: { type: 'today_meals' },
+  };
+}
+
 async function logMeal(args: Record<string, any>, userId: string) {
   const { description, mealType, calories, protein, carbs, fat } = args;
 
@@ -1522,6 +1686,7 @@ async function logMeal(args: Record<string, any>, userId: string) {
       userId,
       mealType,
       mealDate: new Date(),
+      mealTime: new Date(),
       mealName: description,
       calories: calories || null,
       proteinGrams: protein || null,
@@ -1545,6 +1710,50 @@ async function logMeal(args: Record<string, any>, userId: string) {
       message: `Logged ${mealType}: "${description}"${calories ? ` (${calories} cal)` : ''}.`,
     },
     metadata: { type: 'meal_log' },
+  };
+}
+
+async function updateMealTool(args: Record<string, any>, userId: string) {
+  const { mealId, description, mealType, calories, protein, carbs, fat } = args;
+
+  if (!mealId) {
+    return { result: { error: 'mealId is required to update a meal.' } };
+  }
+
+  // Verify ownership
+  const existing = await prisma.mealLog.findFirst({
+    where: { id: mealId, userId },
+  });
+  if (!existing) {
+    return { result: { error: 'Meal not found or not owned by user.' } };
+  }
+
+  const updated = await prisma.mealLog.update({
+    where: { id: mealId },
+    data: {
+      ...(description != null && { mealName: description }),
+      ...(mealType != null && { mealType }),
+      ...(calories != null && { calories }),
+      ...(protein != null && { proteinGrams: protein }),
+      ...(carbs != null && { carbsGrams: carbs }),
+      ...(fat != null && { fatGrams: fat }),
+    },
+  });
+
+  return {
+    result: {
+      meal: {
+        id: updated.id,
+        description: updated.mealName,
+        mealType: updated.mealType,
+        calories: updated.calories,
+        protein: updated.proteinGrams,
+        carbs: updated.carbsGrams,
+        fat: updated.fatGrams,
+      },
+      message: `Updated meal "${updated.mealName}" — ${updated.calories} cal, ${updated.proteinGrams}g protein.`,
+    },
+    metadata: { type: 'meal_update' },
   };
 }
 
@@ -2180,29 +2389,29 @@ async function bulkAddInventory(args: Record<string, any>, userId: string) {
 async function getNutritionSummary(args: Record<string, any>, userId: string) {
   const { range = 'day' } = args;
 
+  // Use UTC dates since mealDate is stored as YYYY-MM-DDT00:00:00.000Z
   const dateStr = args.date || new Date().toISOString().split('T')[0];
-  const startDate = new Date(dateStr);
-  startDate.setHours(0, 0, 0, 0);
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const startDate = new Date(Date.UTC(year, month - 1, day));
 
   let endDate: Date;
   if (range === 'week') {
     endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + 6);
-    endDate.setHours(23, 59, 59, 999);
+    endDate.setUTCDate(startDate.getUTCDate() + 7);
   } else {
     endDate = new Date(startDate);
-    endDate.setHours(23, 59, 59, 999);
+    endDate.setUTCDate(startDate.getUTCDate() + 1);
   }
 
   const meals = await prisma.mealLog.findMany({
     where: {
       userId,
-      createdAt: {
+      mealDate: {
         gte: startDate,
         lte: endDate,
       },
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { mealDate: 'asc' },
   });
 
   const totals = meals.reduce(
@@ -2371,4 +2580,300 @@ async function getSaleItems(args: Record<string, any>, userId: string) {
     },
     metadata: { type: 'deals' },
   };
+}
+
+async function krogerProductSearch(args: Record<string, any>, userId: string) {
+  const { items } = args;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return { result: { error: 'No items provided.' } };
+  }
+
+  // Load user's Kroger location from preferences
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { preferences: true },
+  });
+
+  let krogerLocation: { locationId: string; chain: string; address: string } | null = null;
+  if (user?.preferences) {
+    try {
+      const prefs = JSON.parse(user.preferences);
+      krogerLocation = prefs.krogerLocation || null;
+    } catch {}
+  }
+
+  if (!krogerLocation) {
+    return {
+      result: {
+        error: 'no_store_set',
+        message: "No Kroger store is set yet. Visit the Shopping tab first to set your store location, then come back and I'll search for products with real prices.",
+      },
+    };
+  }
+
+  // Load user's health goals for scoring
+  let goalTypes: string[] = [];
+  try {
+    const goals = await prisma.healthGoal.findMany({
+      where: { userId, isActive: true },
+      select: { goalType: true },
+    });
+    goalTypes = goals.map(g => g.goalType);
+  } catch {}
+
+  // Goal-modified search modifiers (same as shopping.ts search-products)
+  const GOAL_SEARCH_MODIFIERS: Record<string, string[]> = {
+    'high-protein': ['protein', 'fairlife', 'high protein'],
+    'protein': ['protein', 'fairlife', 'high protein'],
+    'low-carb': ['low carb', 'keto', 'sugar free'],
+    'keto': ['keto', 'low carb', 'sugar free'],
+    'low-calorie': ['light', 'low fat', 'zero sugar'],
+    'weight-loss': ['light', 'lean', 'low calorie'],
+    'vegetarian': ['plant based', 'veggie'],
+    'vegan': ['plant based', 'vegan', 'dairy free'],
+    'gluten-free': ['gluten free'],
+    'dairy-free': ['dairy free', 'oat', 'almond'],
+  };
+
+  // Search Kroger for each item in parallel
+  const searchResults = await Promise.all(
+    items.map(async (query: string) => {
+      // Pull 15 results so scoring has a wide pool to pick from
+      const allProducts = await searchKrogerProducts(query, krogerLocation!.locationId, 15);
+
+      // Also run goal-modified secondary searches (e.g., "protein chocolate milk" → finds Fairlife)
+      if (goalTypes.length > 0) {
+        const seenNames = new Set(allProducts.map(p => p.name));
+        const seenModifiers = new Set<string>();
+        for (const goal of goalTypes) {
+          const modifiers = GOAL_SEARCH_MODIFIERS[goal.toLowerCase()];
+          if (!modifiers) continue;
+          for (const mod of modifiers) {
+            if (seenModifiers.has(mod)) continue;
+            if (query.toLowerCase().includes(mod.toLowerCase())) continue;
+            seenModifiers.add(mod);
+            try {
+              const goalResults = await searchKrogerProducts(`${mod} ${query}`, krogerLocation!.locationId, 5);
+              for (const p of goalResults) {
+                if (!seenNames.has(p.name)) {
+                  allProducts.push(p);
+                  seenNames.add(p.name);
+                }
+              }
+            } catch {}
+            break; // One secondary search per goal to keep it fast
+          }
+        }
+      }
+
+      // Score and rank products — prioritize goal alignment + cheapness
+      const scored = allProducts.map(p => {
+        const goalScore = goalBoostScore(p.name, goalTypes);
+        const valueScore = priceValueBonus(p.price, p.size);
+        const goalAligned = goalScore > 0;
+
+        // Determine goal reason
+        let goalReason: string | undefined;
+        if (goalAligned && goalTypes.length > 0) {
+          for (const goal of goalTypes) {
+            const kw = goal.toLowerCase();
+            if (kw.includes('protein')) goalReason = 'High protein';
+            else if (kw.includes('carb') || kw === 'keto') goalReason = 'Low carb';
+            else if (kw.includes('calorie') || kw.includes('weight')) goalReason = 'Lower calorie';
+            if (goalReason) break;
+          }
+        }
+
+        // Price-based bonus: cheaper absolute price gets a bump (max 10 pts)
+        const priceBonus = p.price > 0 ? Math.max(0, 10 - p.price) : 0;
+
+        return {
+          krogerProductId: p.krogerProductId,
+          name: p.name,
+          brand: p.brand,
+          size: p.size,
+          price: p.price,
+          promoPrice: p.promoPrice,
+          onSale: p.onSale || false,
+          goalAligned,
+          goalReason,
+          _totalScore: goalScore + valueScore + priceBonus + (p.onSale ? 8 : 0),
+          _pricePerOz: parseSizeToOz(p.size) > 0 ? p.price / parseSizeToOz(p.size) : 999,
+        };
+      });
+
+      // Sort by combined score descending, break ties by cheaper price
+      scored.sort((a, b) => b._totalScore - a._totalScore || a.price - b.price);
+      const top3 = scored.slice(0, 3);
+
+      // Assign value rank based on price per oz
+      const byValue = [...top3].sort((a, b) => a._pricePerOz - b._pricePerOz);
+
+      return {
+        query,
+        products: top3.map(p => ({
+          krogerProductId: p.krogerProductId,
+          name: p.name,
+          brand: p.brand,
+          size: p.size,
+          price: p.price,
+          promoPrice: p.promoPrice,
+          onSale: p.onSale,
+          goalAligned: p.goalAligned,
+          goalReason: p.goalReason,
+          valueRank: byValue.indexOf(p) + 1,
+        })),
+      };
+    })
+  );
+
+  const banner = getBannerInfo(krogerLocation.chain);
+
+  return {
+    result: {
+      results: searchResults,
+      storeName: `${banner.name} (${krogerLocation.address})`,
+    },
+    metadata: { type: 'kroger_product_search' },
+  };
+}
+
+// ─── Create Custom Recipe (AI-Generated) ──────────────────────────────────
+
+async function createCustomRecipe(args: Record<string, any>, userId: string) {
+  const { title, requirements, category, proteinTarget, calorieTarget } = args;
+
+  if (!process.env.OPENAI_API_KEY) {
+    return {
+      result: { error: 'Custom recipe generation requires an OpenAI API key. Please set OPENAI_API_KEY.' },
+    };
+  }
+
+  const OpenAI = (await import('openai')).default;
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  // Load user health goals for context
+  const goals = await prisma.healthGoal.findMany({
+    where: { userId, isActive: true },
+    select: { goalType: true, targetValue: true },
+  });
+  const goalContext = goals.length > 0
+    ? `User's active health goals: ${goals.map(g => `${g.goalType}: ${g.targetValue}`).join(', ')}`
+    : '';
+
+  const prompt = `Generate a recipe for: "${title}"
+Requirements: ${requirements}
+Category: ${category || 'general'}
+${proteinTarget ? `Target protein per serving: ${proteinTarget}g` : ''}
+${calorieTarget ? `Target calories per serving: ${calorieTarget}` : ''}
+${goalContext}
+
+Return a JSON object with EXACTLY these fields:
+{
+  "title": "Recipe Title",
+  "description": "1-2 sentence description",
+  "category": "${category || 'general'}",
+  "ingredients": [{"name": "ingredient", "amount": "1", "unit": "cup", "notes": "optional"}],
+  "instructions": [{"step_number": 1, "text": "Step description", "time_minutes": 5}],
+  "prepTimeMinutes": 10,
+  "cookTimeMinutes": 20,
+  "servings": 2,
+  "difficulty": "easy",
+  "nutrition": {"calories": 400, "protein": 35, "carbs": 30, "fat": 15},
+  "dietaryTags": ["high-protein"],
+  "proteinType": "chicken",
+  "cuisineStyle": "american",
+  "cookingMethod": "stovetop"
+}
+
+IMPORTANT:
+- Calories MUST equal (protein × 4) + (carbs × 4) + (fat × 9) (Atwater formula)
+- Use realistic portions and nutrition values
+- Honor the user's dietary goals
+- Make it practical and delicious`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+      max_tokens: 1500,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return { result: { error: 'Failed to generate recipe — no response from AI.' } };
+    }
+
+    const recipe = JSON.parse(content);
+
+    // Validate and fix calories with Atwater formula
+    const protein = Math.round(recipe.nutrition?.protein || 0);
+    const carbs = Math.round(recipe.nutrition?.carbs || 0);
+    const fat = Math.round(recipe.nutrition?.fat || 0);
+    const calculatedCalories = (protein * 4) + (carbs * 4) + (fat * 9);
+    recipe.nutrition = { calories: calculatedCalories, protein, carbs, fat };
+
+    // Generate a unique slug
+    const baseSlug = (recipe.title || title)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const slug = `${baseSlug}-custom-${Date.now().toString(36)}`;
+
+    // Save to database
+    const saved = await prisma.recipe.create({
+      data: {
+        title: recipe.title || title,
+        slug,
+        description: recipe.description || '',
+        category: recipe.category || category || null,
+        ingredients: JSON.stringify(recipe.ingredients || []),
+        instructions: JSON.stringify(recipe.instructions || []),
+        prepTimeMinutes: recipe.prepTimeMinutes || null,
+        cookTimeMinutes: recipe.cookTimeMinutes || null,
+        totalTimeMinutes: (recipe.prepTimeMinutes || 0) + (recipe.cookTimeMinutes || 0) || null,
+        servings: recipe.servings || 2,
+        difficulty: recipe.difficulty || 'medium',
+        nutrition: JSON.stringify(recipe.nutrition),
+        dietaryTags: JSON.stringify(recipe.dietaryTags || []),
+        proteinType: recipe.proteinType || null,
+        cuisineStyle: recipe.cuisineStyle || null,
+        cookingMethod: recipe.cookingMethod || null,
+        isAiGenerated: true,
+        generatedByUserId: userId,
+        generationPrompt: requirements,
+        isPublished: true,
+      },
+    });
+
+    return {
+      result: {
+        recipe: {
+          id: saved.id,
+          title: saved.title,
+          slug: saved.slug,
+          description: saved.description,
+          category: saved.category,
+          prepTimeMinutes: saved.prepTimeMinutes,
+          cookTimeMinutes: saved.cookTimeMinutes,
+          servings: saved.servings,
+          difficulty: saved.difficulty,
+          nutrition: recipe.nutrition,
+          dietaryTags: recipe.dietaryTags || [],
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          isAiGenerated: true,
+        },
+        message: `Created custom recipe "${saved.title}" tailored to your preferences! It's been saved to your recipe database.`,
+      },
+      metadata: { type: 'custom_recipe', recipeId: saved.id },
+    };
+  } catch (err: any) {
+    console.error('Error generating custom recipe:', err);
+    return {
+      result: { error: `Failed to generate recipe: ${err.message}` },
+    };
+  }
 }
