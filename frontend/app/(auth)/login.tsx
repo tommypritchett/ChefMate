@@ -89,7 +89,7 @@ export default function LoginScreen() {
           </View>
 
           {/* Password Input */}
-          <View className="mb-6">
+          <View className="mb-2">
             <Text className="text-gray-700 font-medium mb-1.5">Password</Text>
             <View className="relative">
               <TextInput
@@ -111,6 +111,17 @@ export default function LoginScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Forgot Password Link */}
+          <View className="items-end mb-6">
+            <Link href="/(auth)/forgot-password" asChild>
+              <TouchableOpacity>
+                <Text className="text-primary-600 text-sm font-medium">
+                  Forgot Password?
+                </Text>
+              </TouchableOpacity>
+            </Link>
           </View>
 
           {/* Login Button */}

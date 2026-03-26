@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { router } from 'expo-router';
 import { User } from '../types';
-import { authApi, tokenStorage, setUnauthorizedHandler } from '../services/api';
+import { authApi, tokenStorage, refreshTokenStorage, setUnauthorizedHandler } from '../services/api';
 
 interface AuthState {
   user: User | null;
@@ -33,6 +33,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const response = await authApi.login({ email, password });
 
       await tokenStorage.set(response.token);
+      if (response.refreshToken) {
+        await refreshTokenStorage.set(response.refreshToken);
+      }
 
       set({
         user: response.user,
@@ -55,6 +58,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const response = await authApi.register(data);
 
       await tokenStorage.set(response.token);
+      if (response.refreshToken) {
+        await refreshTokenStorage.set(response.refreshToken);
+      }
 
       set({
         user: response.user,
@@ -100,7 +106,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isInitialized: true,
       });
     } catch (error) {
+      // Token might be expired, let the interceptor try to refresh it
+      // If refresh fails, the interceptor will call the unauthorized handler
       await tokenStorage.remove();
+      await refreshTokenStorage.remove();
       set({
         user: null,
         token: null,

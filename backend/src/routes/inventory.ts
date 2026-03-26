@@ -2,6 +2,8 @@ import express from 'express';
 import OpenAI from 'openai';
 import prisma from '../lib/prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
+import { calculateExpiryDate, setUTCMidnight } from '../utils/dateHelpers';
+import { validateOptionalNumeric } from '../utils/validation';
 
 const router = express.Router();
 
@@ -29,13 +31,13 @@ const CATEGORY_EXPIRY_DAYS: Record<string, number> = {
 
 // Infer category from item name (mirrors ai-tools.ts inferCategory)
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley'],
+  produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'bell pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley'],
   'meat/protein': ['chicken', 'beef', 'pork', 'fish', 'salmon', 'shrimp', 'turkey', 'steak', 'bacon', 'sausage', 'ground', 'meat', 'tofu', 'egg'],
   dairy: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream', 'cottage', 'mozzarella', 'cheddar', 'parmesan'],
   grains: ['rice', 'pasta', 'bread', 'flour', 'oat', 'cereal', 'tortilla', 'noodle', 'quinoa'],
   frozen: ['frozen', 'ice cream', 'pizza rolls'],
   canned: ['canned', 'beans', 'soup', 'tuna can', 'tomato sauce', 'tomato paste'],
-  condiments: ['sauce', 'ketchup', 'mustard', 'mayo', 'dressing', 'vinegar', 'oil', 'olive oil', 'soy sauce', 'hot sauce', 'sriracha', 'salsa'],
+  condiments: ['sauce', 'ketchup', 'mustard', 'mayo', 'dressing', 'vinegar', 'oil', 'olive oil', 'soy sauce', 'hot sauce', 'sriracha', 'salsa', 'black pepper', 'peppercorn'],
   snacks: ['chips', 'crackers', 'nuts', 'granola', 'popcorn', 'cookie', 'bar'],
   beverages: ['juice', 'soda', 'water', 'coffee', 'tea', 'wine', 'beer'],
 };
@@ -60,15 +62,11 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       if (inferred !== 'other') effectiveCategory = inferred;
     }
 
-    // Apply default expiry if none provided
-    // Freezer items get 120 days regardless of category
-    let computedExpiry: Date | null = expiresAt ? new Date(expiresAt) : null;
+    // Apply default expiry if none provided (using UTC-aware helper)
+    let computedExpiry: Date | null = expiresAt ? setUTCMidnight(new Date(expiresAt)) : null;
     if (!computedExpiry) {
-      const loc = (storageLocation || 'pantry').toLowerCase();
-      const days = loc === 'freezer' ? 120
-        : CATEGORY_EXPIRY_DAYS[(effectiveCategory || 'other').toLowerCase()] || CATEGORY_EXPIRY_DAYS.other;
-      computedExpiry = new Date();
-      computedExpiry.setDate(computedExpiry.getDate() + days);
+      const purchaseDate = purchasedAt ? new Date(purchasedAt) : undefined;
+      computedExpiry = calculateExpiryDate(storageLocation || 'pantry', effectiveCategory, purchaseDate);
     }
 
     const item = await prisma.inventoryItem.create({
@@ -77,7 +75,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         name,
         category: effectiveCategory,
         storageLocation,
-        quantity: quantity ? parseFloat(quantity) : null,
+        quantity: validateOptionalNumeric(quantity, 0.01, 10000, 'quantity'),
         unit,
         purchasedAt: purchasedAt ? new Date(purchasedAt) : null,
         expiresAt: computedExpiry

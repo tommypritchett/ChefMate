@@ -41,15 +41,21 @@ export default function ProfileScreen() {
           onPress={() => router.push('/health-goals')}
         >
           <Ionicons name="trophy-outline" size={22} color="#f59e0b" />
-          <Text className="text-gray-800 ml-3 flex-1">Health Goals</Text>
+          <Text className="text-gray-800 ml-3 flex-1">My Nutrition</Text>
           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
         </TouchableOpacity>
-        <TouchableOpacity className="flex-row items-center p-4 border-b border-gray-100">
+        <TouchableOpacity
+          className="flex-row items-center p-4 border-b border-gray-100"
+          onPress={() => router.push('/preferences')}
+        >
           <Ionicons name="settings-outline" size={22} color="#6b7280" />
           <Text className="text-gray-800 ml-3 flex-1">Preferences</Text>
           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
         </TouchableOpacity>
-        <TouchableOpacity className="flex-row items-center p-4">
+        <TouchableOpacity
+          className="flex-row items-center p-4"
+          onPress={() => router.push('/notifications')}
+        >
           <Ionicons name="notifications-outline" size={22} color="#6b7280" />
           <Text className="text-gray-800 ml-3 flex-1">Notifications</Text>
           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />

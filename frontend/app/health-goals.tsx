@@ -90,7 +90,13 @@ export default function HealthGoalsScreen() {
   const [todayTotals, setTodayTotals] = useState<any>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
   const [weeklyAvg, setWeeklyAvg] = useState<any>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
   const [todayMeals, setTodayMeals] = useState<any[]>([]);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
 
   // Add/Edit modal state
   const [showModal, setShowModal] = useState(false);
@@ -98,10 +104,12 @@ export default function HealthGoalsScreen() {
   const [editGoal, setEditGoal] = useState<any>(null);
   const [selectedGoalType, setSelectedGoalType] = useState('');
   const [targetValue, setTargetValue] = useState('');
+  const [targetValueError, setTargetValueError] = useState('');
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState<any>(null);
 
   // Weight goal creation extras
   const [startingWeightInput, setStartingWeightInput] = useState('');
+  const [startingWeightError, setStartingWeightError] = useState('');
   const [targetDateInput, setTargetDateInput] = useState('');
 
   // Log Meal modal state
@@ -109,21 +117,28 @@ export default function HealthGoalsScreen() {
   const [logMealType, setLogMealType] = useState('lunch');
   const [logMealName, setLogMealName] = useState('');
   const [logCalories, setLogCalories] = useState('');
+  const [logCaloriesError, setLogCaloriesError] = useState('');
   const [logProtein, setLogProtein] = useState('');
+  const [logProteinError, setLogProteinError] = useState('');
   const [logCarbs, setLogCarbs] = useState('');
+  const [logCarbsError, setLogCarbsError] = useState('');
   const [logFat, setLogFat] = useState('');
+  const [logFatError, setLogFatError] = useState('');
   const [savingMeal, setSavingMeal] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [estimating, setEstimating] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
+  const [deleteMealConfirm, setDeleteMealConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [deleteWeightConfirm, setDeleteWeightConfirm] = useState<{ id: string; date: string } | null>(null);
 
   // Weight tracking state
   const [weightLogs, setWeightLogs] = useState<any[]>([]);
   const [weightStats, setWeightStats] = useState<any>(null);
   const [showLogWeightModal, setShowLogWeightModal] = useState(false);
   const [logWeightValue, setLogWeightValue] = useState('');
+  const [logWeightValueError, setLogWeightValueError] = useState('');
   const [logWeightDate, setLogWeightDate] = useState('');
   const [logWeightNotes, setLogWeightNotes] = useState('');
   const [savingWeight, setSavingWeight] = useState(false);
@@ -153,6 +168,41 @@ export default function HealthGoalsScreen() {
     const iso = dt.toISOString().split('T')[0];
     if (iso > todayStr) return;
     setSelectedDate(iso);
+  };
+
+  // ─── Validation helpers ────────────────────────────────────────────────
+
+  const validateTargetValue = (value: string, goalType: string): string => {
+    if (!value.trim()) return '';
+    const num = parseFloat(value);
+    if (isNaN(num)) return 'Please enter a valid number';
+    if (num <= 0) return 'Value must be greater than 0';
+
+    if (goalType === 'calories' && (num < 500 || num > 10000)) {
+      return 'Calories should be between 500-10000';
+    }
+    if ((goalType === 'protein' || goalType === 'carbs' || goalType === 'fat') && (num < 10 || num > 1000)) {
+      return 'Macros should be between 10-1000g';
+    }
+    return '';
+  };
+
+  const validateWeight = (value: string): string => {
+    if (!value.trim()) return '';
+    const num = parseFloat(value);
+    if (isNaN(num)) return 'Please enter a valid number';
+    if (num < 50 || num > 500) return 'Weight should be between 50-500 lbs';
+    return '';
+  };
+
+  const validateMacro = (value: string, macroName: string): string => {
+    if (!value.trim()) return '';
+    const num = parseFloat(value);
+    if (isNaN(num)) return 'Please enter a valid number';
+    if (num < 0) return `${macroName} cannot be negative`;
+    if (macroName === 'Calories' && num > 5000) return 'Calories seem too high (max 5000)';
+    if (macroName !== 'Calories' && num > 500) return `${macroName} seems too high (max 500g)`;
+    return '';
   };
 
   // ─── Data fetching ─────────────────────────────────────────────────────
@@ -260,6 +310,12 @@ export default function HealthGoalsScreen() {
   };
 
   const handleSave = async () => {
+    // Check for validation errors
+    if (targetValueError || startingWeightError) {
+      Alert.alert('Invalid Input', 'Please fix the errors before saving.');
+      return;
+    }
+
     setSaving(true);
     try {
       if (modalMode === 'edit' && editGoal) {
@@ -307,8 +363,10 @@ export default function HealthGoalsScreen() {
       }
       setShowModal(false);
       setTargetValue('');
+      setTargetValueError('');
       setEditGoal(null);
       setStartingWeightInput('');
+      setStartingWeightError('');
       setTargetDateInput('');
       fetchData();
     } catch (err) {
@@ -355,6 +413,10 @@ export default function HealthGoalsScreen() {
       setLogCarbs('');
       setLogFat('');
     }
+    setLogCaloriesError('');
+    setLogProteinError('');
+    setLogCarbsError('');
+    setLogFatError('');
     setSearchResults([]);
     setSelectedRecipe(null);
     setEstimating(false);
@@ -408,6 +470,13 @@ export default function HealthGoalsScreen() {
 
   const handleLogMeal = async () => {
     if (!logMealName.trim()) return;
+
+    // Check for validation errors
+    if (logCaloriesError || logProteinError || logCarbsError || logFatError) {
+      Alert.alert('Invalid Input', 'Please fix the errors before saving.');
+      return;
+    }
+
     setSavingMeal(true);
     try {
       if (editingMealId) {
@@ -441,24 +510,27 @@ export default function HealthGoalsScreen() {
     }
   };
 
-  const handleDeleteMeal = async (mealId: string) => {
-    const doDelete = async () => {
-      try { await nutritionApi.deleteMeal(mealId); fetchData(); } catch { Alert.alert('Error', 'Failed to delete meal.'); }
-    };
+  const handleDeleteMeal = (mealId: string, mealName: string) => {
     if (Platform.OS === 'web') {
-      if (window.confirm('Remove this meal?')) await doDelete();
+      setDeleteMealConfirm({ id: mealId, name: mealName });
     } else {
-      Alert.alert('Delete Meal', 'Remove this meal?', [
+      Alert.alert('Delete Meal', `Remove "${mealName}"?`, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: doDelete },
+        { text: 'Delete', style: 'destructive', onPress: () => confirmDeleteMeal(mealId) },
       ]);
     }
+  };
+
+  const confirmDeleteMeal = async (mealId: string) => {
+    setDeleteMealConfirm(null);
+    try { await nutritionApi.deleteMeal(mealId); fetchData(); } catch { Alert.alert('Error', 'Failed to delete meal.'); }
   };
 
   // ─── Weight log handlers ──────────────────────────────────────────────
 
   const openLogWeight = () => {
     setLogWeightValue('');
+    setLogWeightValueError('');
     setLogWeightDate(todayStr);
     setLogWeightNotes('');
     setShowLogWeightModal(true);
@@ -466,6 +538,13 @@ export default function HealthGoalsScreen() {
 
   const handleLogWeight = async () => {
     if (!logWeightValue.trim()) return;
+
+    // Check for validation errors
+    if (logWeightValueError) {
+      Alert.alert('Invalid Input', 'Please enter a valid weight between 50-500 lbs.');
+      return;
+    }
+
     setSavingWeight(true);
     try {
       await healthGoalsApi.logWeight({
@@ -484,18 +563,20 @@ export default function HealthGoalsScreen() {
     }
   };
 
-  const handleDeleteWeightLog = async (logId: string) => {
-    const doDelete = async () => {
-      try { await healthGoalsApi.deleteWeightLog(logId); fetchData(); } catch { Alert.alert('Error', 'Failed to delete weight entry.'); }
-    };
+  const handleDeleteWeightLog = (logId: string, dateLabel: string) => {
     if (Platform.OS === 'web') {
-      if (window.confirm('Remove this weight entry?')) await doDelete();
+      setDeleteWeightConfirm({ id: logId, date: dateLabel });
     } else {
-      Alert.alert('Delete Entry', 'Remove this weight entry?', [
+      Alert.alert('Delete Entry', `Remove weight entry from ${dateLabel}?`, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: doDelete },
+        { text: 'Delete', style: 'destructive', onPress: () => confirmDeleteWeight(logId) },
       ]);
     }
+  };
+
+  const confirmDeleteWeight = async (logId: string) => {
+    setDeleteWeightConfirm(null);
+    try { await healthGoalsApi.deleteWeightLog(logId); fetchData(); } catch { Alert.alert('Error', 'Failed to delete weight entry.'); }
   };
 
   // ─── Progress helpers ──────────────────────────────────────────────────
@@ -863,7 +944,7 @@ export default function HealthGoalsScreen() {
                       </View>
                     ) : null}
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteMeal(meal.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} className="ml-2 p-1">
+                  <TouchableOpacity onPress={() => handleDeleteMeal(meal.id, meal.mealName || 'Meal')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} className="ml-2 p-1">
                     <Ionicons name="trash-outline" size={16} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
@@ -1091,7 +1172,7 @@ export default function HealthGoalsScreen() {
                           </Text>
                         </View>
                       )}
-                      <TouchableOpacity onPress={() => handleDeleteWeightLog(log.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <TouchableOpacity onPress={() => handleDeleteWeightLog(log.id, dateLabel)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <Ionicons name="trash-outline" size={14} color="#d1d5db" />
                       </TouchableOpacity>
                     </View>
@@ -1153,10 +1234,19 @@ export default function HealthGoalsScreen() {
                             placeholder={trackingDef.placeholder}
                             placeholderTextColor="#9ca3af"
                             value={targetValue}
-                            onChangeText={setTargetValue}
+                            onChangeText={(text) => {
+                              setTargetValue(text);
+                              const error = editGoal.goalType === 'weight'
+                                ? validateWeight(text)
+                                : validateTargetValue(text, editGoal.goalType);
+                              setTargetValueError(error);
+                            }}
                             keyboardType="numeric"
                             autoFocus
                           />
+                          {targetValueError ? (
+                            <Text className="text-xs text-red-500 mt-1">{targetValueError}</Text>
+                          ) : null}
                         </View>
                       ) : (
                         <Text className="text-sm text-gray-500">This is a primary goal — no target to edit. You can remove and re-add it.</Text>
@@ -1239,10 +1329,17 @@ export default function HealthGoalsScreen() {
                       placeholder={TRACKING_GOALS.find(t => t.key === selectedGoalType)?.placeholder}
                       placeholderTextColor="#9ca3af"
                       value={targetValue}
-                      onChangeText={setTargetValue}
+                      onChangeText={(text) => {
+                        setTargetValue(text);
+                        const error = validateTargetValue(text, selectedGoalType);
+                        setTargetValueError(error);
+                      }}
                       keyboardType="numeric"
                       autoFocus
                     />
+                    {targetValueError ? (
+                      <Text className="text-xs text-red-500 mt-1">{targetValueError}</Text>
+                    ) : null}
                   </View>
                 )}
 
@@ -1251,23 +1348,39 @@ export default function HealthGoalsScreen() {
                   <View>
                     <Text className="text-sm font-medium text-gray-700 mb-1">Starting Weight (lbs) *</Text>
                     <TextInput
-                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 mb-3"
+                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
                       placeholder="e.g. 210"
                       placeholderTextColor="#9ca3af"
                       value={startingWeightInput}
-                      onChangeText={setStartingWeightInput}
+                      onChangeText={(text) => {
+                        setStartingWeightInput(text);
+                        const error = validateWeight(text);
+                        setStartingWeightError(error);
+                      }}
                       keyboardType="numeric"
                       autoFocus
                     />
+                    {startingWeightError ? (
+                      <Text className="text-xs text-red-500 mt-1 mb-2">{startingWeightError}</Text>
+                    ) : <View className="mb-3" />}
+
                     <Text className="text-sm font-medium text-gray-700 mb-1">Goal Weight (lbs) *</Text>
                     <TextInput
-                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 mb-3"
+                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
                       placeholder="e.g. 185"
                       placeholderTextColor="#9ca3af"
                       value={targetValue}
-                      onChangeText={setTargetValue}
+                      onChangeText={(text) => {
+                        setTargetValue(text);
+                        const error = validateWeight(text);
+                        setTargetValueError(error);
+                      }}
                       keyboardType="numeric"
                     />
+                    {targetValueError ? (
+                      <Text className="text-xs text-red-500 mt-1 mb-2">{targetValueError}</Text>
+                    ) : <View className="mb-3" />}
+
                     <Text className="text-sm font-medium text-gray-700 mb-1">Target Date (optional)</Text>
                     <TextInput
                       className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
@@ -1386,9 +1499,16 @@ export default function HealthGoalsScreen() {
                   placeholder="kcal"
                   placeholderTextColor="#d1d5db"
                   value={logCalories}
-                  onChangeText={setLogCalories}
+                  onChangeText={(text) => {
+                    setLogCalories(text);
+                    const error = validateMacro(text, 'Calories');
+                    setLogCaloriesError(error);
+                  }}
                   keyboardType="numeric"
                 />
+                {logCaloriesError ? (
+                  <Text className="text-xs text-red-500 mt-0.5">{logCaloriesError}</Text>
+                ) : null}
               </View>
               <View className="flex-1">
                 <Text className="text-xs text-gray-500 mb-1">Protein</Text>
@@ -1397,9 +1517,16 @@ export default function HealthGoalsScreen() {
                   placeholder="g"
                   placeholderTextColor="#d1d5db"
                   value={logProtein}
-                  onChangeText={setLogProtein}
+                  onChangeText={(text) => {
+                    setLogProtein(text);
+                    const error = validateMacro(text, 'Protein');
+                    setLogProteinError(error);
+                  }}
                   keyboardType="numeric"
                 />
+                {logProteinError ? (
+                  <Text className="text-xs text-red-500 mt-0.5">{logProteinError}</Text>
+                ) : null}
               </View>
             </View>
             <View className="flex-row gap-2">
@@ -1410,9 +1537,16 @@ export default function HealthGoalsScreen() {
                   placeholder="g"
                   placeholderTextColor="#d1d5db"
                   value={logCarbs}
-                  onChangeText={setLogCarbs}
+                  onChangeText={(text) => {
+                    setLogCarbs(text);
+                    const error = validateMacro(text, 'Carbs');
+                    setLogCarbsError(error);
+                  }}
                   keyboardType="numeric"
                 />
+                {logCarbsError ? (
+                  <Text className="text-xs text-red-500 mt-0.5">{logCarbsError}</Text>
+                ) : null}
               </View>
               <View className="flex-1">
                 <Text className="text-xs text-gray-500 mb-1">Fat</Text>
@@ -1421,9 +1555,16 @@ export default function HealthGoalsScreen() {
                   placeholder="g"
                   placeholderTextColor="#d1d5db"
                   value={logFat}
-                  onChangeText={setLogFat}
+                  onChangeText={(text) => {
+                    setLogFat(text);
+                    const error = validateMacro(text, 'Fat');
+                    setLogFatError(error);
+                  }}
                   keyboardType="numeric"
                 />
+                {logFatError ? (
+                  <Text className="text-xs text-red-500 mt-0.5">{logFatError}</Text>
+                ) : null}
               </View>
             </View>
           </ScrollView>
@@ -1448,14 +1589,21 @@ export default function HealthGoalsScreen() {
           <ScrollView className="px-4 pt-4" contentContainerStyle={{ paddingBottom: 30 }}>
             <Text className="text-sm font-medium text-gray-700 mb-1">Weight (lbs) *</Text>
             <TextInput
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 mb-4"
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
               placeholder="e.g. 195.5"
               placeholderTextColor="#9ca3af"
               value={logWeightValue}
-              onChangeText={setLogWeightValue}
+              onChangeText={(text) => {
+                setLogWeightValue(text);
+                const error = validateWeight(text);
+                setLogWeightValueError(error);
+              }}
               keyboardType="numeric"
               autoFocus
             />
+            {logWeightValueError ? (
+              <Text className="text-xs text-red-500 mt-1 mb-3">{logWeightValueError}</Text>
+            ) : <View className="mb-4" />}
 
             <Text className="text-sm font-medium text-gray-700 mb-1">Date</Text>
             <TextInput
@@ -1479,7 +1627,67 @@ export default function HealthGoalsScreen() {
         </View>
       </Modal>
 
-      {/* ─── Delete Confirmation Modal ───────────────────────────────── */}
+      {/* ─── Delete Meal Confirmation Modal (web) ──────────────────── */}
+      <Modal visible={!!deleteMealConfirm} transparent animationType="fade" onRequestClose={() => setDeleteMealConfirm(null)}>
+        <TouchableOpacity
+          className="flex-1 bg-black/40 items-center justify-center"
+          activeOpacity={1}
+          onPress={() => setDeleteMealConfirm(null)}
+        >
+          <View className="bg-white rounded-2xl mx-8 p-5 w-72" onStartShouldSetResponder={() => true}>
+            <Text className="text-base font-semibold text-gray-800 text-center mb-1">Delete Meal</Text>
+            <Text className="text-sm text-gray-500 text-center mb-4">
+              Remove "{deleteMealConfirm?.name}"?
+            </Text>
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                className="flex-1 py-2.5 rounded-lg bg-gray-100 items-center"
+                onPress={() => setDeleteMealConfirm(null)}
+              >
+                <Text className="text-sm font-medium text-gray-600">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 py-2.5 rounded-lg bg-red-500 items-center"
+                onPress={() => deleteMealConfirm && confirmDeleteMeal(deleteMealConfirm.id)}
+              >
+                <Text className="text-sm font-medium text-white">Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ─── Delete Weight Confirmation Modal (web) ────────────────── */}
+      <Modal visible={!!deleteWeightConfirm} transparent animationType="fade" onRequestClose={() => setDeleteWeightConfirm(null)}>
+        <TouchableOpacity
+          className="flex-1 bg-black/40 items-center justify-center"
+          activeOpacity={1}
+          onPress={() => setDeleteWeightConfirm(null)}
+        >
+          <View className="bg-white rounded-2xl mx-8 p-5 w-72" onStartShouldSetResponder={() => true}>
+            <Text className="text-base font-semibold text-gray-800 text-center mb-1">Delete Weight Entry</Text>
+            <Text className="text-sm text-gray-500 text-center mb-4">
+              Remove weight entry from {deleteWeightConfirm?.date}?
+            </Text>
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                className="flex-1 py-2.5 rounded-lg bg-gray-100 items-center"
+                onPress={() => setDeleteWeightConfirm(null)}
+              >
+                <Text className="text-sm font-medium text-gray-600">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 py-2.5 rounded-lg bg-red-500 items-center"
+                onPress={() => deleteWeightConfirm && confirmDeleteWeight(deleteWeightConfirm.id)}
+              >
+                <Text className="text-sm font-medium text-white">Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ─── Delete Goal Confirmation Modal ───────────────────────────────── */}
       <Modal visible={!!confirmDeleteGoal} transparent animationType="fade" onRequestClose={() => setConfirmDeleteGoal(null)}>
         <TouchableOpacity
           className="flex-1 bg-black/40 items-center justify-center"

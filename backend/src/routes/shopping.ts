@@ -1,18 +1,26 @@
 import express from 'express';
 import prisma from '../lib/prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
+import { goalBoostScore, priceValueBonus, parseSizeToOz, GOAL_BOOST_KEYWORDS } from '../services/grocery-prices';
 
 // Category inference for auto-detecting storage locations
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley', 'kale', 'zucchini', 'squash', 'green bean', 'pea'],
+  produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'bell pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley', 'kale', 'zucchini', 'squash', 'green bean', 'pea'],
   protein: ['chicken', 'beef', 'pork', 'fish', 'salmon', 'shrimp', 'turkey', 'steak', 'bacon', 'sausage', 'ground', 'meat', 'tofu', 'egg'],
   dairy: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream', 'cottage', 'mozzarella', 'cheddar', 'parmesan'],
   grains: ['rice', 'pasta', 'bread', 'flour', 'oat', 'cereal', 'tortilla', 'noodle', 'quinoa'],
   frozen: ['frozen', 'ice cream', 'pizza rolls'],
   canned: ['canned', 'beans', 'soup', 'tuna can', 'tomato sauce', 'tomato paste'],
-  condiments: ['sauce', 'ketchup', 'mustard', 'mayo', 'dressing', 'vinegar', 'oil', 'olive oil', 'soy sauce', 'hot sauce', 'sriracha', 'salsa', 'seasoning', 'spice', 'salt', 'pepper'],
+  condiments: ['sauce', 'ketchup', 'mustard', 'mayo', 'dressing', 'vinegar', 'oil', 'olive oil', 'soy sauce', 'hot sauce', 'sriracha', 'salsa', 'seasoning', 'spice', 'salt', 'pepper', 'black pepper', 'peppercorn'],
   snacks: ['chips', 'crackers', 'nuts', 'granola', 'popcorn', 'cookie', 'bar'],
   beverages: ['juice', 'soda', 'water', 'coffee', 'tea', 'wine', 'beer'],
+};
+
+// Default expiry days by category (mirrors inventory.ts)
+const CATEGORY_EXPIRY_DAYS: Record<string, number> = {
+  produce: 7, 'meat/protein': 4, protein: 4, meat: 4, dairy: 14,
+  grains: 180, frozen: 120, canned: 365, condiments: 90,
+  snacks: 60, beverages: 30, other: 30,
 };
 
 const STORAGE_BY_CATEGORY: Record<string, string> = {
@@ -168,12 +176,16 @@ function findExistingItem(newName: string, existingItems: any[]): any | null {
       if (newMatchesGroup && existingMatchesGroup) return item;
     }
 
-    // Word overlap: if significant words match
+    // Word overlap: require majority of significant words to match
+    // (previously too aggressive — "Item 1" matched "Item 2" on single word "item")
     const newWords = normNew.split(' ').filter(w => w.length > 2);
     const existingWords = normExisting.split(' ').filter(w => w.length > 2);
-    const commonWords = newWords.filter(w => existingWords.some(ew => ew === w || ew.includes(w) || w.includes(ew)));
-    if (commonWords.length > 0 && commonWords.length >= Math.min(newWords.length, existingWords.length)) {
-      return item;
+    if (newWords.length >= 2 && existingWords.length >= 2) {
+      const commonWords = newWords.filter(w => existingWords.some(ew => ew === w));
+      // Require at least 2 common words AND they cover the majority of both sets
+      if (commonWords.length >= 2 && commonWords.length >= Math.max(newWords.length, existingWords.length) * 0.6) {
+        return item;
+      }
     }
   }
 
@@ -294,6 +306,16 @@ const GROCERY_PRODUCTS: Array<{ name: string; category: string; unit: string; co
   { name: 'Ice Cream', category: 'frozen', unit: 'pint', commonUnits: ['pint', 'quart'] },
 ];
 
+// ─── Input Sanitization ──────────────────────────────────────────────────
+const MAX_NAME_LENGTH = 200;
+
+function sanitizeText(text: string): string {
+  return text
+    .replace(/<[^>]*>/g, '')  // Strip HTML tags
+    .slice(0, MAX_NAME_LENGTH)
+    .trim();
+}
+
 const router = express.Router();
 
 // ─── Search Relevance Helpers ─────────────────────────────────────────────
@@ -328,6 +350,232 @@ function isSearchDuplicate(newName: string, existingNames: Set<string>): boolean
   return false;
 }
 
+// ─── Goal-Aware Search Boost ─────────────────────────────────────────────
+
+// Search modifiers: when user has a goal, we fire a secondary Kroger search
+// e.g. "chocolate milk" + high-protein → also search "protein chocolate milk"
+const GOAL_SEARCH_MODIFIERS: Record<string, string[]> = {
+  'high-protein': ['protein', 'fairlife', 'high protein'],
+  'protein': ['protein', 'fairlife', 'high protein'],
+  'low-carb': ['low carb', 'keto', 'sugar free'],
+  'keto': ['keto', 'low carb', 'sugar free'],
+  'low-calorie': ['light', 'low fat', 'zero sugar'],
+  'weight-loss': ['light', 'lean', 'low calorie'],
+  'vegetarian': ['plant based', 'veggie'],
+  'vegan': ['plant based', 'vegan', 'dairy free'],
+  'gluten-free': ['gluten free'],
+  'dairy-free': ['dairy free', 'oat', 'almond'],
+};
+
+// GOAL_BOOST_KEYWORDS, goalBoostScore, parseSizeToOz, priceValueBonus
+// imported from '../services/grocery-prices'
+
+// POST /api/shopping-lists/set-kroger-location — Save user's nearest Kroger store
+router.post('/set-kroger-location', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { lat, lng } = req.body;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'lat and lng are required' });
+    }
+
+    const { findNearestKrogerLocationCached } = await import('../services/grocery-prices');
+    const location = await findNearestKrogerLocationCached(lat, lng);
+    if (!location) {
+      return res.status(404).json({ error: 'No nearby Kroger-family store found' });
+    }
+
+    // Save to user preferences JSON field
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { preferences: true },
+    });
+
+    let prefs: Record<string, any> = {};
+    if (user?.preferences) {
+      try { prefs = JSON.parse(user.preferences); } catch {}
+    }
+
+    prefs.krogerLocation = {
+      locationId: location.locationId,
+      chain: location.chain,
+      address: location.address,
+    };
+
+    await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: { preferences: JSON.stringify(prefs) },
+    });
+
+    res.json({ krogerLocation: prefs.krogerLocation });
+  } catch (error) {
+    console.error('Set Kroger location error:', error);
+    res.status(500).json({ error: 'Failed to set Kroger location' });
+  }
+});
+
+// POST /api/shopping-lists/parse-items — Use AI to parse natural language into grocery items
+router.post('/parse-items', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || typeof text !== 'string' || text.trim().length < 2) {
+      return res.status(400).json({ error: 'text required' });
+    }
+
+    const OpenAI = (await import('openai')).default;
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    if (!process.env.OPENAI_API_KEY) {
+      // Fallback: basic split for when no API key
+      const items = text.split(/,|\n|\band\b|\bsome\b/i).map((s: string) => s.trim()).filter((s: string) => s.length >= 2);
+      return res.json({ items });
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      temperature: 0,
+      max_tokens: 200,
+      messages: [
+        {
+          role: 'system',
+          content: 'Extract grocery/food item names from the user\'s message. Return ONLY a JSON array of strings, each being a single grocery item. Strip filler words, quantities, and conversational phrases. Examples:\n"I need chicken chocolate milk Greek yogurt and ground beef" → ["chicken", "chocolate milk", "Greek yogurt", "ground beef"]\n"let\'s get some eggs butter bread and orange juice" → ["eggs", "butter", "bread", "orange juice"]\n"how about rice beans and tortillas" → ["rice", "beans", "tortillas"]',
+        },
+        { role: 'user', content: text.trim() },
+      ],
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || '[]';
+    // Parse the JSON array from the response
+    const match = raw.match(/\[[\s\S]*\]/);
+    const items: string[] = match ? JSON.parse(match[0]) : [text.trim()];
+
+    res.json({ items: items.filter((s: string) => typeof s === 'string' && s.length >= 2) });
+  } catch (error) {
+    console.error('Parse items error:', error);
+    // Fallback: return the raw text as a single item
+    res.json({ items: [req.body.text?.trim()].filter(Boolean) });
+  }
+});
+
+// POST /api/shopping-lists/smart-search — Goal-scored Kroger search for multiple items
+// Uses saved Kroger location from preferences, returns top 3 per item
+router.post('/smart-search', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { items } = req.body;
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'items array required' });
+    }
+
+    // Load user's Kroger location from preferences
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { preferences: true },
+    });
+
+    let krogerLocation: { locationId: string; chain: string; address: string } | null = null;
+    if (user?.preferences) {
+      try {
+        const prefs = JSON.parse(user.preferences);
+        krogerLocation = prefs.krogerLocation || null;
+      } catch {}
+    }
+
+    if (!krogerLocation) {
+      return res.status(400).json({ error: 'no_store_set', message: 'Visit the Shopping tab to set your Kroger store first.' });
+    }
+
+    // Load user's health goals
+    let userGoalTypes: string[] = [];
+    try {
+      const goals = await prisma.healthGoal.findMany({
+        where: { userId: req.user!.userId, isActive: true },
+        select: { goalType: true },
+      });
+      userGoalTypes = goals.map(g => g.goalType);
+    } catch {}
+
+    const { searchKrogerProducts, getBannerInfo } = await import('../services/grocery-prices');
+
+    const results = await Promise.all(
+      items.slice(0, 10).map(async (query: string) => {
+        // Primary search — 15 results
+        const allProducts = await searchKrogerProducts(query, krogerLocation!.locationId, 15);
+
+        // Goal-modified secondary search
+        if (userGoalTypes.length > 0) {
+          const seenNames = new Set(allProducts.map(p => p.name));
+          const seenMods = new Set<string>();
+          for (const goal of userGoalTypes) {
+            const mods = GOAL_SEARCH_MODIFIERS[goal.toLowerCase()];
+            if (!mods) continue;
+            for (const mod of mods) {
+              if (seenMods.has(mod) || query.toLowerCase().includes(mod.toLowerCase())) continue;
+              seenMods.add(mod);
+              try {
+                const goalResults = await searchKrogerProducts(`${mod} ${query}`, krogerLocation!.locationId, 5);
+                for (const p of goalResults) {
+                  if (!seenNames.has(p.name)) { allProducts.push(p); seenNames.add(p.name); }
+                }
+              } catch {}
+              break;
+            }
+          }
+        }
+
+        // Score products
+        const scored = allProducts.map(p => {
+          const goalScore = goalBoostScore(p.name, userGoalTypes);
+          const valueScore = priceValueBonus(p.price, p.size);
+          const goalAligned = goalScore > 0;
+          let goalReason: string | undefined;
+          if (goalAligned) {
+            for (const goal of userGoalTypes) {
+              const kw = goal.toLowerCase();
+              if (kw.includes('protein')) { goalReason = 'High protein'; break; }
+              else if (kw.includes('carb') || kw === 'keto') { goalReason = 'Low carb'; break; }
+              else if (kw.includes('calorie') || kw.includes('weight')) { goalReason = 'Lower calorie'; break; }
+            }
+          }
+          const priceBonus = p.price > 0 ? Math.max(0, 10 - p.price) : 0;
+          return {
+            name: p.name, brand: p.brand, size: p.size,
+            price: p.price, promoPrice: p.promoPrice, onSale: p.onSale || false,
+            imageUrl: p.imageUrl,
+            krogerProductId: p.krogerProductId,
+            goalAligned, goalReason,
+            _score: goalScore + valueScore + priceBonus + (p.onSale ? 8 : 0),
+            _pricePerOz: parseSizeToOz(p.size) > 0 ? p.price / parseSizeToOz(p.size) : 999,
+          };
+        });
+
+        scored.sort((a, b) => b._score - a._score || a.price - b.price);
+        const top3 = scored.slice(0, 3);
+        const byValue = [...top3].sort((a, b) => a._pricePerOz - b._pricePerOz);
+
+        return {
+          query,
+          products: top3.map(p => ({
+            name: p.name, brand: p.brand, size: p.size,
+            price: p.price, promoPrice: p.promoPrice, onSale: p.onSale,
+            imageUrl: p.imageUrl,
+            goalAligned: p.goalAligned, goalReason: p.goalReason,
+            valueRank: byValue.indexOf(p) + 1,
+            krogerProductId: p.krogerProductId,
+          })),
+        };
+      })
+    );
+
+    const banner = getBannerInfo(krogerLocation.chain);
+    res.json({
+      results,
+      storeName: `${banner.name} (${krogerLocation.address})`,
+    });
+  } catch (error) {
+    console.error('Smart search error:', error);
+    res.status(500).json({ error: 'Smart search failed' });
+  }
+});
+
 // GET /api/shopping-lists/search-products — Autocomplete product search
 // Accepts optional ?kroger=true&lat=X&lng=Y for live Kroger product search
 router.get('/search-products', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -337,24 +585,87 @@ router.get('/search-products', requireAuth, async (req: AuthenticatedRequest, re
       return res.json({ products: [] });
     }
 
+    // Load user's active health goals for search boosting
+    let userGoalTypes: string[] = [];
+    try {
+      const goals = await prisma.healthGoal.findMany({
+        where: { userId: req.user!.userId, isActive: true },
+        select: { goalType: true },
+      });
+      userGoalTypes = goals.map(g => g.goalType);
+    } catch {}
+
     // Collect all candidates with relevance scores
-    const candidates: Array<{
+    type Candidate = {
       name: string; category: string; defaultUnit: string;
       source: string; score: number;
       commonUnits?: string[]; imageUrl?: string;
       price?: number; promoPrice?: number; size?: string;
-    }> = [];
+      goalAligned?: boolean;
+      krogerProductId?: string;
+    };
+    const candidates: Candidate[] = [];
 
-    // 1) Search local product database
-    const qWords = q.split(/\s+/).filter(w => w.length > 1);
-    for (const p of GROCERY_PRODUCTS) {
-      const name = p.name.toLowerCase();
-      const score = scoreSearchRelevance(name, q);
-      if (score > 0) {
-        candidates.push({
-          name: p.name, category: p.category, defaultUnit: p.unit,
-          commonUnits: p.commonUnits, source: 'database', score,
-        });
+    // 1) Kroger API results FIRST — real product data is the primary source
+    const useKroger = req.query.kroger === 'true';
+    const lat = parseFloat(req.query.lat as string);
+    const lng = parseFloat(req.query.lng as string);
+    let krogerReturned = 0;
+
+    if (useKroger && !isNaN(lat) && !isNaN(lng) && q.length >= 2 && process.env.KROGER_CLIENT_ID) {
+      try {
+        const { findNearestKrogerLocationCached, searchKrogerProducts } = await import('../services/grocery-prices');
+        const location = await findNearestKrogerLocationCached(lat, lng);
+        if (location) {
+          // Primary Kroger search with the user's exact query
+          const krogerResults = await searchKrogerProducts(q, location.locationId, 15);
+          krogerReturned = krogerResults.length;
+          const addKrogerResults = (results: typeof krogerResults, scoreBase: number) => {
+            for (const kr of results) {
+              const relevance = scoreSearchRelevance(kr.name, q);
+              const valueBonus = priceValueBonus(kr.price, kr.size);
+              candidates.push({
+                name: kr.name,
+                category: inferItemCategory(kr.name),
+                defaultUnit: kr.size || 'each',
+                source: 'kroger', score: scoreBase + relevance + valueBonus,
+                imageUrl: kr.imageUrl,
+                price: kr.price,
+                promoPrice: kr.promoPrice,
+                size: kr.size,
+                krogerProductId: kr.krogerProductId,
+              });
+            }
+          };
+          addKrogerResults(krogerResults, 200);
+
+          // Goal-aware secondary search: surface goal-aligned alternatives
+          // e.g. "chocolate milk" + high-protein → also search "protein chocolate milk"
+          if (userGoalTypes.length > 0) {
+            const seenModifiers = new Set<string>();
+            for (const goal of userGoalTypes) {
+              const modifiers = GOAL_SEARCH_MODIFIERS[goal.toLowerCase()];
+              if (!modifiers) continue;
+              for (const mod of modifiers) {
+                if (seenModifiers.has(mod)) continue;
+                // Skip if the user already typed this modifier
+                if (q.includes(mod.toLowerCase())) continue;
+                seenModifiers.add(mod);
+                const goalQuery = `${mod} ${q}`;
+                try {
+                  const goalResults = await searchKrogerProducts(goalQuery, location.locationId, 5);
+                  // Score slightly below primary results (190+) so they appear after direct matches
+                  addKrogerResults(goalResults, 190);
+                } catch {}
+                // Only do one secondary search to keep it fast
+                break;
+              }
+              break; // One goal modifier search is enough
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Kroger product search in autocomplete failed:', err);
       }
     }
 
@@ -379,43 +690,43 @@ router.get('/search-products', requireAuth, async (req: AuthenticatedRequest, re
       });
     }
 
-    // 3) Kroger API results (live prices — highest value for user)
-    const useKroger = req.query.kroger === 'true';
-    const lat = parseFloat(req.query.lat as string);
-    const lng = parseFloat(req.query.lng as string);
-
-    if (useKroger && !isNaN(lat) && !isNaN(lng) && q.length >= 3 && process.env.KROGER_CLIENT_ID) {
-      try {
-        const { findNearestKrogerLocationCached, searchKrogerProducts } = await import('../services/grocery-prices');
-        const location = await findNearestKrogerLocationCached(lat, lng);
-        if (location) {
-          const krogerResults = await searchKrogerProducts(q, location.locationId, 5);
-          for (const kr of krogerResults) {
-            const score = scoreSearchRelevance(kr.name, q) + 10; // Kroger bonus (real prices)
-            candidates.push({
-              name: kr.name,
-              category: inferItemCategory(kr.name),
-              defaultUnit: kr.size || 'each',
-              source: 'kroger', score,
-              imageUrl: kr.imageUrl,
-              price: kr.price,
-              promoPrice: kr.promoPrice,
-              size: kr.size,
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Kroger product search in autocomplete failed:', err);
+    // 3) Local product database — fallback / supplement when Kroger doesn't cover it
+    for (const p of GROCERY_PRODUCTS) {
+      const name = p.name.toLowerCase();
+      const score = scoreSearchRelevance(name, q);
+      if (score > 0) {
+        candidates.push({
+          name: p.name, category: p.category, defaultUnit: p.unit,
+          commonUnits: p.commonUnits, source: 'database', score,
+        });
       }
     }
 
-    // Sort by score descending, then deduplicate keeping highest-scored version
+    // Apply goal-aware boost
+    if (userGoalTypes.length > 0) {
+      for (const c of candidates) {
+        const boost = goalBoostScore(c.name, userGoalTypes);
+        if (boost > 0) {
+          c.score += boost;
+          c.goalAligned = true;
+        }
+      }
+    }
+
+    // Sort by score descending, then deduplicate
+    // Kroger results (score 200+) naturally float to top
+    // Local DB items are deduped against Kroger items but not vice versa
     candidates.sort((a, b) => b.score - a.score);
     const seenNames = new Set<string>();
     const products: any[] = [];
     for (const c of candidates) {
-      if (isSearchDuplicate(c.name, seenNames)) continue;
-      seenNames.add(c.name.toLowerCase().trim());
+      const normName = c.name.toLowerCase().trim();
+      // Exact dupe check for all sources
+      if (seenNames.has(normName)) continue;
+      // Kroger results are never suppressed by substring dedup
+      // Non-kroger items can be deduped if they overlap with an already-seen name
+      if (c.source !== 'kroger' && isSearchDuplicate(c.name, seenNames)) continue;
+      seenNames.add(normName);
       const { score, ...product } = c;
       products.push(product);
       if (products.length >= 15) break;
@@ -452,13 +763,14 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 // POST /api/shopping-lists
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { name, description, sourceType, sourceRecipeId, items } = req.body;
-    
+    const { name: rawName, description, sourceType, sourceRecipeId, items } = req.body;
+    const name = rawName ? sanitizeText(rawName) : rawName;
+
     // Handle mock recipes by not setting sourceRecipeId foreign key
     const listData: any = {
       userId: req.user!.userId,
       name,
-      description,
+      description: description ? sanitizeText(description) : description,
       sourceType
     };
     
@@ -549,7 +861,8 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.post('/:id/items', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const { name, quantity, unit, category } = req.body;
+    const { name: rawItemName, quantity, unit, category, krogerProductId } = req.body;
+    const name = rawItemName ? sanitizeText(rawItemName) : rawItemName;
 
     // Verify ownership and get existing items
     const list = await prisma.shoppingList.findFirst({
@@ -596,6 +909,8 @@ router.post('/:id/items', requireAuth, async (req: AuthenticatedRequest, res) =>
           quantity: finalQty,
           unit: finalUnit,
           notes: newNotes,
+          // Upgrade krogerProductId if the new item has one and the existing doesn't
+          ...(krogerProductId && !existing.krogerProductId ? { krogerProductId } : {}),
         },
       });
 
@@ -612,7 +927,8 @@ router.post('/:id/items', requireAuth, async (req: AuthenticatedRequest, res) =>
           name,
           quantity,
           unit,
-          category
+          category,
+          krogerProductId,
         }
       });
 
@@ -629,7 +945,8 @@ router.post('/:id/items', requireAuth, async (req: AuthenticatedRequest, res) =>
 router.patch('/:listId/items/:itemId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { listId, itemId } = req.params;
-    const { isChecked, name, quantity, unit, notes } = req.body;
+    const { isChecked, name: rawEditName, quantity, unit, notes, krogerProductId } = req.body;
+    const name = rawEditName !== undefined ? sanitizeText(rawEditName) : undefined;
 
     // Verify ownership
     const list = await prisma.shoppingList.findFirst({
@@ -649,6 +966,21 @@ router.patch('/:listId/items/:itemId', requireAuth, async (req: AuthenticatedReq
     if (quantity !== undefined) updateData.quantity = quantity;
     if (unit !== undefined) updateData.unit = unit;
     if (notes !== undefined) updateData.notes = notes;
+    if (krogerProductId !== undefined) updateData.krogerProductId = krogerProductId;
+
+    // Only clear cart tracking when name truly changes (different product).
+    // Quantity-only edits preserve krogerCartQuantity for partial-add support.
+    if (name !== undefined && krogerProductId === undefined) {
+      const existing = await prisma.shoppingListItem.findUnique({
+        where: { id: itemId },
+        select: { name: true },
+      });
+      if (existing && existing.name.toLowerCase() !== name.toLowerCase()) {
+        updateData.addedToKrogerCartAt = null;
+        updateData.krogerCartQuantity = null;
+        updateData.krogerProductId = null;
+      }
+    }
 
     const item = await prisma.shoppingListItem.update({
       where: { id: itemId },
@@ -677,6 +1009,52 @@ router.patch('/:listId/items/:itemId', requireAuth, async (req: AuthenticatedReq
   } catch (error) {
     console.error('Update shopping list item error:', error);
     res.status(500).json({ error: 'Failed to update item' });
+  }
+});
+
+// POST /api/shopping-lists/:listId/mark-carted — Bulk-mark items as added to Kroger cart
+router.post('/:listId/mark-carted', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { listId } = req.params;
+    const { itemIds, itemQuantities } = req.body;
+
+    if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+      return res.status(400).json({ error: 'itemIds array required' });
+    }
+
+    const list = await prisma.shoppingList.findFirst({
+      where: { id: listId, userId: req.user!.userId },
+    });
+
+    if (!list) {
+      return res.status(404).json({ error: 'Shopping list not found' });
+    }
+
+    // Track per-item quantity if provided
+    const qtyMap: Record<string, number> = itemQuantities || {};
+    let count = 0;
+    for (const itemId of itemIds) {
+      const addedQty = qtyMap[itemId] || 0;
+      const existing = await prisma.shoppingListItem.findUnique({
+        where: { id: itemId },
+        select: { krogerCartQuantity: true },
+      });
+      const prevQty = existing?.krogerCartQuantity || 0;
+      await prisma.shoppingListItem.update({
+        where: { id: itemId },
+        data: {
+          addedToKrogerCartAt: new Date(),
+          krogerCartQuantity: prevQty + addedQty,
+        },
+      });
+      count++;
+    }
+    const result = { count };
+
+    res.json({ success: true, count: result.count });
+  } catch (error) {
+    console.error('Mark carted error:', error);
+    res.status(500).json({ error: 'Failed to mark items as carted' });
   }
 });
 
@@ -773,17 +1151,45 @@ router.post('/:listId/items/:itemId/purchase', requireAuth, async (req: Authenti
     // Add to inventory — auto-infer storage location if not provided
     const inferredStorage = storageLocation || inferStorageLocation(item.name);
     const inferredCategory = category || item.category || inferItemCategory(item.name);
-    const inventoryItem = await prisma.inventoryItem.create({
-      data: {
+
+    // Compute expiry date based on category/storage
+    const expiryDays = inferredStorage === 'freezer' ? 120
+      : CATEGORY_EXPIRY_DAYS[inferredCategory] || CATEGORY_EXPIRY_DAYS.other;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + expiryDays);
+
+    // Check for existing inventory item (case-insensitive) to avoid duplicates
+    const existingInventory = await prisma.inventoryItem.findFirst({
+      where: {
         userId: req.user!.userId,
-        name: item.name,
-        quantity: item.quantity || 1,
-        unit: item.unit || 'pieces',
-        category: inferredCategory,
-        storageLocation: inferredStorage,
-        purchasedAt: new Date()
-      }
+        name: { equals: item.name },
+      },
     });
+
+    let inventoryItem;
+    if (existingInventory && existingInventory.name.toLowerCase() === item.name.toLowerCase()) {
+      inventoryItem = await prisma.inventoryItem.update({
+        where: { id: existingInventory.id },
+        data: {
+          quantity: (existingInventory.quantity || 0) + (item.quantity || 1),
+          purchasedAt: new Date(),
+          expiresAt,
+        },
+      });
+    } else {
+      inventoryItem = await prisma.inventoryItem.create({
+        data: {
+          userId: req.user!.userId,
+          name: item.name,
+          quantity: item.quantity || 1,
+          unit: item.unit || 'pieces',
+          category: inferredCategory,
+          storageLocation: inferredStorage,
+          purchasedAt: new Date(),
+          expiresAt,
+        }
+      });
+    }
     
     res.json({ 
       success: true, 
@@ -877,11 +1283,35 @@ router.post('/:listId/purchase-all', requireAuth, async (req: AuthenticatedReque
       }
     });
 
-    // Add all to inventory with per-item storage inference
+    // Add all to inventory with per-item storage inference + dedup + expiry
     const inventoryItems = await Promise.all(
-      itemsToPurchase.map(item => {
+      itemsToPurchase.map(async item => {
         const storage = locationMap[item.id] || inferStorageLocation(item.name);
         const category = inferItemCategory(item.name);
+        const expiryDays = storage === 'freezer' ? 120
+          : CATEGORY_EXPIRY_DAYS[category] || CATEGORY_EXPIRY_DAYS.other;
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + expiryDays);
+
+        // Check for existing inventory item to avoid duplicates
+        const existingInventory = await prisma.inventoryItem.findFirst({
+          where: {
+            userId: req.user!.userId,
+            name: { equals: item.name },
+          },
+        });
+
+        if (existingInventory && existingInventory.name.toLowerCase() === item.name.toLowerCase()) {
+          return prisma.inventoryItem.update({
+            where: { id: existingInventory.id },
+            data: {
+              quantity: (existingInventory.quantity || 0) + (item.quantity || 1),
+              purchasedAt: new Date(),
+              expiresAt,
+            },
+          });
+        }
+
         return prisma.inventoryItem.create({
           data: {
             userId: req.user!.userId,
@@ -890,7 +1320,8 @@ router.post('/:listId/purchase-all', requireAuth, async (req: AuthenticatedReque
             unit: item.unit || 'pieces',
             category,
             storageLocation: storage,
-            purchasedAt: new Date()
+            purchasedAt: new Date(),
+            expiresAt,
           }
         });
       })

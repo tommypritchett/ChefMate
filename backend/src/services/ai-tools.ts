@@ -326,6 +326,24 @@ export const toolDefinitions: ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'delete_meal',
+      description:
+        "Delete a previously logged meal. Use when the user says to remove a meal, says they didn't actually eat something, or wants to fix duplicate entries. You MUST provide the mealId from get_today_meals or from the log_meal result. Can delete multiple meals by calling this tool multiple times.",
+      parameters: {
+        type: 'object',
+        properties: {
+          mealId: {
+            type: 'string',
+            description: 'The ID of the meal to delete (from get_today_meals or log_meal result)',
+          },
+        },
+        required: ['mealId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_recipe_detail',
       description:
         'Get full details of a specific recipe including all ingredients, step-by-step instructions, nutrition breakdown, and tips. Use when the user asks for details about a recipe, wants to cook a specific recipe, or asks about ingredients/instructions.',
@@ -610,8 +628,51 @@ export const toolDefinitions: ChatCompletionTool[] = [
             type: 'number',
             description: 'Target calories per serving',
           },
+          servings: {
+            type: 'number',
+            description: 'Total number of servings the recipe should make (e.g., 10 for 5 meals × 2 people). CRITICAL for meal prep — always pass the exact total from the serving math.',
+          },
         },
         required: ['title', 'requirements'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'schedule_meal_prep',
+      description:
+        'Schedule a meal prep recipe onto the user\'s meal plan for multiple days. Handles all date calculation, plan lookup/creation, and slot creation server-side. Use this instead of calling add_meal_to_plan multiple times for meal prep scheduling.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipeId: {
+            type: 'string',
+            description: 'The recipe ID to schedule (from search_recipes or create_custom_recipe result)',
+          },
+          mealType: {
+            type: 'string',
+            description: 'Which meal slot to fill',
+            enum: ['breakfast', 'lunch', 'dinner', 'snack'],
+          },
+          numberOfMeals: {
+            type: 'number',
+            description: 'How many meals to schedule for THIS person (e.g., 5 for weekday lunches)',
+          },
+          weekdaysOnly: {
+            type: 'boolean',
+            description: 'If true (default), only schedule on weekdays (Mon-Fri). If false, include weekends.',
+          },
+          skipConflicts: {
+            type: 'boolean',
+            description: 'If true, skip days that already have a meal in this slot and schedule the remaining days. If false (default), report conflicts and do not schedule any.',
+          },
+          replaceConflicts: {
+            type: 'boolean',
+            description: 'If true, replace/overwrite existing meals on conflicting days with this recipe. Use when the user confirms they want to replace existing meals.',
+          },
+        },
+        required: ['recipeId', 'mealType', 'numberOfMeals'],
       },
     },
   },
@@ -647,6 +708,8 @@ export async function executeTool(
       return logMeal(args, userId);
     case 'update_meal':
       return updateMealTool(args, userId);
+    case 'delete_meal':
+      return deleteMealTool(args, userId);
     case 'get_recipe_detail':
       return getRecipeDetail(args, userId);
     case 'compare_recipe_ingredients':
@@ -669,6 +732,8 @@ export async function executeTool(
       return krogerProductSearch(args, userId);
     case 'create_custom_recipe':
       return createCustomRecipe(args, userId);
+    case 'schedule_meal_prep':
+      return scheduleMealPrep(args, userId);
     default:
       return { result: { error: `Unknown tool: ${toolName}` } };
   }
@@ -1303,6 +1368,177 @@ async function addMealToPlan(args: Record<string, any>, userId: string) {
   };
 }
 
+async function scheduleMealPrep(args: Record<string, any>, userId: string) {
+  const { recipeId, mealType, numberOfMeals, weekdaysOnly = true, skipConflicts = false, replaceConflicts = false } = args;
+
+  // Validate recipe exists
+  const recipe = await prisma.recipe.findFirst({
+    where: { id: recipeId },
+    select: { id: true, title: true, nutrition: true, servings: true },
+  });
+
+  if (!recipe) {
+    return { result: { error: `Recipe not found with ID "${recipeId}". Make sure to use the exact recipe ID from search_recipes or create_custom_recipe.` } };
+  }
+
+  // Calculate target dates: next N weekdays (or all days) starting from tomorrow
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const targetDates: Date[] = [];
+  let cursor = new Date(today);
+  cursor.setDate(cursor.getDate() + 1); // Start from tomorrow
+
+  while (targetDates.length < numberOfMeals) {
+    const dayOfWeek = cursor.getDay(); // 0=Sun, 6=Sat
+    if (!weekdaysOnly || (dayOfWeek >= 1 && dayOfWeek <= 5)) {
+      targetDates.push(new Date(cursor));
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  // Find or create the meal plan(s) covering these dates
+  const firstDate = targetDates[0];
+  const lastDate = targetDates[targetDates.length - 1];
+
+  // Get Monday of first date's week
+  const firstDay = firstDate.getDay();
+  const mondayOffset = firstDay === 0 ? -6 : 1 - firstDay;
+  const planStart = new Date(firstDate);
+  planStart.setDate(firstDate.getDate() + mondayOffset);
+  planStart.setHours(0, 0, 0, 0);
+
+  // Get Sunday of last date's week
+  const lastDay = lastDate.getDay();
+  const sundayOffset = lastDay === 0 ? 0 : 7 - lastDay;
+  const planEnd = new Date(lastDate);
+  planEnd.setDate(lastDate.getDate() + sundayOffset);
+  planEnd.setHours(23, 59, 59, 999);
+
+  // Find existing plan that covers the date range
+  let plan = await prisma.mealPlan.findFirst({
+    where: {
+      userId,
+      startDate: { lte: planEnd },
+      endDate: { gte: planStart },
+    },
+    include: {
+      slots: {
+        where: { mealType },
+        select: { id: true, date: true, mealType: true, recipe: { select: { title: true } }, customName: true },
+      },
+    },
+  });
+
+  if (!plan) {
+    // Create a new plan covering the full range
+    plan = await prisma.mealPlan.create({
+      data: {
+        userId,
+        name: `Meal Prep - ${planStart.toLocaleDateString()}`,
+        startDate: planStart,
+        endDate: planEnd,
+        isActive: true,
+      },
+      include: {
+        slots: {
+          where: { mealType },
+          select: { id: true, date: true, mealType: true, recipe: { select: { title: true } }, customName: true },
+        },
+      },
+    });
+  }
+
+  // Check for conflicts
+  const existingSlotsByDate = new Map<string, any>();
+  for (const slot of plan.slots) {
+    const dateKey = new Date(slot.date).toISOString().split('T')[0];
+    existingSlotsByDate.set(dateKey, slot);
+  }
+
+  const conflicts: { date: string; existingMeal: string }[] = [];
+  const scheduledDates: string[] = [];
+  const skippedDates: string[] = [];
+
+  for (const targetDate of targetDates) {
+    const dateKey = targetDate.toISOString().split('T')[0];
+    const existing = existingSlotsByDate.get(dateKey);
+
+    if (existing) {
+      const existingName = existing.recipe?.title || existing.customName || 'Unknown meal';
+      if (replaceConflicts) {
+        // Delete existing slot and create new one below
+        await prisma.mealPlanSlot.delete({ where: { id: existing.id } });
+      } else if (skipConflicts) {
+        skippedDates.push(`${dateKey} (has: ${existingName})`);
+        continue;
+      } else {
+        conflicts.push({ date: dateKey, existingMeal: existingName });
+        continue;
+      }
+    }
+
+    // Create the slot
+    const slotDate = new Date(targetDate);
+    slotDate.setHours(0, 0, 0, 0);
+
+    await prisma.mealPlanSlot.create({
+      data: {
+        mealPlanId: plan.id,
+        recipeId: recipe.id,
+        date: slotDate,
+        mealType,
+        servings: 1, // Always 1 per person per slot
+      },
+    });
+
+    scheduledDates.push(dateKey);
+  }
+
+  // If there are blocking conflicts, return them for the AI to ask the user
+  if (conflicts.length > 0 && !skipConflicts) {
+    return {
+      result: {
+        scheduled: false,
+        conflicts,
+        message: `Found ${conflicts.length} existing ${mealType} meals that would be replaced. The user should confirm before overwriting.`,
+        conflictDetails: conflicts.map(c => `${c.date}: ${c.existingMeal}`),
+        recipe: { id: recipe.id, title: recipe.title },
+        requestedDates: targetDates.map(d => d.toISOString().split('T')[0]),
+      },
+    };
+  }
+
+  // Parse recipe nutrition for per-serving info
+  let perServingNutrition: any = null;
+  if (recipe.nutrition) {
+    try {
+      perServingNutrition = JSON.parse(recipe.nutrition);
+    } catch {}
+  }
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const formattedDates = scheduledDates.map(d => {
+    const dt = new Date(d + 'T12:00:00');
+    return `${dayNames[dt.getDay()]} ${dt.getMonth() + 1}/${dt.getDate()}`;
+  });
+
+  return {
+    result: {
+      scheduled: true,
+      recipe: { id: recipe.id, title: recipe.title },
+      mealType,
+      scheduledDates,
+      formattedSchedule: formattedDates,
+      skippedDates: skippedDates.length > 0 ? skippedDates : undefined,
+      perServingNutrition,
+      totalMealsScheduled: scheduledDates.length,
+      message: `Scheduled "${recipe.title}" for ${mealType} on ${formattedDates.join(', ')}. Each slot = 1 serving.`,
+    },
+    metadata: { type: 'meal_plan', planId: plan.id },
+  };
+}
+
 // Shared fuzzy inventory matching
 function buildInventoryMatcher(inventory: any[]) {
   const inventoryItems = inventory.map((i) => ({
@@ -1754,6 +1990,34 @@ async function updateMealTool(args: Record<string, any>, userId: string) {
       message: `Updated meal "${updated.mealName}" — ${updated.calories} cal, ${updated.proteinGrams}g protein.`,
     },
     metadata: { type: 'meal_update' },
+  };
+}
+
+async function deleteMealTool(args: Record<string, any>, userId: string) {
+  const { mealId } = args;
+
+  if (!mealId) {
+    return { result: { error: 'mealId is required to delete a meal.' } };
+  }
+
+  // Verify ownership
+  const existing = await prisma.mealLog.findFirst({
+    where: { id: mealId, userId },
+  });
+  if (!existing) {
+    return { result: { error: 'Meal not found or not owned by user.' } };
+  }
+
+  await prisma.mealLog.delete({ where: { id: mealId } });
+
+  return {
+    result: {
+      deleted: true,
+      mealId,
+      description: existing.mealName,
+      message: `Deleted "${existing.mealName}" from your meals.`,
+    },
+    metadata: { type: 'meal_delete' },
   };
 }
 
@@ -2216,13 +2480,13 @@ const CATEGORY_DEFAULTS: Record<string, { storageLocation: string; expiresInDays
 
 // Keyword-based category inference
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley'],
+  produce: ['apple', 'banana', 'lettuce', 'tomato', 'onion', 'garlic', 'bell pepper', 'carrot', 'broccoli', 'spinach', 'avocado', 'lemon', 'lime', 'potato', 'celery', 'cucumber', 'mushroom', 'corn', 'berry', 'fruit', 'vegetable', 'herb', 'cilantro', 'basil', 'parsley'],
   'meat/protein': ['chicken', 'beef', 'pork', 'fish', 'salmon', 'shrimp', 'turkey', 'steak', 'bacon', 'sausage', 'ground', 'meat', 'tofu', 'egg'],
   dairy: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream', 'cottage', 'mozzarella', 'cheddar', 'parmesan'],
   grains: ['rice', 'pasta', 'bread', 'flour', 'oat', 'cereal', 'tortilla', 'noodle', 'quinoa'],
   frozen: ['frozen', 'ice cream', 'pizza rolls'],
   canned: ['canned', 'beans', 'soup', 'tuna can', 'tomato sauce', 'tomato paste'],
-  condiments: ['sauce', 'ketchup', 'mustard', 'mayo', 'dressing', 'vinegar', 'oil', 'olive oil', 'soy sauce', 'hot sauce', 'sriracha', 'salsa'],
+  condiments: ['sauce', 'ketchup', 'mustard', 'mayo', 'dressing', 'vinegar', 'oil', 'olive oil', 'soy sauce', 'hot sauce', 'sriracha', 'salsa', 'black pepper', 'peppercorn'],
   snacks: ['chips', 'crackers', 'nuts', 'granola', 'popcorn', 'cookie', 'bar'],
   beverages: ['juice', 'soda', 'water', 'coffee', 'tea', 'wine', 'beer'],
 };
@@ -2741,7 +3005,7 @@ async function krogerProductSearch(args: Record<string, any>, userId: string) {
 // ─── Create Custom Recipe (AI-Generated) ──────────────────────────────────
 
 async function createCustomRecipe(args: Record<string, any>, userId: string) {
-  const { title, requirements, category, proteinTarget, calorieTarget } = args;
+  const { title, requirements, category, proteinTarget, calorieTarget, servings: targetServings } = args;
 
   if (!process.env.OPENAI_API_KEY) {
     return {
@@ -2777,7 +3041,7 @@ Return a JSON object with EXACTLY these fields:
   "instructions": [{"step_number": 1, "text": "Step description", "time_minutes": 5}],
   "prepTimeMinutes": 10,
   "cookTimeMinutes": 20,
-  "servings": 2,
+  "servings": ${targetServings || 2},
   "difficulty": "easy",
   "nutrition": {"calories": 400, "protein": 35, "carbs": 30, "fat": 15},
   "dietaryTags": ["high-protein"],
@@ -2834,7 +3098,7 @@ IMPORTANT:
         prepTimeMinutes: recipe.prepTimeMinutes || null,
         cookTimeMinutes: recipe.cookTimeMinutes || null,
         totalTimeMinutes: (recipe.prepTimeMinutes || 0) + (recipe.cookTimeMinutes || 0) || null,
-        servings: recipe.servings || 2,
+        servings: targetServings || recipe.servings || 2,
         difficulty: recipe.difficulty || 'medium',
         nutrition: JSON.stringify(recipe.nutrition),
         dietaryTags: JSON.stringify(recipe.dietaryTags || []),

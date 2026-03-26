@@ -21,6 +21,7 @@ interface StorePrice {
   saleSavings?: number;
   inStock?: boolean;
   fulfillmentTypes?: string[];
+  krogerProductId?: string;
 }
 
 interface PriceResult {
@@ -795,6 +796,7 @@ export async function getKrogerPrices(query: string, locationId?: string, chain?
       saleSavings,
       inStock,
       fulfillmentTypes: fulfillmentTypes.length > 0 ? fulfillmentTypes : undefined,
+      krogerProductId: product.productId || product.upc || undefined,
     }];
   } catch (err) {
     console.error('Kroger API error:', err);
@@ -1205,6 +1207,63 @@ export async function getKrogerSaleItems(locationId: string, limit = 20): Promis
 
   _saleCache.set(locationId, { data: allDeals, ts: Date.now() });
   return allDeals.slice(0, limit);
+}
+
+// ─── Goal-Aware Scoring Helpers ────────────────────────────────────────
+// Shared by shopping routes and AI tools for goal-aligned product ranking
+
+export const GOAL_BOOST_KEYWORDS: Record<string, string[]> = {
+  'high-protein': ['protein', 'greek', 'fairlife', 'chicken breast', 'eggs', 'egg', 'turkey', 'salmon', 'tuna', 'tofu', 'cottage cheese', 'whey', 'jerky', 'cottage', 'lean', '93/7', '93%', '90/10', '90%', '96/4', '96%', 'sirloin', 'tenderloin', 'pork loin', 'shrimp', 'tilapia', 'cod'],
+  'protein': ['protein', 'greek', 'fairlife', 'chicken breast', 'eggs', 'egg', 'turkey', 'salmon', 'tuna', 'tofu', 'cottage cheese', 'whey', 'jerky', 'cottage', 'lean', '93/7', '93%', '90/10', '90%', '96/4', '96%', 'sirloin', 'tenderloin', 'pork loin', 'shrimp', 'tilapia', 'cod'],
+  'low-carb': ['cauliflower', 'almond flour', 'coconut flour', 'sugar-free', 'keto', 'zucchini noodle', 'coconut', 'avocado', 'cheese', 'butter'],
+  'keto': ['cauliflower', 'almond flour', 'coconut flour', 'sugar-free', 'keto', 'coconut', 'avocado', 'butter', 'cream cheese', 'bacon'],
+  'low-calorie': ['light', 'low-fat', 'skim', 'lean', 'turkey', 'spinach', 'broccoli', 'zucchini'],
+  'weight-loss': ['light', 'low-fat', 'lean', 'turkey', 'spinach', 'broccoli', 'cauliflower'],
+};
+
+export function goalBoostScore(productName: string, goalTypes: string[]): number {
+  const lower = productName.toLowerCase();
+  for (const goal of goalTypes) {
+    const keywords = GOAL_BOOST_KEYWORDS[goal.toLowerCase()];
+    if (keywords && keywords.some(kw => lower.includes(kw))) {
+      return 15;
+    }
+  }
+  return 0;
+}
+
+export function parseSizeToOz(size: string | undefined): number {
+  if (!size) return 0;
+  const s = size.toLowerCase().trim();
+
+  let m = s.match(/([\d.]+)\s*(?:lb|lbs|pound|pounds)/);
+  if (m) return parseFloat(m[1]) * 16;
+
+  m = s.match(/([\d.]+)\s*(?:gal|gallon|gallons)/);
+  if (m) return parseFloat(m[1]) * 128;
+
+  m = s.match(/([\d.]+)\s*(?:qt|quart|quarts)/);
+  if (m) return parseFloat(m[1]) * 32;
+
+  m = s.match(/([\d.]+)\s*(?:fl\s*oz|oz|ounce|ounces)/);
+  if (m) return parseFloat(m[1]);
+
+  m = s.match(/([\d.]+)\s*(?:kg|kilogram)/);
+  if (m) return parseFloat(m[1]) * 35.274;
+
+  m = s.match(/([\d.]+)\s*g\b/);
+  if (m) return parseFloat(m[1]) / 28.3495;
+
+  return 0;
+}
+
+export function priceValueBonus(price: number | undefined, size: string | undefined): number {
+  if (!price || price <= 0) return 0;
+  const oz = parseSizeToOz(size);
+  if (oz <= 0) return 0;
+  const pricePerOz = price / oz;
+  if (pricePerOz >= 1) return 0;
+  return Math.round(Math.max(0, 8 - pricePerOz * 16));
 }
 
 // ─── Kroger User OAuth (Cart Integration) ────────────────────────────────

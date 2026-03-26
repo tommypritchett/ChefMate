@@ -8,71 +8,20 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useChatStore } from '../../src/store/chatStore';
+import { useMealPrepStore } from '../../src/store/chatStore';
 import MessageBubble from '../../src/components/chat/MessageBubble';
 import ChatInput from '../../src/components/chat/ChatInput';
 import ThreadList from '../../src/components/chat/ThreadList';
-import { healthGoalsApi, inventoryApi } from '../../src/services/api';
 
-const DEFAULT_PROMPTS = [
-  'What can I cook tonight?',
-  "What's in my inventory?",
+const MEAL_PREP_PROMPTS = [
+  'Easy crockpot meal prep — 10 servings',
+  'High protein sheet pan meal prep for the week',
+  'Meal prep lunches for the next 5 work days',
+  'Batch cook chicken — half fridge, half freezer',
+  'Budget meal prep under $30 — 10 servings',
 ];
 
-const GOAL_PROMPTS: Record<string, string> = {
-  'high-protein': 'High protein meal ideas',
-  'protein': 'High protein meal ideas',
-  'low-carb': 'Low carb dinner options',
-  'keto': 'Low carb keto-friendly recipes',
-  'calories': 'Meals under 500 calories',
-  'low-calorie': 'Meals under 500 calories',
-  'weight-loss': 'Healthy low-calorie meals',
-};
-
-const SHOPPING_PROMPTS = [
-  'Add chicken breast and rice to my shopping list',
-];
-
-const BUDGET_PROMPTS = [
-  'What can I cook for cheap?',
-  'Compare prices for my shopping list',
-];
-
-function buildQuickPrompts(goals: string[], hasInventory: boolean): string[] {
-  const prompts: string[] = [...DEFAULT_PROMPTS];
-
-  // Add goal-based prompts
-  for (const goal of goals) {
-    const lower = goal.toLowerCase();
-    for (const [key, prompt] of Object.entries(GOAL_PROMPTS)) {
-      if (lower.includes(key) && !prompts.includes(prompt)) {
-        prompts.push(prompt);
-        break;
-      }
-    }
-  }
-
-  // Add inventory-aware prompt
-  if (hasInventory && prompts.length < 5) {
-    prompts.push('Recipes using what I have');
-  }
-
-  // Add shopping prompt
-  for (const sp of SHOPPING_PROMPTS) {
-    if (prompts.length >= 5) break;
-    prompts.push(sp);
-  }
-
-  // Fill remaining with budget prompts
-  for (const bp of BUDGET_PROMPTS) {
-    if (prompts.length >= 5) break;
-    prompts.push(bp);
-  }
-
-  return prompts.slice(0, 5);
-}
-
-export default function ChatScreen() {
+export default function MealPrepScreen() {
   const {
     messages,
     activeThreadId,
@@ -84,33 +33,15 @@ export default function ChatScreen() {
     createThread,
     retryLastMessage,
     clearError,
-  } = useChatStore();
+  } = useMealPrepStore();
 
   const [showThreads, setShowThreads] = useState(false);
-  const [quickPrompts, setQuickPrompts] = useState<string[]>(DEFAULT_PROMPTS.concat(BUDGET_PROMPTS));
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     loadThreads();
-    // Load user context to build contextual quick prompts
-    (async () => {
-      try {
-        const [goalsData, invData] = await Promise.all([
-          healthGoalsApi.getGoals().catch(() => ({ goals: [] })),
-          inventoryApi.getInventory().catch(() => ({ items: [] })),
-        ]);
-        const goalTypes = (goalsData.goals || [])
-          .filter((g: any) => g.isActive)
-          .map((g: any) => g.goalType);
-        const hasInventory = (invData.items || []).length > 0;
-        setQuickPrompts(buildQuickPrompts(goalTypes, hasInventory));
-      } catch {
-        // Keep defaults
-      }
-    })();
   }, []);
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
@@ -140,7 +71,6 @@ export default function ChatScreen() {
     []
   );
 
-  // Empty state - no thread selected and no messages
   const showWelcome = messages.length === 0 && !isSending;
 
   return (
@@ -160,33 +90,33 @@ export default function ChatScreen() {
           }}
           className="flex-row items-center"
         >
-          <Ionicons name="add" size={22} color="#10b981" />
-          <Text className="ml-1 text-sm text-primary-600">New Chat</Text>
+          <Ionicons name="add" size={22} color="#f97316" />
+          <Text className="ml-1 text-sm" style={{ color: '#ea580c' }}>New Prep</Text>
         </TouchableOpacity>
       </View>
 
       {showWelcome ? (
-        /* Welcome screen */
         <View className="flex-1 items-center justify-center px-6">
           <View className="bg-white rounded-2xl p-8 items-center shadow-sm w-full max-w-sm">
-            <View className="bg-primary-100 rounded-full p-4 mb-4">
-              <Ionicons name="chatbubble-ellipses" size={48} color="#10b981" />
+            <View className="rounded-full p-4 mb-4" style={{ backgroundColor: '#fff7ed' }}>
+              <Ionicons name="flame" size={48} color="#f97316" />
             </View>
             <Text className="text-xl font-bold text-gray-800 mb-2">
-              ChefMate AI
+              Meal Prep AI
             </Text>
             <Text className="text-gray-500 text-center mb-6">
-              Your personal cooking assistant. Ask me anything about recipes, meal
-              planning, or nutrition!
+              Plan your weekly batch cooking. I'll check your inventory, suggest
+              recipes, and build your shopping list.
             </Text>
             <View className="w-full gap-2">
-              {quickPrompts.map((prompt) => (
+              {MEAL_PREP_PROMPTS.map((prompt) => (
                 <TouchableOpacity
                   key={prompt}
-                  className="bg-primary-50 rounded-lg p-3"
+                  className="rounded-lg p-3"
+                  style={{ backgroundColor: '#fff7ed' }}
                   onPress={() => handleQuickPrompt(prompt)}
                 >
-                  <Text className="text-primary-700 text-center text-sm">
+                  <Text className="text-center text-sm" style={{ color: '#c2410c' }}>
                     "{prompt}"
                   </Text>
                 </TouchableOpacity>
@@ -195,7 +125,6 @@ export default function ChatScreen() {
           </View>
         </View>
       ) : (
-        /* Message list */
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -205,7 +134,6 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
           ListFooterComponent={
             <>
-              {/* Streaming message */}
               {streamingContent ? (
                 <MessageBubble
                   role="assistant"
@@ -213,18 +141,16 @@ export default function ChatScreen() {
                   isStreaming
                 />
               ) : null}
-              {/* Loading indicator */}
               {isSending && !streamingContent ? (
                 <View className="flex-row items-center px-4 mb-3">
-                  <View className="bg-primary-100 rounded-full w-8 h-8 items-center justify-center mr-2">
-                    <Ionicons name="leaf" size={16} color="#10b981" />
+                  <View className="rounded-full w-8 h-8 items-center justify-center mr-2" style={{ backgroundColor: '#fff7ed' }}>
+                    <Ionicons name="flame" size={16} color="#f97316" />
                   </View>
                   <View className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3">
-                    <ActivityIndicator size="small" color="#10b981" />
+                    <ActivityIndicator size="small" color="#f97316" />
                   </View>
                 </View>
               ) : null}
-              {/* Error message with retry */}
               {error && !isSending ? (
                 <View className="mx-4 mb-3 bg-red-50 border border-red-200 rounded-xl p-3">
                   <View className="flex-row items-center mb-1">
@@ -252,17 +178,15 @@ export default function ChatScreen() {
         />
       )}
 
-      {/* Chat input */}
       <ChatInput onSend={handleSend} disabled={isSending} />
 
-      {/* Thread list modal */}
       <Modal
         visible={showThreads}
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setShowThreads(false)}
       >
-        <ThreadList onClose={() => setShowThreads(false)} />
+        <ThreadList onClose={() => setShowThreads(false)} store="meal-prep" />
       </Modal>
     </View>
   );

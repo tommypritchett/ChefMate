@@ -45,6 +45,8 @@ model User {
   mealPlans           MealPlan[]
   healthGoals         HealthGoal[]
   weightLogs          WeightLog[]
+  passwordResetTokens PasswordResetToken[]
+  refreshTokens       RefreshToken[]
 
   @@map("users")
 }
@@ -187,6 +189,8 @@ model InventoryItem {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   notifications Notification[]
 
+  @@index([userId, expiresAt])
+  @@index([userId, storageLocation])
   @@map("inventory_items")
 }
 
@@ -211,6 +215,7 @@ model ShoppingList {
   sourceRecipe Recipe?            @relation(fields: [sourceRecipeId], references: [id])
   items        ShoppingListItem[]
 
+  @@index([userId, isActive])
   @@map("shopping_lists")
 }
 
@@ -228,6 +233,7 @@ model ShoppingListItem {
   storeUrls        String? // JSON string: {instacart: "url", walmart: "url", etc.}
   krogerProductId      String?   // Kroger UPC for cart integration
   addedToKrogerCartAt  DateTime? // When item was last sent to Kroger cart
+  krogerCartQuantity   Float?    // How many were sent to Kroger cart (for partial-add tracking)
   notes                String?
   createdAt        DateTime @default(now())
 
@@ -257,6 +263,7 @@ model MealLog {
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   recipe Recipe? @relation(fields: [recipeId], references: [id])
 
+  @@index([userId, mealDate])
   @@map("meal_log")
 }
 
@@ -281,17 +288,19 @@ model ChatMessage {
 }
 
 model ConversationThread {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String   @default("New Conversation")
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  userId      String
+  title       String   @default("New Conversation")
+  contextType String   @default("chat") // 'chat' or 'meal-prep'
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
   user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages ChatMessage[]
 
+  @@index([userId, contextType, updatedAt])
   @@map("conversation_threads")
 }
 
@@ -352,6 +361,7 @@ model HealthGoal {
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, goalType, isActive])
   @@map("health_goals")
 }
 
@@ -425,4 +435,53 @@ model PriceHistory {
   @@index([item, store])
   @@index([item, fetchedAt])
   @@map("price_history")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token, expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token, expiresAt])
+  @@index([userId, revoked])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  // null for system actions
+  action     String   // 'create', 'update', 'delete'
+  resource   String   // 'recipe', 'mealPlan', 'healthGoal', etc.
+  resourceId String?  // ID of the affected resource
+  changes    String?  // JSON string of before/after values for updates
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([resource, createdAt])
+  @@map("audit_logs")
 }

@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { AuthResponse, User, Recipe, RecipeCard } from '../types';
 
 const TOKEN_KEY = 'chefmate_token';
+const REFRESH_TOKEN_KEY = 'chefmate_refresh_token';
 
 // Platform-aware base URL
 const getBaseUrl = () => {
@@ -41,13 +42,38 @@ const tokenStorage = {
   },
 };
 
-export { tokenStorage };
+// Refresh token storage
+const refreshTokenStorage = {
+  get: async (): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(REFRESH_TOKEN_KEY);
+    }
+    return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+  },
+  set: async (token: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(REFRESH_TOKEN_KEY, token);
+      return;
+    }
+    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+  },
+  remove: async (): Promise<void> => {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      return;
+    }
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+  },
+};
+
+export { tokenStorage, refreshTokenStorage };
 
 // Create axios instance
 const api = axios.create({
   baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest', // CSRF protection header
   },
   timeout: 15000,
 });
@@ -61,20 +87,91 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Response interceptor - handle 401
+// Response interceptor - handle 401 with automatic token refresh
 let onUnauthorized: (() => void) | null = null;
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (value?: any) => void; reject: (reason?: any) => void }> = [];
 
 export const setUnauthorizedHandler = (handler: () => void) => {
   onUnauthorized = handler;
 };
 
+const processQueue = (error: any = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve();
+    }
+  });
+  failedQueue = [];
+};
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      await tokenStorage.remove();
-      onUnauthorized?.();
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // Queue failed requests while token is being refreshed
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then(() => {
+            return api(originalRequest);
+          })
+          .catch((err) => {
+            return Promise.reject(err);
+          });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      const refreshToken = await refreshTokenStorage.get();
+
+      if (!refreshToken) {
+        // No refresh token, logout
+        isRefreshing = false;
+        await tokenStorage.remove();
+        await refreshTokenStorage.remove();
+        onUnauthorized?.();
+        return Promise.reject(error);
+      }
+
+      try {
+        // Try to refresh the token
+        const response = await axios.post(`${getBaseUrl()}/auth/refresh`, {
+          refreshToken,
+        });
+
+        const { token } = response.data;
+
+        // Store new access token
+        await tokenStorage.set(token);
+
+        // Update Authorization header
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        originalRequest.headers['Authorization'] = `Bearer ${token}`;
+
+        // Process queued requests
+        processQueue(null);
+        isRefreshing = false;
+
+        // Retry the original request
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Refresh failed, logout
+        processQueue(refreshError);
+        isRefreshing = false;
+        await tokenStorage.remove();
+        await refreshTokenStorage.remove();
+        onUnauthorized?.();
+        return Promise.reject(refreshError);
+      }
     }
+
     return Promise.reject(error);
   }
 );
@@ -93,9 +190,11 @@ export const authApi = {
 
   logout: async (): Promise<void> => {
     try {
-      await api.post('/auth/logout');
+      const refreshToken = await refreshTokenStorage.get();
+      await api.post('/auth/logout', { refreshToken });
     } catch {}
     await tokenStorage.remove();
+    await refreshTokenStorage.remove();
   },
 
   getMe: async (): Promise<{ user: User }> => {
@@ -137,6 +236,11 @@ export const recipesApi = {
   logView: async (id: string): Promise<void> => {
     await api.post(`/recipes/${id}/view`);
   },
+
+  getMyGenerated: async (): Promise<{ recipes: RecipeCard[] }> => {
+    const response = await api.get('/recipes/my-generated');
+    return response.data;
+  },
 };
 
 // AI API
@@ -168,13 +272,13 @@ export const aiApi = {
 
 // Conversations API
 export const conversationsApi = {
-  getThreads: async (): Promise<{ threads: any[] }> => {
-    const response = await api.get('/conversations');
+  getThreads: async (contextType?: string): Promise<{ threads: any[] }> => {
+    const response = await api.get('/conversations', { params: { contextType } });
     return response.data;
   },
 
-  createThread: async (title?: string): Promise<{ thread: any }> => {
-    const response = await api.post('/conversations', { title });
+  createThread: async (title?: string, contextType?: string): Promise<{ thread: any }> => {
+    const response = await api.post('/conversations', { title, contextType });
     return response.data;
   },
 
@@ -391,8 +495,8 @@ export const shoppingApi = {
     const response = await api.post('/shopping-lists/set-kroger-location', { lat, lng });
     return response.data;
   },
-  markItemsCarted: async (listId: string, itemIds: string[]): Promise<{ success: boolean; count: number }> => {
-    const response = await api.post(`/shopping-lists/${listId}/mark-carted`, { itemIds });
+  markItemsCarted: async (listId: string, itemIds: string[], itemQuantities?: Record<string, number>): Promise<{ success: boolean; count: number }> => {
+    const response = await api.post(`/shopping-lists/${listId}/mark-carted`, { itemIds, itemQuantities });
     return response.data;
   },
   smartSearch: async (items: string[]): Promise<{ results: any[]; storeName: string }> => {
@@ -587,7 +691,7 @@ export const krogerApi = {
     return response.data;
   },
 
-  addToCart: async (items: Array<{ upc: string; quantity: number }>, options?: { listId?: string; itemIds?: string[] }): Promise<{ success: boolean; message: string }> => {
+  addToCart: async (items: Array<{ upc: string; quantity: number }>, options?: { listId?: string; itemIds?: string[]; itemQuantities?: Record<string, number> }): Promise<{ success: boolean; message: string }> => {
     const response = await api.post('/kroger/add-to-cart', { items, ...options });
     return response.data;
   },

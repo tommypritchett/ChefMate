@@ -62,6 +62,7 @@ const COOKING_METHODS = [
 export default function RecipesScreen() {
   const [recipes, setRecipes] = useState<RecipeCard[]>([]);
   const [favorites, setFavorites] = useState<any[]>([]);
+  const [myRecipes, setMyRecipes] = useState<RecipeCard[]>([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -110,8 +111,18 @@ export default function RecipesScreen() {
     }
   }, []);
 
+  const fetchMyRecipes = useCallback(async () => {
+    try {
+      const data = await recipesApi.getMyGenerated();
+      setMyRecipes(data.recipes || []);
+    } catch (err) {
+      console.error('Failed to fetch my recipes:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchFavorites();
+    fetchMyRecipes();
   }, []);
 
   useEffect(() => {
@@ -190,6 +201,55 @@ export default function RecipesScreen() {
 
   const ListHeader = () => (
     <View>
+      {/* Your Recipes section (AI-generated) */}
+      {myRecipes.length > 0 && (
+        <View className="mb-2">
+          <View className="flex-row items-center justify-between px-4 pt-2 pb-1">
+            <View className="flex-row items-center">
+              <Ionicons name="sparkles" size={16} color="#10b981" />
+              <Text className="text-sm font-semibold text-gray-700 ml-1.5">
+                Your Recipes ({myRecipes.length})
+              </Text>
+            </View>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 12 }}
+          >
+            {myRecipes.map((recipe: any) => (
+              <TouchableOpacity
+                key={recipe.id}
+                className="mr-3 w-36 bg-white rounded-xl overflow-hidden shadow-sm"
+                onPress={() => router.push(`/recipes/${recipe.id}`)}
+                activeOpacity={0.7}
+              >
+                {recipe.imageUrl ? (
+                  <Image
+                    source={{ uri: recipe.imageUrl }}
+                    className="w-36 h-20"
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                ) : (
+                  <View className="w-36 h-20 bg-emerald-50 items-center justify-center">
+                    <Ionicons name="sparkles" size={20} color="#10b981" />
+                  </View>
+                )}
+                <View className="p-2">
+                  <Text className="text-xs font-medium text-gray-800" numberOfLines={2}>
+                    {recipe.title}
+                  </Text>
+                  {recipe.nutrition?.calories && (
+                    <Text className="text-[10px] text-gray-400 mt-0.5">{recipe.nutrition.calories} cal</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Favorites section */}
       {favorites.length > 0 && (
         <View className="mb-2">
@@ -330,7 +390,7 @@ export default function RecipesScreen() {
                   <TouchableOpacity
                     key={p.value}
                     className={`px-3 py-1 rounded-full ${
-                      isActive ? 'bg-blue-500' : 'bg-white border border-gray-200'
+                      isActive ? 'bg-primary-500' : 'bg-white border border-gray-200'
                     }`}
                     onPress={() => setProteinType(isActive ? '' : p.value)}
                   >
@@ -353,7 +413,7 @@ export default function RecipesScreen() {
                   <TouchableOpacity
                     key={c.value}
                     className={`px-3 py-1 rounded-full ${
-                      isActive ? 'bg-orange-500' : 'bg-white border border-gray-200'
+                      isActive ? 'bg-primary-500' : 'bg-white border border-gray-200'
                     }`}
                     onPress={() => setCuisineStyle(isActive ? '' : c.value)}
                   >
@@ -376,7 +436,7 @@ export default function RecipesScreen() {
                   <TouchableOpacity
                     key={m.value}
                     className={`px-3 py-1 rounded-full ${
-                      isActive ? 'bg-purple-500' : 'bg-white border border-gray-200'
+                      isActive ? 'bg-primary-500' : 'bg-white border border-gray-200'
                     }`}
                     onPress={() => setCookingMethod(isActive ? '' : m.value)}
                   >

@@ -1,6 +1,54 @@
 import { body, validationResult } from 'express-validator';
 import { Request, Response, NextFunction } from 'express';
 
+/**
+ * Validates and parses a numeric value with range checking
+ * @param value - The value to parse
+ * @param min - Minimum allowed value (inclusive)
+ * @param max - Maximum allowed value (inclusive)
+ * @param fieldName - Name of the field for error messages
+ * @returns Parsed number
+ * @throws Error if value is invalid
+ */
+export function validateNumeric(
+  value: any,
+  min: number,
+  max: number,
+  fieldName: string = 'value'
+): number {
+  const num = parseFloat(value);
+
+  if (isNaN(num)) {
+    throw new Error(`${fieldName} must be a valid number`);
+  }
+
+  if (!isFinite(num)) {
+    throw new Error(`${fieldName} must be a finite number`);
+  }
+
+  if (num < min || num > max) {
+    throw new Error(`${fieldName} must be between ${min} and ${max}`);
+  }
+
+  return num;
+}
+
+/**
+ * Validates an optional numeric value
+ * Returns null if value is null/undefined, otherwise validates it
+ */
+export function validateOptionalNumeric(
+  value: any,
+  min: number,
+  max: number,
+  fieldName: string = 'value'
+): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  return validateNumeric(value, min, max, fieldName);
+}
+
 export const validateRegister = [
   body('email')
     .isEmail()

@@ -157,18 +157,59 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res) => {
       });
     }
 
+    const totalPages = Math.ceil(total / limitNum);
     res.json({
       recipes: recipesWithParsedData,
       pagination: {
         page: pageNum,
         limit: limitNum,
         total,
-        pages: Math.ceil(total / limitNum)
+        pages: totalPages,
+        totalPages,
       }
     });
   } catch (error) {
     console.error('Get recipes error:', error);
     res.status(500).json({ error: 'Failed to fetch recipes' });
+  }
+});
+
+// GET /api/recipes/my-generated - Get user's AI-generated recipes
+router.get('/my-generated', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const recipes = await prisma.recipe.findMany({
+      where: {
+        isAiGenerated: true,
+        generatedByUserId: req.user!.userId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        imageUrl: true,
+        prepTimeMinutes: true,
+        cookTimeMinutes: true,
+        difficulty: true,
+        servings: true,
+        nutrition: true,
+        dietaryTags: true,
+        createdAt: true,
+      },
+    });
+
+    const parsed = recipes.map((r: any) => ({
+      ...r,
+      nutrition: r.nutrition ? JSON.parse(r.nutrition) : null,
+      dietaryTags: r.dietaryTags ? JSON.parse(r.dietaryTags) : [],
+    }));
+
+    res.json({ recipes: parsed });
+  } catch (error) {
+    console.error('Get my generated recipes error:', error);
+    res.status(500).json({ error: 'Failed to fetch generated recipes' });
   }
 });
 

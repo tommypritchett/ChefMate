@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 function ProfileHeaderButton() {
   return (
     <TouchableOpacity
+      testID="profile-icon"
       onPress={() => router.push('/(tabs)/profile')}
       style={{ marginRight: 12 }}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -68,6 +69,13 @@ export default function TabLayout() {
             <Ionicons name="calendar" size={size} color={color} />
           ),
           headerTitle: 'Meal Plan',
+        }}
+      />
+      <Tabs.Screen
+        name="meal-prep"
+        options={{
+          href: null, // Accessed via modal from Meal Plan tab
+          headerTitle: 'Meal Prep AI',
         }}
       />
       <Tabs.Screen

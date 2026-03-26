@@ -66,6 +66,7 @@ export default function InventoryScreen() {
   const [editCategory, setEditCategory] = useState('other');
   const [editLocation, setEditLocation] = useState('fridge');
   const [editQuantity, setEditQuantity] = useState('');
+  const [editQuantityError, setEditQuantityError] = useState('');
   const [editUnit, setEditUnit] = useState('');
   const [editExpiry, setEditExpiry] = useState('');
 
@@ -74,6 +75,7 @@ export default function InventoryScreen() {
   const [newCategory, setNewCategory] = useState('other');
   const [newLocation, setNewLocation] = useState<string>('fridge');
   const [newQuantity, setNewQuantity] = useState('');
+  const [newQuantityError, setNewQuantityError] = useState('');
   const [newUnit, setNewUnit] = useState('');
   const [newExpiry, setNewExpiry] = useState('');
   const [adding, setAdding] = useState(false);
@@ -111,6 +113,17 @@ export default function InventoryScreen() {
     }
   }, [transcript, showConvoModal, convoMode]);
 
+  // ─── Validation helpers ────────────────────────────────────────────────
+
+  const validateQuantity = (value: string): string => {
+    if (!value.trim()) return '';
+    const num = parseFloat(value);
+    if (isNaN(num)) return 'Please enter a valid number';
+    if (num <= 0) return 'Quantity must be greater than 0';
+    if (num > 10000) return 'Quantity seems too high (max 10000)';
+    return '';
+  };
+
   const fetchItems = useCallback(async (isInitial = false) => {
     try {
       if (isInitial) setLoading(true);
@@ -139,6 +152,13 @@ export default function InventoryScreen() {
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
+
+    // Check for validation errors
+    if (newQuantityError) {
+      Alert.alert('Invalid Input', 'Please fix the quantity error before saving.');
+      return;
+    }
+
     setAdding(true);
     try {
       await inventoryApi.addItem({
@@ -199,6 +219,7 @@ export default function InventoryScreen() {
     setEditCategory(item.category || 'other');
     setEditLocation(item.storageLocation || 'fridge');
     setEditQuantity(item.quantity ? String(item.quantity) : '');
+    setEditQuantityError('');
     setEditUnit(item.unit || '');
     setEditExpiry(item.expiresAt ? item.expiresAt.split('T')[0] : '');
     setEditingItemId(item.id);
@@ -208,6 +229,13 @@ export default function InventoryScreen() {
 
   const handleSaveEdit = async () => {
     if (!editingItemId || !editName.trim()) return;
+
+    // Check for validation errors
+    if (editQuantityError) {
+      Alert.alert('Invalid Input', 'Please fix the quantity error before saving.');
+      return;
+    }
+
     setAdding(true);
     try {
       await inventoryApi.updateItem(editingItemId, {
@@ -232,6 +260,7 @@ export default function InventoryScreen() {
     setNewCategory('other');
     setNewLocation('fridge');
     setNewQuantity('');
+    setNewQuantityError('');
     setNewUnit('');
     setNewExpiry('');
   };
@@ -1120,9 +1149,16 @@ export default function InventoryScreen() {
                   placeholder="e.g. 2"
                   placeholderTextColor="#9ca3af"
                   value={newQuantity}
-                  onChangeText={setNewQuantity}
+                  onChangeText={(text) => {
+                    setNewQuantity(text);
+                    const error = validateQuantity(text);
+                    setNewQuantityError(error);
+                  }}
                   keyboardType="numeric"
                 />
+                {newQuantityError ? (
+                  <Text className="text-xs text-red-500 mt-1">{newQuantityError}</Text>
+                ) : null}
               </View>
               <View className="flex-1">
                 <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>
@@ -1219,9 +1255,16 @@ export default function InventoryScreen() {
                   placeholder="e.g. 2"
                   placeholderTextColor="#9ca3af"
                   value={editQuantity}
-                  onChangeText={setEditQuantity}
+                  onChangeText={(text) => {
+                    setEditQuantity(text);
+                    const error = validateQuantity(text);
+                    setEditQuantityError(error);
+                  }}
                   keyboardType="numeric"
                 />
+                {editQuantityError ? (
+                  <Text className="text-xs text-red-500 mt-1">{editQuantityError}</Text>
+                ) : null}
               </View>
               <View className="flex-1">
                 <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>

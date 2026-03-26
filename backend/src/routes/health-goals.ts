@@ -1,6 +1,8 @@
 import express from 'express';
 import prisma from '../lib/prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
+import { parseDateParam, setUTCMidnight } from '../utils/dateHelpers';
+import { validateNumeric, validateOptionalNumeric } from '../utils/validation';
 
 const router = express.Router();
 
@@ -35,16 +37,17 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     const goalData: any = {
       userId: req.user!.userId,
       goalType,
-      targetValue: parseFloat(targetValue),
+      targetValue: validateNumeric(targetValue, 0, 10000, 'targetValue'),
       unit: unit || null,
       targetDate: targetDate ? new Date(targetDate) : null,
     };
 
     // Weight goal — store starting weight info
     if (goalType === 'weight' && startingWeight != null) {
-      goalData.startingWeight = parseFloat(startingWeight);
+      const validatedWeight = validateNumeric(startingWeight, 50, 500, 'startingWeight');
+      goalData.startingWeight = validatedWeight;
       goalData.startWeightDate = startWeightDate ? new Date(startWeightDate) : new Date();
-      goalData.currentValue = parseFloat(startingWeight);
+      goalData.currentValue = validatedWeight;
     }
 
     const goal = await prisma.healthGoal.create({ data: goalData });
@@ -53,12 +56,13 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (goalType === 'weight' && startingWeight != null) {
       const logDate = goalData.startWeightDate || new Date();
       logDate.setUTCHours(0, 0, 0, 0);
+      const validatedWeight = validateNumeric(startingWeight, 50, 500, 'startingWeight');
       await prisma.weightLog.upsert({
         where: { userId_logDate: { userId: req.user!.userId, logDate } },
-        update: { weight: parseFloat(startingWeight), unit: unit || 'lbs' },
+        update: { weight: validatedWeight, unit: unit || 'lbs' },
         create: {
           userId: req.user!.userId,
-          weight: parseFloat(startingWeight),
+          weight: validatedWeight,
           unit: unit || 'lbs',
           logDate,
           notes: 'Starting weight',
@@ -84,15 +88,19 @@ router.post('/weight-log', requireAuth, async (req: AuthenticatedRequest, res) =
     }
 
     // Normalize to midnight UTC
-    const dateObj = new Date(logDate);
-    dateObj.setUTCHours(0, 0, 0, 0);
+    const dateObj = parseDateParam(logDate);
+    if (!dateObj) {
+      return res.status(400).json({ error: 'Invalid date format' });
+    }
+
+    const validatedWeight = validateNumeric(weight, 50, 500, 'weight');
 
     const log = await prisma.weightLog.upsert({
       where: { userId_logDate: { userId: req.user!.userId, logDate: dateObj } },
-      update: { weight: parseFloat(weight), unit: unit || 'lbs', notes: notes || null },
+      update: { weight: validatedWeight, unit: unit || 'lbs', notes: notes || null },
       create: {
         userId: req.user!.userId,
-        weight: parseFloat(weight),
+        weight: validatedWeight,
         unit: unit || 'lbs',
         logDate: dateObj,
         notes: notes || null,
@@ -130,10 +138,12 @@ router.get('/weight-logs', requireAuth, async (req: AuthenticatedRequest, res) =
       orderBy: { logDate: 'asc' },
     });
 
-    // Compute stats
+    // Compute stats (limit to recent data for performance)
+    const maxStatsLogs = 1000; // Limit stats calculation to last 1000 entries
     const allLogs = await prisma.weightLog.findMany({
       where: { userId: req.user!.userId },
       orderBy: { logDate: 'asc' },
+      take: maxStatsLogs,
     });
 
     const startWeight = allLogs.length > 0 ? allLogs[0].weight : null;

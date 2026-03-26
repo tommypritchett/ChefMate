@@ -236,6 +236,103 @@ router.patch('/:id/slots/:slotId', requireAuth, async (req: AuthenticatedRequest
       return res.status(404).json({ error: 'Meal plan slot not found' });
     }
 
+    const { isCompleted } = req.body;
+
+    // Handle Mark as Eaten / Undo
+    if (isCompleted !== undefined) {
+      const now = new Date();
+      const updated = await prisma.mealPlanSlot.update({
+        where: { id: slotId },
+        data: {
+          isCompleted,
+          completedAt: isCompleted ? now : null,
+        },
+        include: {
+          recipe: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              imageUrl: true,
+              nutrition: true,
+              servings: true,
+            }
+          }
+        }
+      });
+
+      let mealLogCreated = false;
+
+      if (isCompleted && updated.recipeId && updated.recipe) {
+        // Check if a MealLog already exists for this user+recipe+date+mealType (user may have logged via Edit & Log)
+        const dateStr = new Date(updated.date).toISOString().split('T')[0];
+        const dayStart = new Date(dateStr);
+        const dayEnd = new Date(dateStr);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+
+        const existingLog = await prisma.mealLog.findFirst({
+          where: {
+            userId: req.user!.userId,
+            mealType: updated.mealType,
+            mealDate: { gte: dayStart, lt: dayEnd },
+            OR: [
+              { recipeId: updated.recipeId },
+              { mealName: updated.recipe.title },
+            ],
+          }
+        });
+
+        if (!existingLog) {
+          // Auto-create MealLog from recipe nutrition
+          let calories = 0, protein = 0, carbs = 0, fat = 0;
+          try {
+            const nutr = typeof updated.recipe.nutrition === 'string' ? JSON.parse(updated.recipe.nutrition) : updated.recipe.nutrition;
+            const multiplier = (updated.servings || updated.recipe.servings || 1) / (updated.recipe.servings || 1);
+            calories = Math.round((nutr?.calories || 0) * multiplier);
+            protein = Math.round(((nutr?.protein || 0) * multiplier) * 10) / 10;
+            carbs = Math.round(((nutr?.carbs || 0) * multiplier) * 10) / 10;
+            fat = Math.round(((nutr?.fat || 0) * multiplier) * 10) / 10;
+          } catch {}
+
+          await prisma.mealLog.create({
+            data: {
+              userId: req.user!.userId,
+              mealType: updated.mealType,
+              mealDate: updated.date,
+              mealTime: now,
+              recipeId: updated.recipeId,
+              recipeServings: updated.servings || updated.recipe.servings || 1,
+              mealName: updated.recipe.title,
+              calories,
+              proteinGrams: protein,
+              carbsGrams: carbs,
+              fatGrams: fat,
+              notes: `Auto-logged from meal plan`,
+            }
+          });
+        }
+        mealLogCreated = true;
+      } else if (!isCompleted && slot.recipeId) {
+        // Undo: remove auto-created MealLog
+        const dateStr = new Date(slot.date).toISOString().split('T')[0];
+        const dayStart = new Date(dateStr);
+        const dayEnd = new Date(dateStr);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+
+        await prisma.mealLog.deleteMany({
+          where: {
+            userId: req.user!.userId,
+            recipeId: slot.recipeId,
+            mealType: slot.mealType,
+            mealDate: { gte: dayStart, lt: dayEnd },
+            notes: 'Auto-logged from meal plan',
+          }
+        });
+      }
+
+      return res.json({ slot: updated, mealLogCreated });
+    }
+
     const updateData: any = {};
     if (recipeId !== undefined) updateData.recipeId = recipeId;
     if (date !== undefined) updateData.date = new Date(date);
@@ -282,11 +379,33 @@ router.delete('/:id/slots/:slotId', requireAuth, async (req: AuthenticatedReques
     }
 
     const slot = await prisma.mealPlanSlot.findFirst({
-      where: { id: slotId, mealPlanId: id }
+      where: { id: slotId, mealPlanId: id },
+      include: { recipe: { select: { title: true } } }
     });
 
     if (!slot) {
       return res.status(404).json({ error: 'Meal plan slot not found' });
+    }
+
+    // If the slot was completed, also delete the associated MealLog
+    if (slot.isCompleted) {
+      const dateStr = new Date(slot.date).toISOString().split('T')[0];
+      const dayStart = new Date(dateStr);
+      const dayEnd = new Date(dateStr);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+
+      await prisma.mealLog.deleteMany({
+        where: {
+          userId: req.user!.userId,
+          mealType: slot.mealType,
+          mealDate: { gte: dayStart, lt: dayEnd },
+          OR: [
+            ...(slot.recipeId ? [{ recipeId: slot.recipeId }] : []),
+            ...(slot.recipe?.title ? [{ mealName: slot.recipe.title }] : []),
+            ...(slot.customName ? [{ mealName: slot.customName }] : []),
+          ],
+        }
+      });
     }
 
     await prisma.mealPlanSlot.delete({ where: { id: slotId } });

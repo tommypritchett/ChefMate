@@ -2,14 +2,16 @@ import express from 'express';
 import prisma from '../lib/prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { chatOrchestrate, chatOrchestrateStream } from '../services/openai';
+import { chatLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 
 // GET /api/conversations — List user's conversation threads
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const contextType = (req.query.contextType as string) || 'chat';
     const threads = await prisma.conversationThread.findMany({
-      where: { userId: req.user!.userId },
+      where: { userId: req.user!.userId, contextType },
       orderBy: { updatedAt: 'desc' },
       include: {
         messages: {
@@ -31,12 +33,15 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 // POST /api/conversations — Create a new conversation thread
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { title } = req.body;
+    const { title, contextType } = req.body;
+    const ctx = contextType === 'meal-prep' ? 'meal-prep' : 'chat';
+    const defaultTitle = ctx === 'meal-prep' ? 'New Meal Prep' : 'New Conversation';
 
     const thread = await prisma.conversationThread.create({
       data: {
         userId: req.user!.userId,
-        title: title || 'New Conversation'
+        title: title || defaultTitle,
+        contextType: ctx,
       }
     });
 
@@ -125,7 +130,7 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 // POST /api/conversations/:id/messages — Send a message and get AI response
-router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/:id/messages', chatLimiter, requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { message } = req.body;
@@ -150,12 +155,12 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest, res)
         threadId: id,
         role: 'user',
         message: message.trim(),
-        contextType: 'chat'
+        contextType: thread.contextType || 'chat'
       }
     });
 
     // Orchestrate AI response with function calling
-    const result = await chatOrchestrate(message.trim(), req.user!.userId, id);
+    const result = await chatOrchestrate(message.trim(), req.user!.userId, id, thread.contextType || 'chat');
 
     // Save AI response with metadata
     const assistantMessage = await prisma.chatMessage.create({
@@ -164,7 +169,7 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest, res)
         threadId: id,
         role: 'assistant',
         message: result.content,
-        contextType: 'chat',
+        contextType: thread.contextType || 'chat',
         contextData: result.toolCalls.length > 0
           ? JSON.stringify({
               toolCalls: result.toolCalls.map(tc => ({ name: tc.name, args: tc.args })),
@@ -177,7 +182,8 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest, res)
 
     // Auto-title first message
     const messageCount = await prisma.chatMessage.count({ where: { threadId: id } });
-    if (messageCount <= 2 && thread.title === 'New Conversation') {
+    const defaultTitles = ['New Conversation', 'New Meal Prep'];
+    if (messageCount <= 2 && defaultTitles.includes(thread.title)) {
       const titlePreview = message.trim().substring(0, 50) + (message.length > 50 ? '...' : '');
       await prisma.conversationThread.update({
         where: { id },
@@ -198,7 +204,7 @@ router.post('/:id/messages', requireAuth, async (req: AuthenticatedRequest, res)
 });
 
 // POST /api/conversations/:id/messages/stream — SSE streaming message endpoint
-router.post('/:id/messages/stream', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/:id/messages/stream', chatLimiter, requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { message } = req.body;
@@ -222,7 +228,7 @@ router.post('/:id/messages/stream', requireAuth, async (req: AuthenticatedReques
         threadId: id,
         role: 'user',
         message: message.trim(),
-        contextType: 'chat'
+        contextType: thread.contextType || 'chat'
       }
     });
 
@@ -238,6 +244,7 @@ router.post('/:id/messages/stream', requireAuth, async (req: AuthenticatedReques
       message.trim(),
       req.user!.userId,
       id,
+      thread.contextType || 'chat',
       // onToken
       (token) => {
         res.write(`data: ${JSON.stringify({ type: 'token', content: token })}\n\n`);
@@ -259,7 +266,7 @@ router.post('/:id/messages/stream', requireAuth, async (req: AuthenticatedReques
         threadId: id,
         role: 'assistant',
         message: result.content,
-        contextType: 'chat',
+        contextType: thread.contextType || 'chat',
         contextData: result.toolCalls.length > 0
           ? JSON.stringify({
               toolCalls: result.toolCalls.map(tc => ({ name: tc.name, args: tc.args })),
@@ -271,7 +278,8 @@ router.post('/:id/messages/stream', requireAuth, async (req: AuthenticatedReques
 
     // Auto-title
     const messageCount = await prisma.chatMessage.count({ where: { threadId: id } });
-    if (messageCount <= 2 && thread.title === 'New Conversation') {
+    const defaultTitles2 = ['New Conversation', 'New Meal Prep'];
+    if (messageCount <= 2 && defaultTitles2.includes(thread.title)) {
       const titlePreview = message.trim().substring(0, 50) + (message.length > 50 ? '...' : '');
       await prisma.conversationThread.update({
         where: { id },

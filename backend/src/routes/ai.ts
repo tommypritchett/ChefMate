@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { body, validationResult } from 'express-validator';
 import { generateRecipe, chatWithAssistant, generateInventoryBasedSuggestions, detectFoodItems } from '../services/openai';
+import { aiLimiter, chatLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 
@@ -34,7 +35,7 @@ const validateChatMessage = [
 ];
 
 // POST /api/ai/generate-recipe
-router.post('/generate-recipe', requireAuth, validateGenerateRecipe, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/generate-recipe', aiLimiter, requireAuth, validateGenerateRecipe, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -126,7 +127,7 @@ router.post('/generate-recipe', requireAuth, validateGenerateRecipe, async (req:
 });
 
 // POST /api/ai/chat
-router.post('/chat', requireAuth, validateChatMessage, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/chat', chatLimiter, requireAuth, validateChatMessage, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -239,7 +240,7 @@ router.get('/inventory-suggestions', requireAuth, async (req: AuthenticatedReque
 
 // POST /api/ai/detect-food
 // Analyze a photo and return detected food items
-router.post('/detect-food', requireAuth, [
+router.post('/detect-food', aiLimiter, requireAuth, [
   body('image').isString().withMessage('Image data is required')
 ], async (req: AuthenticatedRequest, res: Response) => {
   try {
