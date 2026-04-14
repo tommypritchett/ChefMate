@@ -62,122 +62,136 @@ export default function RegisterScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
-    >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
+    <View className="flex-1 bg-gradient-to-br from-primary-500 to-primary-600">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
       >
-        <View className="flex-1 justify-center px-6 py-12">
-          {/* Header */}
-          <View className="items-center mb-10">
-            <Text className="text-4xl font-bold text-primary-600">ChefMate</Text>
-            <Text className="text-gray-500 mt-2 text-base">Create your account</Text>
-          </View>
-
-          {/* Error Banner */}
-          {error ? (
-            <View className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-              <Text className="text-red-600 text-center">{error}</Text>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View className="flex-1 justify-center px-8 py-12">
+            {/* Logo Section */}
+            <View className="items-center mb-8 mt-10">
+              <View className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 rounded-3xl items-center justify-center mb-5 shadow-lg">
+                <Text className="text-5xl">🍳</Text>
+              </View>
+              <Text className="text-4xl font-bold text-gray-900 tracking-tight">Kitcho AI</Text>
+              <Text className="text-gray-600 mt-2 text-lg font-medium">Create your account</Text>
             </View>
-          ) : null}
 
-          {/* Name Fields */}
-          <View className="flex-row gap-3 mb-4">
-            <View className="flex-1">
-              <Text className="text-gray-700 font-medium mb-1.5">First Name *</Text>
+            {/* Error Banner */}
+            {error ? (
+              <View className="bg-red-50 border border-red-200 rounded-2xl p-3 mb-4">
+                <Text className="text-red-600 text-center">{error}</Text>
+              </View>
+            ) : null}
+
+            {/* Name Fields */}
+            <View className="flex-row gap-3 mb-5">
+              <View className="flex-1">
+                <Text className="text-gray-700 font-semibold mb-2 text-base">First Name *</Text>
+                <TextInput
+                  className="border-2 border-gray-200 rounded-2xl px-4 py-4 text-lg bg-gray-50"
+                  placeholder="John"
+                  placeholderTextColor="#9ca3af"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  autoCapitalize="words"
+                  editable={!isLoading}
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="text-gray-700 font-semibold mb-2 text-base">Last Name</Text>
+                <TextInput
+                  className="border-2 border-gray-200 rounded-2xl px-4 py-4 text-lg bg-gray-50"
+                  placeholder="Doe"
+                  placeholderTextColor="#9ca3af"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  autoCapitalize="words"
+                  editable={!isLoading}
+                />
+              </View>
+            </View>
+
+            {/* Email Input */}
+            <View className="mb-5">
+              <Text className="text-gray-700 font-semibold mb-2 text-base">Email *</Text>
               <TextInput
-                className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50"
-                placeholder="John"
+                className="border-2 border-gray-200 rounded-2xl px-4 py-4 text-lg bg-gray-50"
+                placeholder="you@example.com"
                 placeholderTextColor="#9ca3af"
-                value={firstName}
-                onChangeText={setFirstName}
-                autoCapitalize="words"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
                 editable={!isLoading}
               />
             </View>
-            <View className="flex-1">
-              <Text className="text-gray-700 font-medium mb-1.5">Last Name</Text>
-              <TextInput
-                className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50"
-                placeholder="Doe"
-                placeholderTextColor="#9ca3af"
-                value={lastName}
-                onChangeText={setLastName}
-                autoCapitalize="words"
-                editable={!isLoading}
-              />
+
+            {/* Password Input */}
+            <View className="mb-6">
+              <Text className="text-gray-700 font-semibold mb-2 text-base">Password *</Text>
+              <View className="relative">
+                <TextInput
+                  className="border-2 border-gray-200 rounded-2xl px-4 py-4 text-lg bg-gray-50 pr-16"
+                  placeholder="At least 6 characters"
+                  placeholderTextColor="#9ca3af"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  editable={!isLoading}
+                />
+                <TouchableOpacity
+                  className="absolute right-4 top-4"
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Text className="text-primary-600 font-semibold text-base">
+                    {showPassword ? 'Hide' : 'Show'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Register Button */}
+            <TouchableOpacity
+              className={`rounded-2xl py-4 items-center shadow-lg ${
+                isLoading ? 'bg-primary-300' : 'bg-gradient-to-br from-primary-500 to-primary-600'
+              }`}
+              onPress={handleRegister}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-white font-semibold text-lg">Create Account</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Divider */}
+            <View className="flex-row items-center my-8">
+              <View className="flex-1 h-px bg-gray-300" />
+              <Text className="mx-4 text-gray-400 text-sm">OR</Text>
+              <View className="flex-1 h-px bg-gray-300" />
+            </View>
+
+            {/* Login Link */}
+            <View className="items-center">
+              <View className="flex-row">
+                <Text className="text-gray-600 text-base">Already have an account? </Text>
+                <Link href="/(auth)/login" asChild>
+                  <TouchableOpacity>
+                    <Text className="text-primary-600 font-semibold text-base">Sign In</Text>
+                  </TouchableOpacity>
+                </Link>
+              </View>
             </View>
           </View>
-
-          {/* Email Input */}
-          <View className="mb-4">
-            <Text className="text-gray-700 font-medium mb-1.5">Email *</Text>
-            <TextInput
-              className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50"
-              placeholder="you@example.com"
-              placeholderTextColor="#9ca3af"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              editable={!isLoading}
-            />
-          </View>
-
-          {/* Password Input */}
-          <View className="mb-6">
-            <Text className="text-gray-700 font-medium mb-1.5">Password *</Text>
-            <View className="relative">
-              <TextInput
-                className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50 pr-16"
-                placeholder="At least 6 characters"
-                placeholderTextColor="#9ca3af"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                editable={!isLoading}
-              />
-              <TouchableOpacity
-                className="absolute right-3 top-3"
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Text className="text-primary-600 font-medium">
-                  {showPassword ? 'Hide' : 'Show'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Register Button */}
-          <TouchableOpacity
-            className={`rounded-lg py-3.5 items-center ${
-              isLoading ? 'bg-primary-300' : 'bg-primary-500'
-            }`}
-            onPress={handleRegister}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="text-white font-semibold text-base">Create Account</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Login Link */}
-          <View className="flex-row justify-center mt-6">
-            <Text className="text-gray-500">Already have an account? </Text>
-            <Link href="/(auth)/login" asChild>
-              <TouchableOpacity>
-                <Text className="text-primary-600 font-semibold">Sign In</Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }

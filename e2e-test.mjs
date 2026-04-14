@@ -81,10 +81,10 @@ async function run() {
     await page.screenshot({ path: `${SCREENSHOT_DIR}/01-initial-load.png`, fullPage: true });
 
     log(`  URL: ${page.url()}`);
-    log(`  ChefMate branding: ${await page.locator('text=ChefMate').first().isVisible() ? 'PASS' : 'FAIL'}`);
+    log(`  Kitcho AI branding: ${await page.locator('text=Kitcho AI').first().isVisible() ? 'PASS' : 'FAIL'}`);
     log(`  Sign In button: ${await page.locator('text=Sign In').first().isVisible() ? 'PASS' : 'FAIL'}`);
     log(`  Email field: ${await page.locator('[placeholder="you@example.com"]:visible').isVisible().catch(() => false) ? 'PASS' : 'FAIL'}`);
-    log(`  Password field: ${await page.locator('[placeholder="Enter your password"]:visible').isVisible().catch(() => false) ? 'PASS' : 'FAIL'}`);
+    log(`  Password field: ${await page.locator('[placeholder="••••••••"]:visible').isVisible().catch(() => false) ? 'PASS' : 'FAIL'}`);
     log(`  Sign Up link: ${await page.locator('text=Sign Up').first().isVisible() ? 'PASS' : 'FAIL'}`);
 
     // =========================================================
@@ -92,7 +92,7 @@ async function run() {
     // =========================================================
     log('\n=== TEST 2: Login with invalid credentials ===');
     await fillInput(page, 'you@example.com', 'wrong@email.com');
-    await fillInput(page, 'Enter your password', 'wrongpassword');
+    await fillInput(page, '••••••••', 'wrongpassword');
 
     const emailVal = await page.locator('[placeholder="you@example.com"]:visible').inputValue();
     log(`  Email filled: ${emailVal === 'wrong@email.com' ? 'PASS' : 'FAIL'} (value: "${emailVal}")`);
@@ -162,20 +162,19 @@ async function run() {
     await page.waitForTimeout(1000);
     await page.screenshot({ path: `${SCREENSHOT_DIR}/07-chat-welcome.png`, fullPage: true });
 
-    const chatBranding = await page.locator('text=ChefMate AI').first().isVisible().catch(() => false);
-    log(`  ChefMate AI branding: ${chatBranding ? 'PASS' : 'FAIL'}`);
+    const chatBranding = await page.locator('text=Kitcho AI').first().isVisible().catch(() => false);
+    log(`  Kitcho AI branding: ${chatBranding ? 'PASS' : 'FAIL'}`);
 
     const quickPrompt = await page.locator('text=What can I cook tonight').first().isVisible().catch(() => false);
     log(`  Quick prompts visible: ${quickPrompt ? 'PASS' : 'FAIL'}`);
 
-    const chatInput = await page.locator('[placeholder="Ask ChefMate anything..."]').first().isVisible().catch(() => false);
+    const chatInput = await page.locator('[placeholder="Ask Kitcho anything..."]').first().isVisible().catch(() => false);
     log(`  Chat input visible: ${chatInput ? 'PASS' : 'FAIL'}`);
 
-    const historyBtn = await page.locator('text=History').first().isVisible().catch(() => false);
-    log(`  History button: ${historyBtn ? 'PASS' : 'FAIL'}`);
-
-    const newChatBtn = await page.locator('text=New Chat').first().isVisible().catch(() => false);
-    log(`  New Chat button: ${newChatBtn ? 'PASS' : 'FAIL'}`);
+    // Check for header navigation buttons using testIDs
+    const threadListBtn = await page.locator('[data-testid="thread-list-button"]').isVisible().catch(() => false);
+    const newThreadBtn = await page.locator('[data-testid="new-thread-button"]').isVisible().catch(() => false);
+    log(`  Header navigation: ${threadListBtn && newThreadBtn ? 'PASS' : 'FAIL'}`);
 
     // =========================================================
     // TEST 7: Send a chat message and get AI response
@@ -183,7 +182,7 @@ async function run() {
     log('\n=== TEST 7: Send chat message ===');
 
     // Type and send a message
-    const msgInput = page.locator('[placeholder="Ask ChefMate anything..."]');
+    const msgInput = page.locator('[placeholder="Ask Kitcho anything..."]');
     await msgInput.click();
     await msgInput.pressSequentially('Show me chicken recipes', { delay: 20 });
     await page.waitForTimeout(500);
@@ -194,7 +193,7 @@ async function run() {
     const allBtns = page.locator('div[role="button"], button').filter({ hasText: /^$/ });
 
     // Try clicking the send area next to input
-    await page.locator('[placeholder="Ask ChefMate anything..."]').press('Enter');
+    await page.locator('[placeholder="Ask Kitcho anything..."]').press('Enter');
     await page.waitForTimeout(500);
 
     // The message should appear as user bubble
@@ -214,7 +213,7 @@ async function run() {
     const hasAIResponse =
       bodyText.includes('recipe') ||
       bodyText.includes('Recipe') ||
-      bodyText.includes('ChefMate') ||
+      bodyText.includes('Kitcho') ||
       bodyText.includes('demo mode') ||
       bodyText.includes('cook');
     log(`  AI response received: ${hasAIResponse ? 'PASS' : 'FAIL'}`);
@@ -224,8 +223,8 @@ async function run() {
     // =========================================================
     log('\n=== TEST 8: Thread management ===');
 
-    // Open thread list
-    await page.locator('text=History').first().click();
+    // Open thread list - click the list button using testID
+    await page.locator('[data-testid="thread-list-button"]').click();
     await page.waitForTimeout(1500);
     await page.screenshot({ path: `${SCREENSHOT_DIR}/10-thread-list.png`, fullPage: true });
 
@@ -405,8 +404,9 @@ async function run() {
     await navigateToProfile(page);
     await page.screenshot({ path: `${SCREENSHOT_DIR}/13-profile.png`, fullPage: true });
 
-    const bodyProfile = await page.textContent('body');
-    const profileLoaded = bodyProfile.includes('Sign Out') || bodyProfile.includes('Profile') || bodyProfile.includes('My Nutrition');
+    const signOutBtn = await page.locator('[data-testid="sign-out-button"]').isVisible().catch(() => false);
+    const myNutritionBtn = await page.locator('[data-testid="my-nutrition-button"]').isVisible().catch(() => false);
+    const profileLoaded = signOutBtn && myNutritionBtn;
     log(`  Profile screen: ${profileLoaded ? 'PASS' : 'FAIL'}`);
 
     // =========================================================
@@ -414,7 +414,7 @@ async function run() {
     // =========================================================
     log('\n=== TEST 14: My Nutrition screen ===');
     // Profile should already be showing
-    const healthGoalsLink = page.locator('text=My Nutrition').first();
+    const healthGoalsLink = page.locator('[data-testid="my-nutrition-button"]');
     const hgVisible = await healthGoalsLink.isVisible().catch(() => false);
     log(`  My Nutrition link in profile: ${hgVisible ? 'PASS' : 'FAIL'}`);
 
@@ -470,7 +470,7 @@ async function run() {
     // =========================================================
     log('\n=== TEST 17: Logout and login ===');
     await navigateToProfile(page);
-    await page.locator('text=Sign Out').first().click();
+    await page.locator('[data-testid="sign-out-button"]').click();
     await page.waitForTimeout(3000);
 
     const backToLogin = await page.locator('text=Sign In').first().isVisible().catch(() => false);
@@ -489,7 +489,7 @@ async function run() {
     // =========================================================
     log('\n=== TEST 18: Protected route redirect ===');
     await navigateToProfile(page);
-    await page.locator('text=Sign Out').first().click();
+    await page.locator('[data-testid="sign-out-button"]').click();
     await page.waitForTimeout(2000);
 
     await page.goto(`${BASE}/(tabs)`, { waitUntil: 'networkidle', timeout: 10000 });
@@ -704,13 +704,13 @@ async function run() {
       // Navigate to health goals
       await navigateToProfile(page);
       await page.waitForTimeout(1000);
-      const healthGoalsLink = page.locator('text=My Nutrition').first();
+      const healthGoalsLink = page.locator('[data-testid="my-nutrition-button"]').first();
       if (await healthGoalsLink.isVisible().catch(() => false)) {
         await healthGoalsLink.click();
         await page.waitForTimeout(2000);
 
         // Check that the page loads correctly
-        const nutritionTitle = await page.locator('text=My Nutrition').first().isVisible().catch(() => false);
+        const nutritionTitle = await page.locator('[data-testid="my-nutrition-button"]').first().isVisible().catch(() => false);
         log(`  Health Goals page loads: ${nutritionTitle ? 'PASS' : 'FAIL'}`);
 
         // Check for meal log area
@@ -898,7 +898,7 @@ async function run() {
       // Navigate to My Nutrition to verify
       await navigateToProfile(page);
       await page.waitForTimeout(1000);
-      const hgLink32 = page.locator('text=My Nutrition').first();
+      const hgLink32 = page.locator('[data-testid="my-nutrition-button"]').first();
       if (await hgLink32.isVisible().catch(() => false)) {
         await hgLink32.click();
         await page.waitForTimeout(2000);
@@ -1890,7 +1890,7 @@ async function run() {
         await page.waitForTimeout(1000);
       }
 
-      const chatInput62 = page.locator('[placeholder="Ask ChefMate anything..."]');
+      const chatInput62 = page.locator('[placeholder="Ask Kitcho anything..."]');
       if (await chatInput62.isVisible().catch(() => false)) {
         await chatInput62.click();
         await chatInput62.pressSequentially('What can I cook with what I have in my inventory?', { delay: 15 });

@@ -102,7 +102,10 @@ export default function ResetPasswordScreen() {
         <View className="flex-1 justify-center px-6 py-12">
           {/* Logo/Header */}
           <View className="items-center mb-10">
-            <Text className="text-4xl font-bold text-primary-600">ChefMate</Text>
+            <View className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-3xl items-center justify-center mb-4">
+              <Text className="text-4xl">🍳</Text>
+            </View>
+            <Text className="text-4xl font-bold text-gray-900">Kitcho AI</Text>
             <Text className="text-gray-500 mt-2 text-base">Create New Password</Text>
           </View>
 

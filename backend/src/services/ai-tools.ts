@@ -683,7 +683,8 @@ export const toolDefinitions: ChatCompletionTool[] = [
 export async function executeTool(
   toolName: string,
   args: Record<string, any>,
-  userId: string
+  userId: string,
+  clientDate?: string
 ): Promise<{ result: any; metadata?: Record<string, any> }> {
   switch (toolName) {
     case 'search_recipes':
@@ -727,7 +728,7 @@ export async function executeTool(
     case 'get_sale_items':
       return getSaleItems(args, userId);
     case 'get_nutrition_summary':
-      return getNutritionSummary(args, userId);
+      return getNutritionSummary(args, userId, clientDate);
     case 'kroger_product_search':
       return krogerProductSearch(args, userId);
     case 'create_custom_recipe':
@@ -2650,11 +2651,11 @@ async function bulkAddInventory(args: Record<string, any>, userId: string) {
   };
 }
 
-async function getNutritionSummary(args: Record<string, any>, userId: string) {
+async function getNutritionSummary(args: Record<string, any>, userId: string, clientDate?: string) {
   const { range = 'day' } = args;
 
-  // Use UTC dates since mealDate is stored as YYYY-MM-DDT00:00:00.000Z
-  const dateStr = args.date || new Date().toISOString().split('T')[0];
+  // Use client's local date if provided, otherwise fall back to UTC
+  const dateStr = args.date || clientDate || new Date().toISOString().split('T')[0];
   const [year, month, day] = dateStr.split('-').map(Number);
   const startDate = new Date(Date.UTC(year, month - 1, day));
 

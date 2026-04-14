@@ -607,6 +607,20 @@ export default function InventoryScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      {/* Header */}
+      <View className="bg-primary-500 pt-3 pb-5 px-5">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-white text-3xl font-bold tracking-tight">Inventory</Text>
+          <TouchableOpacity
+            testID="profile-icon"
+            onPress={() => router.push('/(tabs)/profile')}
+            className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+          >
+            <Ionicons name="person-circle-outline" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Expiry notification banner */}
       {showExpiryBanner && expiringItems.length > 0 && (
         <View className="mx-4 mt-2 mb-1 bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex-row items-center">

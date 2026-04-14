@@ -77,50 +77,52 @@ export default function ChatInput({ onSend, disabled }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={100}
     >
-      <View className="flex-row items-end px-4 py-3 bg-white border-t border-gray-200">
-        {/* Mic button - shown when speech is supported and no text typed */}
-        {isSupported && !hasText && !disabled && (
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+      <View className="px-5 py-4 bg-white border-t border-gray-200">
+        <View className="flex-row items-center gap-3">
+          <TextInput
+            ref={inputRef}
+            className="flex-1 bg-gray-100 rounded-3xl px-4 py-3 text-base max-h-[120px] text-gray-800 border-2 border-gray-200"
+            placeholder={isListening ? 'Listening...' : 'Ask Kitcho anything...'}
+            placeholderTextColor={isListening ? '#ef4444' : '#9ca3af'}
+            value={text}
+            onChangeText={setText}
+            onKeyPress={handleKeyPress}
+            multiline
+            editable={!disabled && !isListening}
+          />
+
+          {/* Mic or Send button */}
+          {isSupported && !hasText && !disabled ? (
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <TouchableOpacity
+                onPress={handleMicPress}
+                className={`w-12 h-12 rounded-full items-center justify-center ${
+                  isListening ? 'bg-red-500' : 'bg-primary-500'
+                }`}
+              >
+                <Ionicons
+                  name={isListening ? 'mic' : 'mic-outline'}
+                  size={20}
+                  color="white"
+                />
+              </TouchableOpacity>
+            </Animated.View>
+          ) : (
             <TouchableOpacity
-              onPress={handleMicPress}
-              className={`mr-2 w-10 h-10 rounded-full items-center justify-center ${
-                isListening ? 'bg-red-500' : 'bg-gray-100'
+              onPress={handleSend}
+              disabled={!hasText || disabled}
+              className={`w-12 h-12 rounded-full items-center justify-center ${
+                hasText && !disabled ? 'bg-primary-500' : 'bg-gray-300'
               }`}
             >
               <Ionicons
-                name={isListening ? 'mic' : 'mic-outline'}
-                size={20}
-                color={isListening ? 'white' : '#6b7280'}
+                name="send"
+                size={18}
+                color={hasText && !disabled ? 'white' : '#9ca3af'}
               />
             </TouchableOpacity>
-          </Animated.View>
-        )}
-
-        <TextInput
-          ref={inputRef}
-          className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-[15px] max-h-[120px] text-gray-800"
-          placeholder={isListening ? 'Listening...' : 'Ask ChefMate anything...'}
-          placeholderTextColor={isListening ? '#ef4444' : '#9ca3af'}
-          value={text}
-          onChangeText={setText}
-          onKeyPress={handleKeyPress}
-          multiline
-          editable={!disabled && !isListening}
-        />
-
-        <TouchableOpacity
-          onPress={handleSend}
-          disabled={!hasText || disabled}
-          className={`ml-2 w-10 h-10 rounded-full items-center justify-center ${
-            hasText && !disabled ? 'bg-primary-500' : 'bg-gray-200'
-          }`}
-        >
-          <Ionicons
-            name="send"
-            size={18}
-            color={hasText && !disabled ? 'white' : '#9ca3af'}
-          />
-        </TouchableOpacity>
+          )}
+        </View>
       </View>
     </KeyboardAvoidingView>
   );

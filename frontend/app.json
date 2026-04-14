@@ -18,7 +18,8 @@
       "bundleIdentifier": "com.chefmate.app",
       "infoPlist": {
         "NSCameraUsageDescription": "ChefMate uses your camera to scan food items for inventory management.",
-        "NSPhotoLibraryUsageDescription": "ChefMate accesses your photo library to add food images."
+        "NSPhotoLibraryUsageDescription": "ChefMate accesses your photo library to add food images.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -52,8 +53,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "your-eas-project-id"
-      }
+        "projectId": "902c7d20-ad4d-4e9c-8cf3-5ec596ba624c"
+      },
+      "router": {}
     }
   }
 }

@@ -12,6 +12,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { mealPlansApi, recipesApi, nutritionApi } from '../../src/services/api';
 import { useMealPrepStore, ChatState } from '../../src/store/chatStore';
@@ -485,29 +486,54 @@ export default function MealPlanScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      {/* Header */}
+      <View className="bg-primary-500 pt-3 pb-5 px-5">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-white text-3xl font-bold tracking-tight">Meal Plan</Text>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+              onPress={() => router.push('/health-goals')}
+            >
+              <Ionicons name="stats-chart" size={20} color="white" />
+            </TouchableOpacity>
+            {plan && (
+              <TouchableOpacity
+                className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+                onPress={openSettingsModal}
+              >
+                <Ionicons name="settings-outline" size={20} color="white" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              testID="profile-icon"
+              onPress={() => router.push('/(tabs)/profile')}
+              className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+            >
+              <Ionicons name="person-circle-outline" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
       {/* Week navigation */}
-      <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-        <TouchableOpacity onPress={() => setWeekOffset(w => w - 1)}>
-          <Ionicons name="chevron-back" size={22} color="#6b7280" />
-        </TouchableOpacity>
-        <View className="flex-row items-center">
+      <View className="bg-white border-b border-gray-200">
+        <View className="flex-row items-center justify-between px-5 py-3">
+          <TouchableOpacity onPress={() => setWeekOffset(w => w - 1)}>
+            <Text className="text-2xl text-gray-600">‹</Text>
+          </TouchableOpacity>
           <View className="items-center">
             <Text className="text-base font-semibold text-gray-800">{weekLabel}</Text>
             {weekOffset !== 0 && (
               <TouchableOpacity onPress={() => setWeekOffset(0)}>
-                <Text className="text-xs text-primary-500">Today</Text>
+                <Text className="text-xs text-primary-600 font-medium">Jump to Today</Text>
               </TouchableOpacity>
             )}
           </View>
-          {plan && (
-            <TouchableOpacity onPress={openSettingsModal} className="ml-2" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="settings-outline" size={18} color="#6b7280" />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={() => setWeekOffset(w => w + 1)}>
+            <Text className="text-2xl text-gray-600">›</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={() => setWeekOffset(w => w + 1)}>
-          <Ionicons name="chevron-forward" size={22} color="#6b7280" />
-        </TouchableOpacity>
       </View>
 
       {!plan ? (
@@ -541,18 +567,18 @@ export default function MealPlanScreen() {
             const dayName = SHORT_DAYS[date.getDay()];
 
             return (
-              <View key={formatDate(date)} className={`mx-4 mt-3 bg-white rounded-xl p-3 ${isToday ? 'border-2 border-primary-300' : ''}`}>
-                <View className="flex-row items-center justify-between mb-2">
+              <View key={formatDate(date)} className={`mx-4 mt-4 bg-white rounded-2xl p-4 shadow-sm ${isToday ? 'border-2 border-primary-500' : ''}`}>
+                <View className="flex-row items-center justify-between mb-3">
                   <View className="flex-row items-center">
-                    <Text className={`text-sm font-semibold ${isToday ? 'text-primary-600' : 'text-gray-800'}`}>
+                    <Text className={`text-base font-bold ${isToday ? 'text-primary-600' : 'text-gray-900'}`}>
                       {dayName}
                     </Text>
-                    <Text className="text-xs text-gray-400 ml-2">
+                    <Text className="text-sm text-gray-500 ml-2">
                       {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </Text>
                     {isToday && (
-                      <View className="ml-2 bg-primary-100 px-2 py-0.5 rounded">
-                        <Text className="text-[10px] text-primary-600 font-medium">TODAY</Text>
+                      <View className="ml-2 bg-primary-100 px-2.5 py-1 rounded-lg">
+                        <Text className="text-xs text-primary-700 font-bold">TODAY</Text>
                       </View>
                     )}
                   </View>
@@ -561,40 +587,43 @@ export default function MealPlanScreen() {
                 {/* Meal type rows */}
                 {MEAL_TYPES.map((mealType) => {
                   const mealSlots = slots.filter((s: any) => s.mealType === mealType);
+                  const mealIcon = mealType === 'breakfast' ? '🍳' : mealType === 'lunch' ? '🥗' : mealType === 'dinner' ? '🍽️' : '🍎';
 
                   return (
-                    <View key={mealType} className="flex-row items-center py-1.5 border-t border-gray-100">
-                      <Text className="text-xs text-gray-400 w-16 capitalize">{mealType}</Text>
-                      <View className="flex-1 flex-row flex-wrap gap-1">
+                    <View key={mealType} className="flex-row items-start py-2 border-t border-gray-100">
+                      <Text className="text-xs text-gray-600 font-semibold w-20 pt-1">{mealIcon} {mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
+                      <View className="flex-1 flex-row flex-wrap gap-2">
                         {mealSlots.map((slot: any) => (
                           <TouchableOpacity
                             key={slot.id}
-                            className={`rounded-lg px-2 py-1 flex-row items-center ${slot.isCompleted ? 'bg-green-50 border border-green-200' : 'bg-primary-50'}`}
+                            className={`rounded-xl px-3 py-2 flex-row items-center ${slot.isCompleted ? 'bg-green-50 border-2 border-green-200' : 'bg-primary-50 border-2 border-primary-200'}`}
                             onPress={() => openEditSlotModal(slot)}
                           >
-                            <Text
-                              className={`text-xs ${slot.isCompleted ? 'text-gray-700' : 'text-primary-700'}`}
-                              numberOfLines={1}
-                            >
-                              {slot.recipe?.title || slot.customName || 'Meal'}
-                            </Text>
+                            <View className="flex-1">
+                              <Text
+                                className={`text-sm font-medium ${slot.isCompleted ? 'text-gray-700' : 'text-primary-700'}`}
+                                numberOfLines={1}
+                              >
+                                {slot.recipe?.title || slot.customName || 'Meal'}
+                              </Text>
+                              {slot.isCompleted && (
+                                <View className="bg-green-100 self-start px-2 py-0.5 rounded-md mt-1">
+                                  <Text className="text-xs font-bold text-green-700">✓ Logged</Text>
+                                </View>
+                              )}
+                            </View>
                             {slot.servings && slot.servings > 1 && (
-                              <View className={`ml-1 rounded px-1 ${slot.isCompleted ? 'bg-gray-200' : 'bg-primary-200'}`}>
-                                <Text className={`text-[9px] font-medium ${slot.isCompleted ? 'text-gray-600' : 'text-primary-800'}`}>{slot.servings}x</Text>
-                              </View>
-                            )}
-                            {slot.isCompleted && (
-                              <View className="ml-1 bg-green-500 rounded px-1.5 py-0.5">
-                                <Text className="text-[9px] font-medium text-white">✓ Logged</Text>
+                              <View className={`ml-2 rounded-lg px-2 py-1 ${slot.isCompleted ? 'bg-gray-200' : 'bg-primary-200'}`}>
+                                <Text className={`text-xs font-bold ${slot.isCompleted ? 'text-gray-600' : 'text-primary-800'}`}>{slot.servings}x</Text>
                               </View>
                             )}
                           </TouchableOpacity>
                         ))}
                         <TouchableOpacity
-                          className="w-6 h-6 rounded-full bg-gray-100 items-center justify-center"
+                          className="w-8 h-8 rounded-full bg-gray-100 border-2 border-gray-300 items-center justify-center"
                           onPress={() => openAddMeal(date, mealType)}
                         >
-                          <Ionicons name="add" size={14} color="#9ca3af" />
+                          <Ionicons name="add" size={18} color="#9ca3af" />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1232,50 +1261,63 @@ function SmartMealPrepChat({
   return (
     <View className="flex-1 bg-gray-50">
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200" style={{ backgroundColor: '#f97316' }}>
-        <TouchableOpacity onPress={onClose}>
-          <Ionicons name="close" size={24} color="#ffffff" />
-        </TouchableOpacity>
-        <Text className="text-lg font-bold text-white">Smart Meal Prep</Text>
-        <View className="flex-row items-center gap-3">
-          <TouchableOpacity onPress={onShowThreads}>
-            <Ionicons name="time-outline" size={22} color="#ffffff" />
+      <View className="bg-primary-500 pt-3 pb-5 px-5">
+        <View className="flex-row justify-between items-center">
+          <TouchableOpacity testID="meal-prep-close-button" onPress={onClose} className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center">
+            <Ionicons name="close" size={20} color="white" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => createThread()}>
-            <Ionicons name="add" size={24} color="#ffffff" />
-          </TouchableOpacity>
+          <Text className="text-white text-2xl font-bold tracking-tight">Meal Prep AI</Text>
+          <View className="flex-row gap-2">
+            <TouchableOpacity testID="meal-prep-thread-list-button" onPress={onShowThreads} className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center">
+              <Ionicons name="list" size={20} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity testID="meal-prep-new-thread-button" onPress={() => createThread()} className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center">
+              <Ionicons name="add" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
       {showWelcome ? (
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
-          <View className="bg-white rounded-2xl p-8 items-center shadow-sm w-full max-w-sm">
-            <View className="rounded-full p-4 mb-4" style={{ backgroundColor: '#fff7ed' }}>
-              <Ionicons name="flame" size={48} color="#f97316" />
+        <View className="flex-1 px-5 py-6">
+          {/* Welcome Card */}
+          <View className="bg-white rounded-3xl p-8 items-center shadow-md mb-6">
+            <View className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full items-center justify-center mb-5">
+              <Text className="text-5xl">🍳</Text>
             </View>
-            <Text className="text-xl font-bold text-gray-800 mb-2">
-              Smart Meal Prep
+            <Text className="text-2xl font-bold text-gray-900 mb-2">
+              Plan Your Week
             </Text>
-            <Text className="text-gray-500 text-center mb-6">
-              I'll create a batch recipe, check your inventory, build a shopping
-              list, and add it to your meal plan.
+            <Text className="text-gray-500 text-center leading-6">
+              I'm your meal prep assistant. I'll check your inventory, suggest batch-cooking recipes, and build your shopping list.
             </Text>
-            <View className="w-full gap-2">
-              {MEAL_PREP_PROMPTS.map((prompt) => (
-                <TouchableOpacity
-                  key={prompt}
-                  className="rounded-lg p-3"
-                  style={{ backgroundColor: '#fff7ed' }}
-                  onPress={() => handleSend(prompt)}
-                >
-                  <Text className="text-center text-sm" style={{ color: '#c2410c' }}>
-                    "{prompt}"
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
           </View>
-        </ScrollView>
+
+          {/* Quick Prompts */}
+          <Text className="text-gray-700 font-semibold mb-3 px-1 text-base">Quick Start</Text>
+          <View className="gap-3">
+            {[
+              { icon: '🥘', text: 'Easy crockpot meal prep — 10 servings' },
+              { icon: '🍗', text: 'High protein sheet pan meal prep for the week' },
+              { icon: '🥗', text: 'Meal prep lunches for the next 5 work days' },
+              { icon: '❄️', text: 'Batch cook chicken — half fridge, half freezer' },
+              { icon: '💰', text: 'Budget meal prep under $30 — 10 servings' },
+            ].map((item, idx) => (
+              <TouchableOpacity
+                key={idx}
+                className="bg-white border-2 border-gray-200 rounded-2xl p-4 flex-row items-center shadow-sm active:bg-primary-50 active:border-primary-500"
+                onPress={() => handleSend(item.text)}
+              >
+                <View className="bg-primary-50 w-10 h-10 rounded-xl items-center justify-center mr-3">
+                  <Text className="text-xl">{item.icon}</Text>
+                </View>
+                <Text className="text-gray-800 font-medium flex-1">
+                  {item.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
       ) : (
         <FlatList
           ref={flatListRef}
@@ -1291,11 +1333,11 @@ function SmartMealPrepChat({
               ) : null}
               {isSending && !streamingContent ? (
                 <View className="flex-row items-center px-4 mb-3">
-                  <View className="rounded-full w-8 h-8 items-center justify-center mr-2" style={{ backgroundColor: '#fff7ed' }}>
-                    <Ionicons name="flame" size={16} color="#f97316" />
+                  <View className="rounded-full w-8 h-8 items-center justify-center mr-2" style={{ backgroundColor: '#d1fae5' }}>
+                    <Ionicons name="restaurant" size={16} color="#10b981" />
                   </View>
                   <View className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3">
-                    <ActivityIndicator size="small" color="#f97316" />
+                    <ActivityIndicator size="small" color="#10b981" />
                   </View>
                 </View>
               ) : null}

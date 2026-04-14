@@ -125,7 +125,9 @@ function createChatStore(contextType: string) {
       }));
 
       try {
-        const response = await conversationsApi.sendMessage(threadId, message);
+        // Pass client's local date to ensure correct timezone handling
+        const clientDate = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
+        const response = await conversationsApi.sendMessage(threadId, message, { clientDate });
 
         // Replace temp message with real ones
         set((s) => {

@@ -40,11 +40,16 @@ IMPORTANT BEHAVIOR RULES:
 4. When the user asks to add a specific meal to a plan, call add_meal_to_plan to assign it.
 5. Use real data from tools — never make up recipe names, nutrition info, or inventory contents.
 6. When showing recipes, include key details (cook time, calories, difficulty). Reference recipes by their actual database names.
-7. AUTO-LOG MEALS (CRITICAL — HIGHEST PRIORITY): When the user says "I'm making", "I made", "I had", "I ate", "I'm having", or "I'm going to make" something, you MUST follow this EXACT tool call sequence:
+7. AUTO-LOG MEALS (CRITICAL — HIGHEST PRIORITY): When the user says "I'm eating", "I had", "I ate", "I'm having", or "I just ate" something, you MUST follow this EXACT tool call sequence:
    STEP 1: Call log_meal IMMEDIATELY with estimated nutrition. Do NOT ask permission.
    STEP 2: Call get_today_meals IMMEDIATELY AFTER log_meal returns. This fetches ALL meals for today from the database (including ones logged in previous conversations or via the UI that you don't know about).
    STEP 3: Use the get_today_meals result (NOT the stale TODAY'S LOGGED MEALS list) to build your response.
    You MUST call BOTH tools before responding to the user. This is non-negotiable.
+
+   IMPORTANT EXCEPTIONS - DO NOT auto-log in these cases:
+   - Recipe selection for preparation: "let's do 4", "I'll make the salmon", "let's prepare this" → These are for FUTURE cooking, not current eating
+   - General planning: "I'm making this for dinner tonight" → This is planning, not eating RIGHT NOW
+   - Only auto-log when they indicate CURRENT or PAST consumption: "I'm eating salmon now", "I had salmon for lunch", "I just ate salmon"
 8. SHOW YOUR MATH (MANDATORY — NEVER SKIP): After logging a meal, you MUST show the COMPLETE day breakdown using data from get_today_meals. List EVERY meal returned, not just ones you know about. Format EXACTLY like this:
 
    "Logged your [meal] as [type] — [X] cal, [Y]g protein.
@@ -103,19 +108,33 @@ After suggesting or discussing ANY specific recipe, ALWAYS call compare_recipe_i
 - If they have everything, celebrate: "Great news — you have everything you need! Ready to cook?"
 This creates a seamless flow: suggest recipe → check inventory → offer shopping list → user confirms → items added.
 
+INGREDIENT COUNT ACCURACY (CRITICAL — NEVER APPROXIMATE):
+When presenting ingredient coverage from compare_recipe_ingredients tool results, you MUST use the EXACT numbers returned by the tool. NEVER round, summarize, or approximate ingredient counts.
+- If the tool says "You have 7 out of 10 ingredients", you MUST say "7/10" or "7 out of 10"
+- NEVER say "6/8" if the actual count is "7/10" — this confuses users and makes them doubt the app's accuracy
+- ALWAYS use the exact totalIngredients, have.length, and missing.length values from the tool result
+- When showing multiple recipe options, each option MUST show the EXACT ingredient count from its own compare_recipe_ingredients call
+- If you present a recipe summary (e.g., in a list), you MUST call compare_recipe_ingredients for EACH recipe to get accurate counts — never estimate or carry over counts from similar recipes
+This is non-negotiable. Inaccurate ingredient counts destroy user trust.
+
 WHEN THE USER PICKS A RECIPE (CRITICAL — full follow-through):
-When the user selects a recipe (e.g., "let's do the stir fry", "option 2", "two servings of the stir fry"):
-1. IMMEDIATELY call compare_recipe_ingredients to check what they have vs what's missing
-2. If missing ingredients, present TWO options:
-   a) "Want me to add the missing items to your shopping list?"
-   b) "Or we can make it with substitutions — [suggest specific swaps from their inventory]"
-3. Offer MACRO-BOOSTING TIPS specific to their remaining goals:
-   - If they need more protein: "You could double the chicken breast to 8oz for an extra 25g protein"
-   - If they need more protein: "Add a side of Greek yogurt as a sauce/dip for +15g protein"
-   - If they need fewer calories: "Use cooking spray instead of oil to save ~120 cal"
-   - Be specific with the numbers: "That would bring your dinner total to [X] cal, [Y]g protein — [Z]g short of your goal"
-4. After they confirm the plan, call log_meal with the final nutrition values
-5. NEVER just say "I've gathered the information" — always give a complete, actionable response
+When the user selects a recipe (e.g., "let's do the stir fry", "option 2", "let's do 5"):
+1. FIRST ask "How many servings would you like to prepare?" and WAIT for their response
+   - Present options conversationally: "1 serving (just for you)", "2 servings (leftovers)", "4 servings (meal prep)"
+   - DO NOT proceed until they specify the serving count
+2. Once they specify servings, call compare_recipe_ingredients to check what they have vs what's missing
+3. Show the ingredient breakdown scaled to their chosen servings (e.g., "For 4 servings you need...")
+4. If missing ingredients, ask: "Would you like me to add the missing ingredients to your shopping list?"
+5. WAIT for their response about the shopping list
+6. If they want a shopping list, follow the SHOPPING LIST SELECTION flow
+7. After shopping list is handled (or if they decline), provide the FULL cooking instructions:
+   - List all ingredients with quantities (scaled to their servings)
+   - Step-by-step cooking directions
+   - Cooking tips and timing
+8. DO NOT automatically log the meal - only log if they say "I'm making this now", "I'm having this", or "log this meal"
+9. If they want to log it, ask: "How many servings are you having right now?" (default to 1 serving, not the total they're preparing)
+10. NEVER assume they're eating all servings at once - 4 servings prepared ≠ 4 servings eaten
+EXCEPTION: If the user explicitly specifies servings in their initial message (e.g., "two servings of the stir fry"), skip step 1 and use their specified count.
 
 SHOPPING LIST SELECTION (CRITICAL — ALWAYS ASK WHICH LIST):
 When the user confirms they want to add items to a shopping list, you MUST follow this flow:
@@ -127,7 +146,9 @@ When the user confirms they want to add items to a shopping list, you MUST follo
 4. Once they choose:
    - If they pick an existing list: call add_missing_to_shopping_list with the listId
    - If they want a new list: call add_missing_to_shopping_list with a listName (no listId)
+5. When adding items, use the quantities based on the servings they specified earlier in the conversation
 NEVER add items to a shopping list without asking which list first. NEVER auto-pick the first/most recent list.
+IMPORTANT: Shopping list quantities should reflect the number of servings the user requested, not the default recipe servings.
 
 DIRECT SHOPPING LIST CREATION:
 When the user explicitly asks you to CREATE a new shopping list with specific items (e.g., "I need bell peppers, black beans, and corn — create a list for this"), follow this flow:
@@ -699,7 +720,8 @@ export async function chatOrchestrate(
   userMessage: string,
   userId: string,
   threadId: string,
-  contextType?: string
+  contextType?: string,
+  clientDate?: string
 ): Promise<ChatOrchestrationResult> {
   // Load context + history
   const [context, history] = await Promise.all([
@@ -718,7 +740,7 @@ export async function chatOrchestrate(
 
   // Fallback mode when no API key
   if (!process.env.OPENAI_API_KEY) {
-    return fallbackResponse(userMessage, userId);
+    return fallbackResponse(userMessage, userId, clientDate);
   }
 
   let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
@@ -758,7 +780,7 @@ export async function chatOrchestrate(
         }
 
         console.log(`🔧 Executing tool: ${fnName}`, fnArgs);
-        const toolResult = await executeTool(fnName, fnArgs, userId);
+        const toolResult = await executeTool(fnName, fnArgs, userId, clientDate);
         console.log(`✅ Tool ${fnName} returned ${JSON.stringify(toolResult.result).length} chars`);
 
         toolCallResults.push({
@@ -809,6 +831,7 @@ export async function chatOrchestrateStream(
   userId: string,
   threadId: string,
   contextType: string,
+  clientDate: string | undefined,
   onToken: (token: string) => void,
   onToolCall: (name: string, args: any) => void,
   onToolResult: (name: string, result: any) => void
@@ -828,7 +851,7 @@ export async function chatOrchestrateStream(
   const allMetadata: Record<string, any> = {};
 
   if (!process.env.OPENAI_API_KEY) {
-    const fallback = await fallbackResponse(userMessage, userId);
+    const fallback = await fallbackResponse(userMessage, userId, clientDate);
     onToken(fallback.content);
     return fallback;
   }
@@ -912,7 +935,7 @@ export async function chatOrchestrateStream(
         console.log(`🔧 [stream] Executing tool: ${tc.name}`, fnArgs);
         onToolCall(tc.name, fnArgs);
 
-        const toolResult = await executeTool(tc.name, fnArgs, userId);
+        const toolResult = await executeTool(tc.name, fnArgs, userId, clientDate);
         console.log(`✅ [stream] Tool ${tc.name} done`);
 
         toolCallResults.push({
@@ -956,7 +979,8 @@ export async function chatOrchestrateStream(
 
 async function fallbackResponse(
   message: string,
-  userId: string
+  userId: string,
+  clientDate?: string
 ): Promise<ChatOrchestrationResult> {
   const lower = message.toLowerCase();
   const toolCallResults: ChatOrchestrationResult['toolCalls'] = [];
@@ -972,7 +996,8 @@ async function fallbackResponse(
     const result = await executeTool(
       'search_recipes',
       { query: message, limit: 3 },
-      userId
+      userId,
+      clientDate
     );
     toolCallResults.push({ name: 'search_recipes', args: { query: message }, result: result.result });
     if (result.metadata) Object.assign(metadata, result.metadata);
@@ -990,7 +1015,7 @@ async function fallbackResponse(
       const firstRecipe = recipes[0];
       let inventoryNote = '';
       if (firstRecipe?.id) {
-        const compareResult = await executeTool('compare_recipe_ingredients', { recipeId: firstRecipe.id }, userId);
+        const compareResult = await executeTool('compare_recipe_ingredients', { recipeId: firstRecipe.id }, userId, clientDate);
         toolCallResults.push({ name: 'compare_recipe_ingredients', args: { recipeId: firstRecipe.id }, result: compareResult.result });
         if (compareResult.metadata) Object.assign(metadata, compareResult.metadata);
 
@@ -1017,7 +1042,7 @@ async function fallbackResponse(
   // Direct shopping list creation: "create a list called X" or "name it X"
   if ((lower.includes('create') || lower.includes('make') || lower.includes('new')) && lower.includes('list') && !lower.includes('meal plan')) {
     // Check if there are items mentioned along with the request
-    const parseResult = await executeTool('parse_natural_inventory_input', { text: message }, userId);
+    const parseResult = await executeTool('parse_natural_inventory_input', { text: message }, userId, clientDate);
     const parsedItems = parseResult.result?.parsedItems || [];
 
     if (parsedItems.length > 0) {
@@ -1040,7 +1065,7 @@ async function fallbackResponse(
   // Kroger-aware shopping list add in fallback mode
   if ((lower.includes('add') || lower.includes('put')) && lower.includes('shopping list') && !lower.includes('create')) {
     // Try kroger_product_search first if user has a store set
-    const krogerResult = await executeTool('kroger_product_search', { items: [message.replace(/add|put|to|my|shopping|list/gi, '').trim()] }, userId);
+    const krogerResult = await executeTool('kroger_product_search', { items: [message.replace(/add|put|to|my|shopping|list/gi, '').trim()] }, userId, clientDate);
     if (krogerResult.result?.results?.length > 0 && !krogerResult.result.error) {
       toolCallResults.push({ name: 'kroger_product_search', args: { items: [message] }, result: krogerResult.result });
       const results = krogerResult.result.results;
@@ -1062,7 +1087,7 @@ async function fallbackResponse(
 
   if (lower.includes('add') && (lower.includes('shopping') || lower.includes('list') || lower.includes('missing'))) {
     // First, show the user their available lists so they can choose
-    const listsResult = await executeTool('manage_shopping_list', { action: 'view_lists' }, userId);
+    const listsResult = await executeTool('manage_shopping_list', { action: 'view_lists' }, userId, clientDate);
     toolCallResults.push({ name: 'manage_shopping_list', args: { action: 'view_lists' }, result: listsResult.result });
 
     const lists = listsResult.result?.lists || [];
@@ -1087,7 +1112,7 @@ async function fallbackResponse(
           const addResult = await executeTool('add_missing_to_shopping_list', {
             items: missing.map((i: any) => ({ name: i.name, quantity: i.amount, unit: i.unit })),
             listId: selectedList.id,
-          }, userId);
+          }, userId, clientDate);
           toolCallResults.push({ name: 'add_missing_to_shopping_list', args: { items: missing, listId: selectedList.id }, result: addResult.result });
           if (addResult.metadata) Object.assign(metadata, addResult.metadata);
 
@@ -1126,7 +1151,7 @@ async function fallbackResponse(
           const addResult = await executeTool('add_missing_to_shopping_list', {
             items: missing.map((i: any) => ({ name: i.name, quantity: i.amount, unit: i.unit })),
             listName: `Ingredients for ${recentRecipe.title}`,
-          }, userId);
+          }, userId, clientDate);
           toolCallResults.push({ name: 'add_missing_to_shopping_list', args: { items: missing }, result: addResult.result });
           if (addResult.metadata) Object.assign(metadata, addResult.metadata);
 
@@ -1144,7 +1169,7 @@ async function fallbackResponse(
   if (lower.includes('bought') || lower.includes('got') || lower.includes('picked up') ||
       (lower.includes('add') && (lower.includes('inventory') || lower.includes('fridge') || lower.includes('pantry') || lower.includes('freezer'))) ||
       lower.match(/^i have \w+.*(,| and )/)) {
-    const parseResult = await executeTool('parse_natural_inventory_input', { text: message }, userId);
+    const parseResult = await executeTool('parse_natural_inventory_input', { text: message }, userId, clientDate);
     toolCallResults.push({ name: 'parse_natural_inventory_input', args: { text: message }, result: parseResult.result });
 
     const parsed = parseResult.result;
@@ -1190,7 +1215,7 @@ async function fallbackResponse(
   }
 
   if (lower.includes('inventory') || lower.includes('fridge') || lower.includes('have')) {
-    const result = await executeTool('get_inventory', { includeExpiring: true }, userId);
+    const result = await executeTool('get_inventory', { includeExpiring: true }, userId, clientDate);
     toolCallResults.push({ name: 'get_inventory', args: {}, result: result.result });
 
     const inv = result.result;
@@ -1210,7 +1235,7 @@ async function fallbackResponse(
   if (lower.includes('meal plan') || lower.includes('plan')) {
     // If user wants to create, actually create
     if (lower.includes('create') || lower.includes('make') || lower.includes('build') || lower.includes('generate') || lower.includes('set up')) {
-      const result = await executeTool('create_meal_plan', { name: 'My Meal Plan', preferences: message }, userId);
+      const result = await executeTool('create_meal_plan', { name: 'My Meal Plan', preferences: message }, userId, clientDate);
       toolCallResults.push({ name: 'create_meal_plan', args: { name: 'My Meal Plan' }, result: result.result });
       if (result.metadata) Object.assign(metadata, result.metadata);
 
@@ -1222,7 +1247,7 @@ async function fallbackResponse(
       };
     }
 
-    const result = await executeTool('get_meal_plan', { weekOffset: 0 }, userId);
+    const result = await executeTool('get_meal_plan', { weekOffset: 0 }, userId, clientDate);
     toolCallResults.push({ name: 'get_meal_plan', args: {}, result: result.result });
 
     return {
@@ -1235,7 +1260,7 @@ async function fallbackResponse(
   }
 
   if (lower.includes('nutrition') || lower.includes('calorie') || lower.includes('macro')) {
-    const result = await executeTool('get_nutrition_summary', { range: 'day' }, userId);
+    const result = await executeTool('get_nutrition_summary', { range: 'day' }, userId, clientDate);
     toolCallResults.push({ name: 'get_nutrition_summary', args: {}, result: result.result });
 
     const totals = result.result.totals;

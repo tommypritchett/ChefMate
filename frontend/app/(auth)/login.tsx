@@ -50,106 +50,136 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
-    >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
+    <View className="flex-1 bg-gradient-to-br from-primary-500 to-primary-600">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
       >
-        <View className="flex-1 justify-center px-6 py-12">
-          {/* Logo/Header */}
-          <View className="items-center mb-10">
-            <Text className="text-4xl font-bold text-primary-600">ChefMate</Text>
-            <Text className="text-gray-500 mt-2 text-base">Your AI Cooking Assistant</Text>
-          </View>
-
-          {/* Error Banner */}
-          {error ? (
-            <View className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-              <Text className="text-red-600 text-center">{error}</Text>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View className="flex-1 justify-center px-8 py-12">
+            {/* Logo Section */}
+            <View className="items-center mb-12 mt-10">
+              <View className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 rounded-3xl items-center justify-center mb-5 shadow-lg">
+                <Text className="text-5xl">🍳</Text>
+              </View>
+              <Text className="text-4xl font-bold text-gray-900 tracking-tight">Kitcho AI</Text>
+              <Text className="text-gray-600 mt-2 text-lg font-medium">Your Smart Cooking Companion</Text>
             </View>
-          ) : null}
 
-          {/* Email Input */}
-          <View className="mb-4">
-            <Text className="text-gray-700 font-medium mb-1.5">Email</Text>
-            <TextInput
-              className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50"
-              placeholder="you@example.com"
-              placeholderTextColor="#9ca3af"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              editable={!isLoading}
-            />
-          </View>
+            {/* Feature Badges */}
+            <View className="flex-row flex-wrap justify-center mb-6 gap-2">
+              <View className="bg-primary-50 px-4 py-2 rounded-2xl flex-row items-center gap-1.5">
+                <Text className="text-sm">✨</Text>
+                <Text className="text-primary-700 font-medium text-sm">AI Chef Assistant</Text>
+              </View>
+              <View className="bg-primary-50 px-4 py-2 rounded-2xl flex-row items-center gap-1.5">
+                <Text className="text-sm">🥗</Text>
+                <Text className="text-primary-700 font-medium text-sm">Meal Planning</Text>
+              </View>
+              <View className="bg-primary-50 px-4 py-2 rounded-2xl flex-row items-center gap-1.5">
+                <Text className="text-sm">🛒</Text>
+                <Text className="text-primary-700 font-medium text-sm">Smart Shopping</Text>
+              </View>
+            </View>
 
-          {/* Password Input */}
-          <View className="mb-2">
-            <Text className="text-gray-700 font-medium mb-1.5">Password</Text>
-            <View className="relative">
+            {/* Error Banner */}
+            {error ? (
+              <View className="bg-red-50 border border-red-200 rounded-2xl p-3 mb-4">
+                <Text className="text-red-600 text-center">{error}</Text>
+              </View>
+            ) : null}
+
+            {/* Email Input */}
+            <View className="mb-5">
+              <Text className="text-gray-700 font-semibold mb-2 text-base">Email</Text>
               <TextInput
-                className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50 pr-16"
-                placeholder="Enter your password"
+                className="border-2 border-gray-200 rounded-2xl px-4 py-4 text-lg bg-gray-50"
+                placeholder="you@example.com"
                 placeholderTextColor="#9ca3af"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoComplete="password"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
                 editable={!isLoading}
               />
-              <TouchableOpacity
-                className="absolute right-3 top-3"
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Text className="text-primary-600 font-medium">
-                  {showPassword ? 'Hide' : 'Show'}
-                </Text>
-              </TouchableOpacity>
+            </View>
+
+            {/* Password Input */}
+            <View className="mb-3">
+              <Text className="text-gray-700 font-semibold mb-2 text-base">Password</Text>
+              <View className="relative">
+                <TextInput
+                  className="border-2 border-gray-200 rounded-2xl px-4 py-4 text-lg bg-gray-50 pr-16"
+                  placeholder="••••••••"
+                  placeholderTextColor="#9ca3af"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoComplete="password"
+                  editable={!isLoading}
+                />
+                <TouchableOpacity
+                  className="absolute right-4 top-4"
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Text className="text-primary-600 font-semibold text-base">
+                    {showPassword ? 'Hide' : 'Show'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Forgot Password Link */}
+            <View className="items-end mb-6">
+              <Link href="/(auth)/reset-password" asChild>
+                <TouchableOpacity>
+                  <Text className="text-primary-600 text-base font-semibold">
+                    Forgot password?
+                  </Text>
+                </TouchableOpacity>
+              </Link>
+            </View>
+
+            {/* Login Button */}
+            <TouchableOpacity
+              className={`rounded-2xl py-4 items-center shadow-lg ${
+                isLoading ? 'bg-primary-300' : 'bg-gradient-to-br from-primary-500 to-primary-600'
+              }`}
+              onPress={handleLogin}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-white font-semibold text-lg">Sign In</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Divider */}
+            <View className="flex-row items-center my-8">
+              <View className="flex-1 h-px bg-gray-300" />
+              <Text className="mx-4 text-gray-400 text-sm">OR</Text>
+              <View className="flex-1 h-px bg-gray-300" />
+            </View>
+
+            {/* Register Link */}
+            <View className="items-center">
+              <View className="flex-row">
+                <Text className="text-gray-600 text-base">Don't have an account? </Text>
+                <Link href="/(auth)/register" asChild>
+                  <TouchableOpacity>
+                    <Text className="text-primary-600 font-semibold text-base">Sign Up</Text>
+                  </TouchableOpacity>
+                </Link>
+              </View>
             </View>
           </View>
-
-          {/* Forgot Password Link */}
-          <View className="items-end mb-6">
-            <Link href="/(auth)/forgot-password" asChild>
-              <TouchableOpacity>
-                <Text className="text-primary-600 text-sm font-medium">
-                  Forgot Password?
-                </Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
-
-          {/* Login Button */}
-          <TouchableOpacity
-            className={`rounded-lg py-3.5 items-center ${
-              isLoading ? 'bg-primary-300' : 'bg-primary-500'
-            }`}
-            onPress={handleLogin}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="text-white font-semibold text-base">Sign In</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Register Link */}
-          <View className="flex-row justify-center mt-6">
-            <Text className="text-gray-500">Don't have an account? </Text>
-            <Link href="/(auth)/register" asChild>
-              <TouchableOpacity>
-                <Text className="text-primary-600 font-semibold">Sign Up</Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }

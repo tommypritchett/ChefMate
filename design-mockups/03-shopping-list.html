@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kitcho AI - Shopping List</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f3f4f6;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .phone-frame {
+            width: 390px;
+            height: 844px;
+            background: #ffffff;
+            border-radius: 40px;
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .status-bar {
+            height: 44px;
+            background: #10b981;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            padding-top: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .header {
+            background: #10b981;
+            color: white;
+            padding: 16px 20px 20px;
+        }
+
+        .header-title {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            background: #f9fafb;
+        }
+
+        .deals-section {
+            background: white;
+            padding: 20px;
+            border-bottom: 8px solid #f3f4f6;
+        }
+
+        .deals-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .deals-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #fef3c7;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #92400e;
+        }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            background: #f59e0b;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .deals-scroll {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .deals-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .deal-card {
+            flex-shrink: 0;
+            width: 140px;
+            background: #f9fafb;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 2px solid #e5e7eb;
+        }
+
+        .deal-image {
+            width: 100%;
+            height: 100px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        .deal-info {
+            padding: 12px;
+        }
+
+        .deal-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .deal-price {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ef4444;
+        }
+
+        .items-section {
+            padding: 20px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .add-btn {
+            width: 36px;
+            height: 36px;
+            background: #10b981;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            cursor: pointer;
+        }
+
+        .category-group {
+            margin-bottom: 24px;
+        }
+
+        .category-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            background: white;
+            border-radius: 16px;
+            margin-bottom: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            transition: all 0.2s;
+        }
+
+        .item:active {
+            transform: scale(0.98);
+        }
+
+        .checkbox {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #d1d5db;
+            border-radius: 8px;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .checkbox.checked {
+            background: #10b981;
+            border-color: #10b981;
+            position: relative;
+        }
+
+        .checkbox.checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .item-info {
+            flex: 1;
+        }
+
+        .item-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 2px;
+        }
+
+        .item-name.checked {
+            color: #9ca3af;
+            text-decoration: line-through;
+        }
+
+        .item-quantity {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .item-action {
+            font-size: 20px;
+            color: #9ca3af;
+            cursor: pointer;
+        }
+
+        .fab {
+            position: absolute;
+            bottom: 90px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            background: #10b981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .fab:active {
+            transform: scale(0.95);
+        }
+
+        .tab-bar {
+            height: 80px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding-bottom: 20px;
+        }
+
+        .tab {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: #9ca3af;
+            font-size: 24px;
+        }
+
+        .tab.active {
+            color: #10b981;
+        }
+
+        .tab-label {
+            font-size: 11px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-frame">
+        <div class="status-bar">
+            <div>9:41</div>
+            <div style="display: flex; gap: 5px;">
+                <span>📶</span>
+                <span>📡</span>
+                <span>🔋</span>
+            </div>
+        </div>
+
+        <div class="header">
+            <h1 class="header-title">Shopping Lists</h1>
+        </div>
+
+        <div class="content">
+            <div class="deals-section">
+                <div class="deals-header">
+                    <h2 class="deals-title">🏪 Kroger Deals Near You</h2>
+                    <div class="live-badge">
+                        <div class="live-dot"></div>
+                        LIVE
+                    </div>
+                </div>
+                <div class="deals-scroll">
+                    <div class="deal-card">
+                        <div class="deal-image">🥑</div>
+                        <div class="deal-info">
+                            <div class="deal-name">Avocados</div>
+                            <div class="deal-price">$0.99</div>
+                        </div>
+                    </div>
+                    <div class="deal-card">
+                        <div class="deal-image">🍗</div>
+                        <div class="deal-info">
+                            <div class="deal-name">Chicken Breast</div>
+                            <div class="deal-price">$3.99/lb</div>
+                        </div>
+                    </div>
+                    <div class="deal-card">
+                        <div class="deal-image">🥛</div>
+                        <div class="deal-info">
+                            <div class="deal-name">Organic Milk</div>
+                            <div class="deal-price">$4.49</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="items-section">
+                <div class="section-header">
+                    <h2 class="section-title">Weekly Groceries</h2>
+                    <div class="add-btn">+</div>
+                </div>
+
+                <div class="category-group">
+                    <div class="category-label">🥬 Produce</div>
+                    <div class="item">
+                        <div class="checkbox"></div>
+                        <div class="item-info">
+                            <div class="item-name">Fresh Spinach</div>
+                            <div class="item-quantity">1 bunch</div>
+                        </div>
+                        <div class="item-action">⋯</div>
+                    </div>
+                    <div class="item">
+                        <div class="checkbox checked"></div>
+                        <div class="item-info">
+                            <div class="item-name checked">Cherry Tomatoes</div>
+                            <div class="item-quantity">1 pint</div>
+                        </div>
+                        <div class="item-action">⋯</div>
+                    </div>
+                </div>
+
+                <div class="category-group">
+                    <div class="category-label">🍗 Protein</div>
+                    <div class="item">
+                        <div class="checkbox"></div>
+                        <div class="item-info">
+                            <div class="item-name">Chicken Breast</div>
+                            <div class="item-quantity">2 lbs</div>
+                        </div>
+                        <div class="item-action">⋯</div>
+                    </div>
+                    <div class="item">
+                        <div class="checkbox"></div>
+                        <div class="item-info">
+                            <div class="item-name">Salmon Fillets</div>
+                            <div class="item-quantity">1 lb</div>
+                        </div>
+                        <div class="item-action">⋯</div>
+                    </div>
+                </div>
+
+                <div class="category-group">
+                    <div class="category-label">🥛 Dairy</div>
+                    <div class="item">
+                        <div class="checkbox"></div>
+                        <div class="item-info">
+                            <div class="item-name">Greek Yogurt</div>
+                            <div class="item-quantity">32 oz</div>
+                        </div>
+                        <div class="item-action">⋯</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="fab">🛒</div>
+
+        <div class="tab-bar">
+            <div class="tab">
+                <div>💬</div>
+                <div class="tab-label">Chat</div>
+            </div>
+            <div class="tab">
+                <div>📖</div>
+                <div class="tab-label">Recipes</div>
+            </div>
+            <div class="tab">
+                <div>📅</div>
+                <div class="tab-label">Meal Plan</div>
+            </div>
+            <div class="tab active">
+                <div>🛒</div>
+                <div class="tab-label">Shopping</div>
+            </div>
+            <div class="tab">
+                <div>📦</div>
+                <div class="tab-label">Inventory</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

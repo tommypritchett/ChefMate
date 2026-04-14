@@ -8,6 +8,7 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useChatStore } from '../../src/store/chatStore';
 import MessageBubble from '../../src/components/chat/MessageBubble';
 import ChatInput from '../../src/components/chat/ChatInput';
@@ -145,53 +146,82 @@ export default function ChatScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
-      {/* Header actions */}
-      <View className="flex-row justify-between px-4 py-2 bg-gray-50">
-        <TouchableOpacity
-          onPress={() => setShowThreads(true)}
-          className="flex-row items-center"
-        >
-          <Ionicons name="menu" size={22} color="#6b7280" />
-          <Text className="ml-1 text-sm text-gray-500">History</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={async () => {
-            await createThread();
-          }}
-          className="flex-row items-center"
-        >
-          <Ionicons name="add" size={22} color="#10b981" />
-          <Text className="ml-1 text-sm text-primary-600">New Chat</Text>
-        </TouchableOpacity>
+      {/* Header */}
+      <View className="bg-primary-500 pt-3 pb-5 px-5">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-white text-3xl font-bold tracking-tight">Kitcho AI</Text>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              testID="thread-list-button"
+              onPress={() => setShowThreads(true)}
+              className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+            >
+              <Ionicons name="list" size={20} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="new-thread-button"
+              onPress={async () => {
+                await createThread();
+              }}
+              className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+            >
+              <Ionicons name="add" size={20} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="profile-icon"
+              onPress={() => router.push('/(tabs)/profile')}
+              className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+            >
+              <Ionicons name="person-circle-outline" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       {showWelcome ? (
         /* Welcome screen */
-        <View className="flex-1 items-center justify-center px-6">
-          <View className="bg-white rounded-2xl p-8 items-center shadow-sm w-full max-w-sm">
-            <View className="bg-primary-100 rounded-full p-4 mb-4">
-              <Ionicons name="chatbubble-ellipses" size={48} color="#10b981" />
+        <View className="flex-1 px-5 py-6">
+          {/* Welcome Card */}
+          <View className="bg-white rounded-3xl p-8 items-center shadow-md mb-6">
+            <View className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full items-center justify-center mb-5">
+              <Text className="text-5xl">🍳</Text>
             </View>
-            <Text className="text-xl font-bold text-gray-800 mb-2">
-              ChefMate AI
+            <Text className="text-2xl font-bold text-gray-900 mb-2">
+              What's cooking?
             </Text>
-            <Text className="text-gray-500 text-center mb-6">
-              Your personal cooking assistant. Ask me anything about recipes, meal
-              planning, or nutrition!
+            <Text className="text-gray-500 text-center leading-6">
+              I'm your AI cooking companion. Ask me anything about recipes, meal planning, or nutrition!
             </Text>
-            <View className="w-full gap-2">
-              {quickPrompts.map((prompt) => (
-                <TouchableOpacity
-                  key={prompt}
-                  className="bg-primary-50 rounded-lg p-3"
-                  onPress={() => handleQuickPrompt(prompt)}
-                >
-                  <Text className="text-primary-700 text-center text-sm">
-                    "{prompt}"
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          </View>
+
+          {/* Quick Prompts */}
+          <Text className="text-gray-700 font-semibold mb-3 px-1 text-base">Quick Start</Text>
+          <View className="gap-3">
+            {[
+              { icon: '🍽️', text: 'What can I cook tonight?', badge: null },
+              { icon: '🥗', text: quickPrompts.find(p => p.includes('protein') || p.includes('calorie')) || 'High protein meal ideas', badge: quickPrompts.some(p => p.includes('protein') || p.includes('calorie')) ? 'GOAL' : null },
+              { icon: '📦', text: "What's in my inventory?", badge: null },
+              { icon: '🛒', text: 'Budget meals under $30', badge: null },
+              { icon: '⏱️', text: 'Quick 30-minute dinners', badge: null },
+            ].map((item, idx) => (
+              <TouchableOpacity
+                key={idx}
+                className="bg-white border-2 border-gray-200 rounded-2xl p-4 flex-row items-center shadow-sm active:bg-primary-50 active:border-primary-500"
+                onPress={() => handleQuickPrompt(item.text)}
+              >
+                <View className="bg-primary-50 w-10 h-10 rounded-xl items-center justify-center mr-3">
+                  <Text className="text-xl">{item.icon}</Text>
+                </View>
+                <Text className="text-gray-800 font-medium flex-1">
+                  {item.text}
+                </Text>
+                {item.badge ? (
+                  <View className="bg-yellow-100 px-3 py-1 rounded-xl">
+                    <Text className="text-yellow-800 text-xs font-bold">{item.badge}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       ) : (

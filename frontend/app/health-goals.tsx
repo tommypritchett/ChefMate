@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { healthGoalsApi, nutritionApi } from '../src/services/api';
 import { LineChart } from 'react-native-chart-kit';
+import { getTodayLocal, formatLocalDate } from '../src/utils/dateUtils';
 
 // ─── Goal Definitions ─────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ function getWeekDates(dateStr: string): string[] {
   for (let i = 0; i < 7; i++) {
     const dd = new Date(start);
     dd.setDate(dd.getDate() + i);
-    dates.push(dd.toISOString().split('T')[0]);
+    dates.push(formatLocalDate(dd));
   }
   return dates;
 }
@@ -151,7 +152,7 @@ export default function HealthGoalsScreen() {
   });
   const [calendarData, setCalendarData] = useState<Record<string, any>>({});
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayLocal();
   const isToday = selectedDate === todayStr;
 
   const formatDateLabel = (dateStr: string) => {
@@ -165,7 +166,7 @@ export default function HealthGoalsScreen() {
     const [y, m, d] = selectedDate.split('-').map(Number);
     const dt = new Date(y, m - 1, d);
     dt.setDate(dt.getDate() + days);
-    const iso = dt.toISOString().split('T')[0];
+    const iso = formatLocalDate(dt);
     if (iso > todayStr) return;
     setSelectedDate(iso);
   };
@@ -350,7 +351,7 @@ export default function HealthGoalsScreen() {
             targetValue: parseFloat(targetValue),
             unit: 'lbs',
             startingWeight: parseFloat(startingWeightInput),
-            startWeightDate: new Date().toISOString().split('T')[0],
+            startWeightDate: getTodayLocal(),
             targetDate: targetDateInput.trim() || undefined,
           });
         } else {
@@ -502,9 +503,12 @@ export default function HealthGoalsScreen() {
       }
       setShowLogMealModal(false);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save meal:', err);
-      Alert.alert('Error', 'Failed to save meal.');
+      const errorMessage = err?.response?.data?.message
+        || err?.response?.data?.error
+        || 'Failed to save meal. Please try again.';
+      Alert.alert('Error', errorMessage);
     } finally {
       setSavingMeal(false);
     }
@@ -601,7 +605,7 @@ export default function HealthGoalsScreen() {
     const [y, m, d] = selectedDate.split('-').map(Number);
     const dt = new Date(y, m - 1, d);
     dt.setDate(dt.getDate() + dir * 7);
-    const iso = dt.toISOString().split('T')[0];
+    const iso = formatLocalDate(dt);
     if (iso > todayStr) return;
     setSelectedDate(iso);
   };

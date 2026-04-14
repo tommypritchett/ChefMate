@@ -151,46 +151,42 @@ export default function RecipesScreen() {
 
     return (
       <TouchableOpacity
-        className="bg-white rounded-xl shadow-sm mb-3 mx-4 overflow-hidden"
+        className="bg-white rounded-2xl shadow-md mb-4 mx-4 overflow-hidden"
         onPress={() => router.push(`/recipes/${item.id}`)}
         activeOpacity={0.7}
       >
         {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} className="w-full h-40" contentFit="cover" cachePolicy="memory-disk" />
+          <Image source={{ uri: item.imageUrl }} className="w-full h-48" contentFit="cover" cachePolicy="memory-disk" />
         ) : (
-          <View className="w-full h-40 bg-gray-200 items-center justify-center">
-            <Ionicons name="restaurant-outline" size={40} color="#d1d5db" />
+          <View className="w-full h-48 bg-gradient-to-br from-yellow-200 to-orange-300 items-center justify-center">
+            <Text className="text-6xl">🍽️</Text>
           </View>
         )}
-        <View className="p-3">
-          <Text className="text-base font-semibold text-gray-800" numberOfLines={1}>
+        <View className="p-4">
+          <Text className="text-lg font-bold text-gray-900" numberOfLines={2}>
             {item.title}
           </Text>
           {!!item.brand && (
-            <Text className="text-xs text-primary-600 mt-0.5">{item.brand}</Text>
+            <Text className="text-sm text-primary-600 mt-1 font-medium">{item.brand}</Text>
           )}
-          <Text className="text-sm text-gray-500 mt-1" numberOfLines={2}>
+          <Text className="text-sm text-gray-600 mt-2" numberOfLines={2}>
             {item.description || ''}
           </Text>
-          <View className="flex-row items-center mt-2 gap-3">
+          <View className="flex-row items-center mt-3 gap-4">
             <View className="flex-row items-center">
-              <Ionicons name="time-outline" size={14} color="#6b7280" />
-              <Text className="text-xs text-gray-500 ml-1">{totalTime} min</Text>
+              <Ionicons name="time-outline" size={16} color="#6b7280" />
+              <Text className="text-sm text-gray-600 ml-1.5 font-medium">{totalTime} min</Text>
             </View>
             {calories && (
               <View className="flex-row items-center">
-                <Ionicons name="flame-outline" size={14} color="#6b7280" />
-                <Text className="text-xs text-gray-500 ml-1">{calories} cal</Text>
+                <Ionicons name="flame-outline" size={16} color="#6b7280" />
+                <Text className="text-sm text-gray-600 ml-1.5 font-medium">{calories} cal</Text>
               </View>
             )}
-            <View className="flex-row items-center">
-              <Ionicons name="speedometer-outline" size={14} color="#6b7280" />
-              <Text className="text-xs text-gray-500 ml-1 capitalize">{item.difficulty}</Text>
-            </View>
             {(item.averageRating ?? 0) > 0 && (
               <View className="flex-row items-center">
-                <Ionicons name="star" size={14} color="#f59e0b" />
-                <Text className="text-xs text-gray-500 ml-1">{(item.averageRating ?? 0).toFixed(1)}</Text>
+                <Ionicons name="star" size={16} color="#f59e0b" />
+                <Text className="text-sm text-gray-600 ml-1.5 font-medium">{(item.averageRating ?? 0).toFixed(1)}</Text>
               </View>
             )}
           </View>
@@ -304,12 +300,26 @@ export default function RecipesScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      {/* Header */}
+      <View className="bg-primary-500 pt-3 pb-5 px-5">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-white text-3xl font-bold tracking-tight">Recipes</Text>
+          <TouchableOpacity
+            testID="profile-icon"
+            onPress={() => router.push('/(tabs)/profile')}
+            className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+          >
+            <Ionicons name="person-circle-outline" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Search bar */}
-      <View className="px-4 py-3 bg-white border-b border-gray-200">
-        <View className="flex-row items-center bg-gray-100 rounded-xl px-3">
-          <Ionicons name="search" size={18} color="#9ca3af" />
+      <View className="px-5 py-4 bg-white border-b border-gray-200">
+        <View className="flex-row items-center bg-gray-100 rounded-2xl px-4 border-2 border-gray-200">
+          <Ionicons name="search" size={20} color="#9ca3af" />
           <TextInput
-            className="flex-1 py-2.5 px-2 text-sm text-gray-800"
+            className="flex-1 py-3 px-3 text-base text-gray-800"
             placeholder="Search recipes..."
             placeholderTextColor="#9ca3af"
             value={search}
@@ -319,7 +329,7 @@ export default function RecipesScreen() {
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => { setSearch(''); fetchRecipes(1); }}>
-              <Ionicons name="close-circle" size={18} color="#9ca3af" />
+              <Ionicons name="close-circle" size={20} color="#9ca3af" />
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -328,7 +338,7 @@ export default function RecipesScreen() {
           >
             <Ionicons
               name="options-outline"
-              size={20}
+              size={22}
               color={(selectedTags.length > 0 || proteinType || cuisineStyle || cookingMethod) ? '#10b981' : '#9ca3af'}
             />
           </TouchableOpacity>

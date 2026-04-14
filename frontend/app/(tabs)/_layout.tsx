@@ -48,7 +48,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubble-ellipses" size={size} color={color} />
           ),
-          headerTitle: 'ChefMate AI',
+          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -58,7 +58,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="restaurant" size={size} color={color} />
           ),
-          headerTitle: 'Recipes',
+          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -68,14 +68,14 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar" size={size} color={color} />
           ),
-          headerTitle: 'Meal Plan',
+          headerShown: false,
         }}
       />
       <Tabs.Screen
         name="meal-prep"
         options={{
           href: null, // Accessed via modal from Meal Plan tab
-          headerTitle: 'Meal Prep AI',
+          headerTitle: 'Smart Meal Prep',
         }}
       />
       <Tabs.Screen
@@ -85,7 +85,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cart" size={size} color={color} />
           ),
-          headerTitle: 'Shopping Lists',
+          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -95,14 +95,14 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cube" size={size} color={color} />
           ),
-          headerTitle: 'My Inventory',
+          headerShown: false,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           href: null, // Hidden from tab bar
-          headerTitle: 'Profile',
+          headerShown: false,
         }}
       />
     </Tabs>

@@ -121,7 +121,7 @@ export default function ShoppingScreen() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
-  const [addMode, setAddMode] = useState<'single' | 'bulk' | 'smart'>('single');
+  const [addMode, setAddMode] = useState<'single' | 'bulk' | 'smart'>('smart');
   const [smartText, setSmartText] = useState('');
   const [smartResults, setSmartResults] = useState<any[]>([]);
   const [smartStoreName, setSmartStoreName] = useState('');
@@ -487,7 +487,7 @@ export default function ShoppingScreen() {
     setSmartText('');
     setSmartResults([]);
     setSmartSelected({});
-    setAddMode('single');
+    setAddMode('smart');
     try {
       let count = 0;
       for (const product of selected) {
@@ -1120,6 +1120,20 @@ export default function ShoppingScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      {/* Header */}
+      <View className="bg-primary-500 pt-3 pb-5 px-5">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-white text-3xl font-bold tracking-tight">Shopping Lists</Text>
+          <TouchableOpacity
+            testID="profile-icon"
+            onPress={() => router.push('/(tabs)/profile')}
+            className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+          >
+            <Ionicons name="person-circle-outline" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Filter tabs + generate */}
       <View className="bg-white border-b border-gray-200">
         <View className="flex-row items-center justify-between px-4 py-2">
@@ -1279,10 +1293,10 @@ export default function ShoppingScreen() {
               )}
               <TouchableOpacity
                 onPress={() => setShowAddItem(true)}
-                className="flex-row items-center bg-gray-100 px-3 py-1.5 rounded-lg"
+                className="flex-row items-center bg-primary-500 px-4 py-2 rounded-xl shadow-sm"
               >
-                <Ionicons name="add" size={16} color="#6b7280" />
-                <Text className="text-xs text-gray-600 ml-1">Add Item</Text>
+                <Ionicons name="add-circle" size={18} color="white" />
+                <Text className="text-sm text-white ml-1.5 font-semibold">Add Item</Text>
               </TouchableOpacity>
               {uncheckedItems.length > 0 && (
                 <TouchableOpacity
@@ -1297,61 +1311,50 @@ export default function ShoppingScreen() {
           </View>
 
           <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
-            {/* On Sale Deals */}
+            {/* Kroger Deals Near You */}
             {(deals.length > 0 || loadingDeals) && (
-              <View className="mt-2 mx-4">
-                <View className="flex-row items-center mb-2">
-                  <Ionicons name="flame" size={16} color="#ef4444" />
-                  <Text className="text-sm font-semibold text-gray-800 ml-1">
-                    On Sale{dealsStoreName ? ` at ${dealsStoreName}` : ''}
+              <View className="bg-white pt-5 pb-4 px-5 border-b-8 border-gray-100">
+                <View className="flex-row items-center justify-between mb-4">
+                  <Text className="text-lg font-bold text-gray-900">
+                    🏪 Kroger Deals Near You
                   </Text>
+                  <View className="bg-yellow-100 px-3 py-1.5 rounded-xl flex-row items-center gap-1.5">
+                    <View className="w-1.5 h-1.5 rounded-full bg-yellow-600" style={{ opacity: 1 }} />
+                    <Text className="text-yellow-800 text-xs font-bold">LIVE</Text>
+                  </View>
                 </View>
                 {loadingDeals ? (
                   <ActivityIndicator size="small" color="#10b981" />
                 ) : (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View className="flex-row gap-2">
+                    <View className="flex-row gap-3">
                       {deals.map((deal: any, idx: number) => (
                         <TouchableOpacity
                           key={idx}
-                          className="bg-white rounded-xl p-2.5 w-36"
+                          className="bg-gray-50 rounded-2xl overflow-hidden border-2 border-gray-200 w-36"
                           onPress={() => handleAddDealToList(deal, idx)}
                           activeOpacity={0.7}
                         >
                           {deal.imageUrl ? (
-                            <Image
-                              source={{ uri: deal.imageUrl }}
-                              style={{ width: '100%', height: 72, borderRadius: 8 }}
-                              contentFit="contain"
-                              cachePolicy="memory-disk"
-                            />
+                            <View className="w-full h-[100px] bg-gradient-to-br from-yellow-200 to-orange-300 items-center justify-center">
+                              <Image
+                                source={{ uri: deal.imageUrl }}
+                                style={{ width: '100%', height: '100%' }}
+                                contentFit="contain"
+                                cachePolicy="memory-disk"
+                              />
+                            </View>
                           ) : (
-                            <View className="w-full h-[72px] rounded-lg bg-gray-100 items-center justify-center">
-                              <Ionicons name="pricetag" size={24} color="#d1d5db" />
+                            <View className="w-full h-[100px] bg-gradient-to-br from-yellow-200 to-orange-300 items-center justify-center">
+                              <Text className="text-5xl">🛒</Text>
                             </View>
                           )}
-                          <Text className="text-xs font-medium text-gray-800 mt-1.5" numberOfLines={2}>
-                            {deal.name}
-                          </Text>
-                          <View className="flex-row items-center mt-1">
-                            {deal.regularPrice != null && (
-                              <Text className="text-[10px] text-gray-400 line-through mr-1">
-                                ${deal.regularPrice.toFixed(2)}
-                              </Text>
-                            )}
-                            <Text className="text-sm font-bold text-red-600">
-                              ${deal.price.toFixed(2)}
+                          <View className="p-3">
+                            <Text className="text-sm font-semibold text-gray-700 mb-1" numberOfLines={2}>
+                              {deal.name}
                             </Text>
-                          </View>
-                          {deal.saleSavings > 0 && (
-                            <View className="bg-red-50 self-start px-1.5 py-0.5 rounded mt-1">
-                              <Text className="text-[9px] text-red-600 font-medium">Save ${deal.saleSavings.toFixed(2)}</Text>
-                            </View>
-                          )}
-                          <View className="flex-row items-center mt-1">
-                            <Ionicons name={addedDealIdx === idx ? 'checkmark-circle' : 'add-circle-outline'} size={12} color={addedDealIdx === idx ? '#16a34a' : '#10b981'} />
-                            <Text className={`text-[10px] ml-0.5 ${addedDealIdx === idx ? 'text-green-600 font-medium' : 'text-primary-600'}`}>
-                              {addedDealIdx === idx ? 'Added!' : 'Add to list'}
+                            <Text className="text-lg font-bold text-red-500">
+                              ${deal.price.toFixed(2)}
                             </Text>
                           </View>
                         </TouchableOpacity>
@@ -1364,14 +1367,14 @@ export default function ShoppingScreen() {
 
             {/* Unchecked items by category */}
             {sortedCategories.map(cat => (
-              <View key={cat}>
-                <Text className="text-xs font-semibold text-gray-400 uppercase px-4 pt-3 pb-1">
-                  {cat}
+              <View key={cat} className="mb-6">
+                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 pt-3 pb-3">
+                  {cat === 'produce' ? '🥬 Produce' : cat === 'dairy' ? '🥛 Dairy' : cat === 'meat' ? '🍗 Protein' : cat === 'grains' ? '🌾 Grains' : cat === 'condiments' ? '🧂 Condiments' : cat === 'beverages' ? '🥤 Beverages' : '📦 Other'}
                 </Text>
                 {grouped[cat].map((item: any) => (
                   <View
                     key={item.id}
-                    className="flex-row items-center px-4 py-2.5 bg-white border-b border-gray-50"
+                    className="flex-row items-center px-4 py-4 bg-white rounded-2xl mx-4 mb-2 shadow-sm"
                   >
                     {/* Checkbox — separate touch target */}
                     <TouchableOpacity
@@ -1379,7 +1382,7 @@ export default function ShoppingScreen() {
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       className="mr-3"
                     >
-                      <View className="w-5 h-5 rounded border-2 border-gray-300 items-center justify-center" />
+                      <View className="w-6 h-6 rounded-lg border-2 border-gray-300 items-center justify-center" />
                     </TouchableOpacity>
                     {/* Item content — opens action sheet */}
                     <TouchableOpacity
@@ -1387,20 +1390,20 @@ export default function ShoppingScreen() {
                       onPress={() => showItemActions(item)}
                     >
                       <View className="flex-1">
-                        <Text className="text-sm text-gray-800">{item.name}</Text>
+                        <Text className="text-base font-semibold text-gray-900">{item.name}</Text>
                         {(item.quantity || item.unit) && (
-                          <Text className="text-xs text-gray-400">
+                          <Text className="text-sm text-gray-500 mt-0.5">
                             {item.quantity} {item.unit}
                           </Text>
                         )}
                         {item.notes && (
-                          <Text className="text-[10px] text-gray-400 italic mt-0.5" numberOfLines={1}>
+                          <Text className="text-xs text-gray-400 italic mt-0.5" numberOfLines={1}>
                             {item.notes}
                           </Text>
                         )}
                       </View>
                       {item.estimatedPrice && (
-                        <Text className="text-xs text-gray-400 mr-2">${item.estimatedPrice.toFixed(2)}</Text>
+                        <Text className="text-sm text-gray-500 mr-2">${item.estimatedPrice.toFixed(2)}</Text>
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -1408,7 +1411,7 @@ export default function ShoppingScreen() {
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       className="px-1"
                     >
-                      <Ionicons name="ellipsis-vertical" size={16} color="#9ca3af" />
+                      <Ionicons name="ellipsis-vertical" size={20} color="#9ca3af" />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -1417,36 +1420,36 @@ export default function ShoppingScreen() {
 
             {/* Checked items */}
             {checkedItems.length > 0 && (
-              <View>
-                <Text className="text-xs font-semibold text-gray-400 uppercase px-4 pt-4 pb-1">
-                  Checked ({checkedItems.length})
+              <View className="mb-6">
+                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 pt-3 pb-3">
+                  ✓ Checked ({checkedItems.length})
                 </Text>
                 {checkedItems.map((item: any) => (
                   <View
                     key={item.id}
-                    className="flex-row items-center px-4 py-2 bg-white border-b border-gray-50 opacity-60"
+                    className="flex-row items-center px-4 py-4 bg-white rounded-2xl mx-4 mb-2 shadow-sm opacity-60"
                   >
                     <TouchableOpacity
                       onPress={() => handleToggleItem(item.id, item.isChecked)}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       className="mr-3"
                     >
-                      <View className="w-5 h-5 rounded bg-primary-500 items-center justify-center">
-                        <Ionicons name="checkmark" size={14} color="white" />
+                      <View className="w-6 h-6 rounded-lg bg-primary-500 items-center justify-center">
+                        <Ionicons name="checkmark" size={16} color="white" />
                       </View>
                     </TouchableOpacity>
                     <TouchableOpacity
                       className="flex-1"
                       onPress={() => showItemActions(item)}
                     >
-                      <Text className="text-sm text-gray-500 line-through">{item.name}</Text>
+                      <Text className="text-base text-gray-500 line-through">{item.name}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => showItemActions(item)}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       className="px-1"
                     >
-                      <Ionicons name="ellipsis-vertical" size={16} color="#d1d5db" />
+                      <Ionicons name="ellipsis-vertical" size={20} color="#d1d5db" />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -2029,55 +2032,60 @@ export default function ShoppingScreen() {
       </Modal>
 
       {/* Add Item Modal */}
-      <Modal visible={showAddItem} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setShowAddItem(false); setSuggestions([]); setBulkMode(false); setAddMode('single'); setSmartResults([]); stopListening(); }}>
+      <Modal visible={showAddItem} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setShowAddItem(false); setSuggestions([]); setBulkMode(false); setAddMode('smart'); setSmartResults([]); stopListening(); }}>
         <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => { setShowAddItem(false); setSuggestions([]); setBulkMode(false); setAddMode('single'); setSmartResults([]); stopListening(); }}>
-              <Text className="text-gray-500">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">
-              {addMode === 'smart' ? 'Smart Add' : addMode === 'bulk' ? 'Add Items' : 'Add Item'}
-            </Text>
-            {addMode === 'smart' ? (
-              <TouchableOpacity
-                onPress={handleSmartAdd}
-                disabled={Object.keys(smartSelected).length === 0}
-              >
-                <Text className={`font-medium ${Object.keys(smartSelected).length > 0 ? 'text-primary-500' : 'text-gray-300'}`}>
-                  Add {Object.keys(smartSelected).length > 0 ? `(${Object.keys(smartSelected).length})` : ''}
-                </Text>
+          {/* Header */}
+          <View className="bg-primary-500 pt-3 pb-5 px-5">
+            <View className="flex-row justify-between items-center">
+              <TouchableOpacity onPress={() => { setShowAddItem(false); setSuggestions([]); setBulkMode(false); setAddMode('smart'); setSmartResults([]); stopListening(); }}>
+                <Ionicons name="close" size={28} color="white" />
               </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                onPress={addMode === 'bulk' ? handleBulkAdd : handleAddItem}
-                disabled={addMode === 'bulk' ? !bulkText.trim() : !newItemName.trim()}
-              >
-                <Text className={`font-medium ${(addMode === 'bulk' ? bulkText.trim() : newItemName.trim()) ? 'text-primary-500' : 'text-gray-300'}`}>
-                  Add
-                </Text>
-              </TouchableOpacity>
-            )}
+              <Text className="text-white text-xl font-bold">
+                {addMode === 'smart' ? 'Smart Add' : addMode === 'bulk' ? 'Add Multiple' : 'Add Item'}
+              </Text>
+              {addMode === 'smart' ? (
+                <TouchableOpacity
+                  onPress={handleSmartAdd}
+                  disabled={Object.keys(smartSelected).length === 0}
+                  className={`px-4 py-2 rounded-xl ${Object.keys(smartSelected).length > 0 ? 'bg-white' : 'bg-white/20'}`}
+                >
+                  <Text className={`font-bold text-sm ${Object.keys(smartSelected).length > 0 ? 'text-primary-600' : 'text-white/50'}`}>
+                    Add {Object.keys(smartSelected).length > 0 ? `(${Object.keys(smartSelected).length})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={addMode === 'bulk' ? handleBulkAdd : handleAddItem}
+                  disabled={addMode === 'bulk' ? !bulkText.trim() : !newItemName.trim()}
+                  className={`px-4 py-2 rounded-xl ${(addMode === 'bulk' ? bulkText.trim() : newItemName.trim()) ? 'bg-white' : 'bg-white/20'}`}
+                >
+                  <Text className={`font-bold text-sm ${(addMode === 'bulk' ? bulkText.trim() : newItemName.trim()) ? 'text-primary-600' : 'text-white/50'}`}>
+                    Add
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {/* Single / Bulk / Smart toggle */}
-          <View className="flex-row mx-4 mt-3 bg-gray-100 rounded-lg overflow-hidden">
+          <View className="flex-row mx-5 mt-4 bg-gray-100 rounded-xl overflow-hidden p-1">
             <TouchableOpacity
-              onPress={() => { setAddMode('single'); setBulkMode(false); }}
-              className={`flex-1 py-2 items-center ${addMode === 'single' ? 'bg-primary-500' : ''}`}
+              onPress={() => { setAddMode('smart'); setBulkMode(false); }}
+              className={`flex-1 py-2.5 rounded-lg items-center ${addMode === 'single' ? 'bg-primary-500 shadow-sm' : ''}`}
             >
-              <Text className={`text-sm font-medium ${addMode === 'single' ? 'text-white' : 'text-gray-500'}`}>Single</Text>
+              <Text className={`text-sm font-bold ${addMode === 'single' ? 'text-white' : 'text-gray-600'}`}>Single</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => { setAddMode('bulk'); setBulkMode(true); }}
-              className={`flex-1 py-2 items-center ${addMode === 'bulk' ? 'bg-primary-500' : ''}`}
+              className={`flex-1 py-2.5 rounded-lg items-center ${addMode === 'bulk' ? 'bg-primary-500 shadow-sm' : ''}`}
             >
-              <Text className={`text-sm font-medium ${addMode === 'bulk' ? 'text-white' : 'text-gray-500'}`}>Bulk</Text>
+              <Text className={`text-sm font-bold ${addMode === 'bulk' ? 'text-white' : 'text-gray-600'}`}>Bulk</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => { setAddMode('smart'); setBulkMode(false); }}
-              className={`flex-1 py-2 items-center ${addMode === 'smart' ? 'bg-primary-500' : ''}`}
+              className={`flex-1 py-2.5 rounded-lg items-center ${addMode === 'smart' ? 'bg-primary-500 shadow-sm' : ''}`}
             >
-              <Text className={`text-sm font-medium ${addMode === 'smart' ? 'text-white' : 'text-gray-500'}`}>Smart</Text>
+              <Text className={`text-sm font-bold ${addMode === 'smart' ? 'text-white' : 'text-gray-600'}`}>Smart</Text>
             </TouchableOpacity>
           </View>
 
@@ -2220,11 +2228,11 @@ export default function ShoppingScreen() {
               <View className="h-8" />
             </ScrollView>
           ) : (
-            <View className="px-4 pt-4 gap-4">
+            <View className="px-5 pt-4 gap-4">
               <View>
-                <Text className="text-sm font-medium text-gray-700 mb-1">Item Name *</Text>
+                <Text className="text-base font-semibold text-gray-900 mb-2">Item Name *</Text>
                 <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                  className="bg-white border-2 border-gray-200 rounded-2xl px-4 py-4 text-base text-gray-900"
                   placeholder="Start typing to search..."
                   placeholderTextColor="#9ca3af"
                   value={newItemName}
@@ -2284,9 +2292,9 @@ export default function ShoppingScreen() {
               </View>
               <View className="flex-row gap-3">
                 <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-700 mb-1">Quantity</Text>
+                  <Text className="text-base font-semibold text-gray-900 mb-2">Quantity</Text>
                   <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                    className="bg-white border-2 border-gray-200 rounded-2xl px-4 py-4 text-base text-gray-900"
                     placeholder="e.g. 2"
                     placeholderTextColor="#9ca3af"
                     value={newItemQty}
@@ -2302,9 +2310,9 @@ export default function ShoppingScreen() {
                   ) : null}
                 </View>
                 <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>
+                  <Text className="text-base font-semibold text-gray-900 mb-2">Unit</Text>
                   <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
+                    className="bg-white border-2 border-gray-200 rounded-2xl px-4 py-4 text-base text-gray-900"
                     placeholder="e.g. gallons"
                     placeholderTextColor="#9ca3af"
                     value={newItemUnit}

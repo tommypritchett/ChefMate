@@ -15,7 +15,9 @@ const getBaseUrl = () => {
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:3001/api';
   }
-  return 'http://localhost:3001/api';
+  // For physical iPhone - use your Mac's local IP
+  // Change this if you're on a different network
+  return 'http://10.0.0.42:3001/api';
 };
 
 // Token storage - SecureStore on native, localStorage on web

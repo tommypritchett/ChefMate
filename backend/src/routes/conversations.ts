@@ -133,7 +133,7 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.post('/:id/messages', chatLimiter, requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const { message } = req.body;
+    const { message, context } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: 'Message is required' });
@@ -159,8 +159,8 @@ router.post('/:id/messages', chatLimiter, requireAuth, async (req: Authenticated
       }
     });
 
-    // Orchestrate AI response with function calling
-    const result = await chatOrchestrate(message.trim(), req.user!.userId, id, thread.contextType || 'chat');
+    // Orchestrate AI response with function calling (pass client's local date)
+    const result = await chatOrchestrate(message.trim(), req.user!.userId, id, thread.contextType || 'chat', context?.clientDate);
 
     // Save AI response with metadata
     const assistantMessage = await prisma.chatMessage.create({
@@ -207,7 +207,7 @@ router.post('/:id/messages', chatLimiter, requireAuth, async (req: Authenticated
 router.post('/:id/messages/stream', chatLimiter, requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const { message } = req.body;
+    const { message, context } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: 'Message is required' });
@@ -239,12 +239,13 @@ router.post('/:id/messages/stream', chatLimiter, requireAuth, async (req: Authen
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    // Stream AI response
+    // Stream AI response (pass client's local date)
     const result = await chatOrchestrateStream(
       message.trim(),
       req.user!.userId,
       id,
       thread.contextType || 'chat',
+      context?.clientDate,
       // onToken
       (token) => {
         res.write(`data: ${JSON.stringify({ type: 'token', content: token })}\n\n`);

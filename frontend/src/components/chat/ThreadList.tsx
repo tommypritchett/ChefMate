@@ -18,7 +18,7 @@ export default function ThreadList({ onClose, store = 'chat' }: Props) {
   const deleteThread = s.deleteThread;
 
   const isMealPrep = store === 'meal-prep';
-  const accentColor = isMealPrep ? '#f97316' : '#10b981';
+  const accentColor = '#10b981'; // Emerald for both chat and meal prep
   const newLabel = isMealPrep ? 'New Prep' : 'New Conversation';
 
   const handleNewChat = async () => {
@@ -44,11 +44,10 @@ export default function ThreadList({ onClose, store = 'chat' }: Props) {
 
       <TouchableOpacity
         onPress={handleNewChat}
-        className="flex-row items-center mx-4 my-3 p-3 rounded-xl"
-        style={{ backgroundColor: isMealPrep ? '#fff7ed' : '#ecfdf5' }}
+        className="flex-row items-center mx-4 my-3 p-3 rounded-xl bg-primary-50"
       >
         <Ionicons name="add-circle" size={22} color={accentColor} />
-        <Text className="ml-2 font-medium" style={{ color: isMealPrep ? '#c2410c' : '#047857' }}>
+        <Text className="ml-2 font-medium text-primary-700">
           {newLabel}
         </Text>
       </TouchableOpacity>
@@ -68,10 +67,9 @@ export default function ThreadList({ onClose, store = 'chat' }: Props) {
               onPress={() => handleSelect(thread.id)}
               className={`flex-row items-center p-3 rounded-xl mb-1 ${
                 activeThreadId === thread.id
-                  ? ''
+                  ? 'bg-primary-50'
                   : 'bg-transparent'
               }`}
-              style={activeThreadId === thread.id ? { backgroundColor: isMealPrep ? '#fff7ed' : '#ecfdf5' } : undefined}
             >
               <Ionicons
                 name={isMealPrep ? 'flame-outline' : 'chatbubble-outline'}

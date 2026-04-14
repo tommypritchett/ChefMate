@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kitcho AI - Recipe Detail</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f3f4f6;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .phone-frame {
+            width: 390px;
+            height: 844px;
+            background: #ffffff;
+            border-radius: 40px;
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .status-bar {
+            height: 44px;
+            background: transparent;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            padding-top: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .nav-header {
+            position: absolute;
+            top: 44px;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+        }
+
+        .nav-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            cursor: pointer;
+        }
+
+        .hero-image {
+            width: 100%;
+            height: 280px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            position: relative;
+        }
+
+        .hero-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+            padding: 20px;
+            color: white;
+        }
+
+        .recipe-title {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .recipe-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 14px;
+            opacity: 0.95;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            background: #f9fafb;
+        }
+
+        .nutrition-cards {
+            display: flex;
+            gap: 8px;
+            padding: 16px;
+            background: white;
+            border-bottom: 8px solid #f3f4f6;
+        }
+
+        .nutrition-card {
+            flex: 1;
+            background: #f9fafb;
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .nutrition-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #10b981;
+            margin-bottom: 4px;
+        }
+
+        .nutrition-label {
+            font-size: 11px;
+            color: #6b7280;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 8px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 16px;
+        }
+
+        .ingredient-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: #f9fafb;
+            border-radius: 12px;
+            margin-bottom: 8px;
+        }
+
+        .ingredient-checkbox {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #d1d5db;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+
+        .ingredient-checkbox.checked {
+            background: #10b981;
+            border-color: #10b981;
+            position: relative;
+        }
+
+        .ingredient-checkbox.checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .ingredient-text {
+            flex: 1;
+            font-size: 15px;
+            color: #374151;
+        }
+
+        .ingredient-amount {
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .inventory-badge {
+            padding: 4px 8px;
+            background: #d1fae5;
+            color: #065f46;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .inventory-badge.missing {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .step-item {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .step-number {
+            width: 32px;
+            height: 32px;
+            background: #10b981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .step-text {
+            flex: 1;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #374151;
+            padding-top: 6px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            padding: 16px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .btn-secondary {
+            flex: 1;
+            height: 48px;
+            border: 2px solid #10b981;
+            background: white;
+            color: #10b981;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            flex: 2;
+            height: 48px;
+            background: #10b981;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .tab-bar {
+            height: 80px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding-bottom: 20px;
+        }
+
+        .tab {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: #9ca3af;
+            font-size: 24px;
+        }
+
+        .tab.active {
+            color: #10b981;
+        }
+
+        .tab-label {
+            font-size: 11px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-frame">
+        <div class="status-bar">
+            <div>9:41</div>
+            <div style="display: flex; gap: 5px;">
+                <span>📶</span>
+                <span>📡</span>
+                <span>🔋</span>
+            </div>
+        </div>
+
+        <div class="nav-header">
+            <div class="nav-btn">←</div>
+            <div class="nav-btn">⋯</div>
+        </div>
+
+        <div class="hero-image">
+            🍝
+            <div class="hero-overlay">
+                <div class="recipe-title">Creamy Garlic Pasta</div>
+                <div class="recipe-meta">
+                    <div class="meta-item">⏱️ 25 min</div>
+                    <div class="meta-item">👥 4 servings</div>
+                    <div class="meta-item">⭐ 4.8</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="nutrition-cards">
+                <div class="nutrition-card">
+                    <div class="nutrition-value">420</div>
+                    <div class="nutrition-label">Calories</div>
+                </div>
+                <div class="nutrition-card">
+                    <div class="nutrition-value">18g</div>
+                    <div class="nutrition-label">Protein</div>
+                </div>
+                <div class="nutrition-card">
+                    <div class="nutrition-value">52g</div>
+                    <div class="nutrition-label">Carbs</div>
+                </div>
+                <div class="nutrition-card">
+                    <div class="nutrition-value">14g</div>
+                    <div class="nutrition-label">Fat</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">📝 Ingredients</h2>
+                <div class="ingredient-item">
+                    <div class="ingredient-checkbox checked"></div>
+                    <div class="ingredient-text">
+                        <span class="ingredient-amount">12 oz</span> Pasta
+                    </div>
+                    <div class="inventory-badge">In Stock</div>
+                </div>
+                <div class="ingredient-item">
+                    <div class="ingredient-checkbox checked"></div>
+                    <div class="ingredient-text">
+                        <span class="ingredient-amount">4 cloves</span> Garlic
+                    </div>
+                    <div class="inventory-badge">In Stock</div>
+                </div>
+                <div class="ingredient-item">
+                    <div class="ingredient-checkbox"></div>
+                    <div class="ingredient-text">
+                        <span class="ingredient-amount">1 cup</span> Heavy Cream
+                    </div>
+                    <div class="inventory-badge missing">Need to Buy</div>
+                </div>
+                <div class="ingredient-item">
+                    <div class="ingredient-checkbox checked"></div>
+                    <div class="ingredient-text">
+                        <span class="ingredient-amount">½ cup</span> Parmesan
+                    </div>
+                    <div class="inventory-badge">In Stock</div>
+                </div>
+                <div class="ingredient-item">
+                    <div class="ingredient-checkbox"></div>
+                    <div class="ingredient-text">
+                        <span class="ingredient-amount">2 tbsp</span> Olive Oil
+                    </div>
+                    <div class="inventory-badge missing">Need to Buy</div>
+                </div>
+                <div class="ingredient-item">
+                    <div class="ingredient-checkbox checked"></div>
+                    <div class="ingredient-text">
+                        <span class="ingredient-amount">to taste</span> Salt & Pepper
+                    </div>
+                    <div class="inventory-badge">In Stock</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">👨‍🍳 Instructions</h2>
+                <div class="step-item">
+                    <div class="step-number">1</div>
+                    <div class="step-text">Bring a large pot of salted water to boil. Cook pasta according to package directions until al dente. Reserve 1 cup pasta water before draining.</div>
+                </div>
+                <div class="step-item">
+                    <div class="step-number">2</div>
+                    <div class="step-text">While pasta cooks, heat olive oil in a large skillet over medium heat. Add minced garlic and sauté for 1-2 minutes until fragrant.</div>
+                </div>
+                <div class="step-item">
+                    <div class="step-number">3</div>
+                    <div class="step-text">Pour in heavy cream and bring to a gentle simmer. Cook for 3-4 minutes, stirring occasionally, until slightly thickened.</div>
+                </div>
+                <div class="step-item">
+                    <div class="step-number">4</div>
+                    <div class="step-text">Add drained pasta to the skillet with cream sauce. Toss to coat, adding reserved pasta water if needed to reach desired consistency.</div>
+                </div>
+                <div class="step-item">
+                    <div class="step-number">5</div>
+                    <div class="step-text">Remove from heat and stir in grated Parmesan cheese. Season with salt and pepper to taste. Serve immediately with extra Parmesan on top.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <button class="btn-secondary">❤️</button>
+            <button class="btn-primary">Add to Meal Plan</button>
+        </div>
+
+        <div class="tab-bar">
+            <div class="tab">
+                <div>💬</div>
+                <div class="tab-label">Chat</div>
+            </div>
+            <div class="tab active">
+                <div>📖</div>
+                <div class="tab-label">Recipes</div>
+            </div>
+            <div class="tab">
+                <div>📅</div>
+                <div class="tab-label">Meal Plan</div>
+            </div>
+            <div class="tab">
+                <div>🛒</div>
+                <div class="tab-label">Shopping</div>
+            </div>
+            <div class="tab">
+                <div>📦</div>
+                <div class="tab-label">Inventory</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

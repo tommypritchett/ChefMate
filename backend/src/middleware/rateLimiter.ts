@@ -12,30 +12,23 @@ export const authLimiter = rateLimit({
 });
 
 // Moderate rate limiter for expensive AI/recipe generation endpoints
+// Uses default IP-based rate limiting (IPv6-safe)
 export const aiLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // Limit each IP/user to 10 AI requests per hour
+  max: 10, // Limit each IP to 10 AI requests per hour
   message: 'Too many AI requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
-  // Use user ID for rate limiting if authenticated
-  keyGenerator: (req) => {
-    // @ts-ignore - req.user is added by auth middleware
-    return req.user?.userId || req.ip || 'unknown';
-  },
 });
 
 // Rate limiter for chat/conversation endpoints
+// Uses default IP-based rate limiting (IPv6-safe)
 export const chatLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 20, // 20 messages per minute
   message: 'Too many messages, please slow down',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // @ts-ignore
-    return req.user?.userId || req.ip || 'unknown';
-  },
 });
 
 // General API rate limiter (applied to all routes as fallback)
