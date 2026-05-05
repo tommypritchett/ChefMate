@@ -1,7 +1,11 @@
 import { create } from 'zustand';
+import { Platform } from 'react-native';
 import { router } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { User } from '../types';
 import { authApi, tokenStorage, refreshTokenStorage, setUnauthorizedHandler } from '../services/api';
+
+const USER_STORAGE_KEY = 'chefmate_user';
 
 interface AuthState {
   user: User | null;
@@ -129,7 +133,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setUser: (user: User) => {
-    localStorage.setItem('chefmate_user', JSON.stringify(user));
+    const json = JSON.stringify(user);
+    if (Platform.OS === 'web') {
+      localStorage.setItem(USER_STORAGE_KEY, json);
+    } else {
+      SecureStore.setItemAsync(USER_STORAGE_KEY, json).catch(() => {});
+    }
     set({ user });
   },
 }));

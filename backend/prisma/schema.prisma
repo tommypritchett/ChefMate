@@ -470,6 +470,76 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+model RecipeConcept {
+  id            String   @id @default(uuid())
+  name          String
+  slug          String   @unique
+  tagline       String?
+  description   String?
+  category      String?  // 'mexican', 'burgers', 'pizza', etc.
+  cuisineStyle  String?  // 'american', 'mexican', 'italian', 'asian', etc.
+  proteinType   String?  // 'chicken', 'beef', 'tofu', etc.
+  heroImageUrl  String?
+  season        String?  // 'spring', 'summer', 'fall', 'winter'
+  trendSource   String?  // 'openai-scan', 'manual', 'fast-food-remake'
+  status        String   @default("draft") // 'draft', 'approved', 'rejected', 'published'
+  publishedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  variants     RecipeVariant[]
+  adminActions AdminAction[]
+
+  @@index([status, publishedAt])
+  @@index([season])
+  @@map("recipe_concepts")
+}
+
+model RecipeVariant {
+  id               String   @id @default(uuid())
+  conceptId        String
+  variantType      String   // 'classic', 'high-protein', 'keto', 'vegan', 'dairy-free', 'budget', 'quick', 'air-fryer', 'crockpot', 'spicy'
+  title            String
+  description      String?
+  ingredients      String   // JSON string: [{name, amount, unit, notes}]
+  instructions     String   // JSON string: [{step_number, text, time_minutes}]
+  nutrition        String?  // JSON string: {calories, protein, carbs, fat}
+  prepTimeMinutes  Int?
+  cookTimeMinutes  Int?
+  totalTimeMinutes Int?
+  servings         Int      @default(1)
+  difficulty       String?  // 'easy', 'medium', 'hard'
+  dietaryTags      String?  // JSON string array
+  isDefault        Boolean  @default(false)
+  status           String   @default("draft") // 'draft', 'approved', 'rejected', 'published'
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  concept      RecipeConcept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  adminActions AdminAction[]
+
+  @@index([conceptId, variantType])
+  @@map("recipe_variants")
+}
+
+model AdminAction {
+  id        String   @id @default(uuid())
+  conceptId String
+  variantId String?
+  action    String   // 'approve', 'reject', 'edit', 'publish', 'unpublish'
+  notes     String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  concept RecipeConcept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  variant RecipeVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([conceptId])
+  @@map("admin_actions")
+}
+
 model AuditLog {
   id         String   @id @default(uuid())
   userId     String?  // null for system actions

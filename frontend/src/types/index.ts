@@ -266,3 +266,50 @@ export interface GenerateRecipeForm {
   servings?: number;
   dietaryRestrictions?: string[];
 }
+
+// Recipe Concept types
+export interface RecipeConceptSummary {
+  id: string;
+  name: string;
+  slug: string;
+  tagline: string | null;
+  category: string | null;
+  heroImageUrl: string | null;
+  variantCount: number;
+  defaultVariant: {
+    nutrition: { calories: number; protein: number; carbs: number; fat: number } | null;
+    totalTimeMinutes: number | null;
+    difficulty: string | null;
+  } | null;
+}
+
+export interface RecipeVariantDetail {
+  id: string;
+  variantType: string;
+  title: string;
+  description: string | null;
+  ingredients: Array<{ name: string; amount: string; unit: string; notes?: string }>;
+  instructions: Array<{ step_number: number; text: string; time_minutes?: number }>;
+  nutrition: { calories: number; protein: number; carbs: number; fat: number } | null;
+  prepTimeMinutes: number | null;
+  cookTimeMinutes: number | null;
+  totalTimeMinutes: number | null;
+  servings: number;
+  difficulty: string | null;
+  dietaryTags: string[];
+  isDefault: boolean;
+}
+
+export interface RecipeConceptDetail {
+  id: string;
+  name: string;
+  slug: string;
+  tagline: string | null;
+  description: string | null;
+  category: string | null;
+  cuisineStyle: string | null;
+  proteinType: string | null;
+  heroImageUrl: string | null;
+  season: string | null;
+  publishedAt: string | null;
+}

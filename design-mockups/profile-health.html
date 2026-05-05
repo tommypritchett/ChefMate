@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Kitcho AI — Profile, Health & Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ─── Reset & Base ──────────────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --orange:       #D4652E;
+      --orange-light: #FFF0E8;
+      --orange-mid:   #F07A3A;
+      --orange-dim:   #E8855A;
+      --cream:        #FFFBF5;
+      --cream-alt:    #F9F4EE;
+      --warm-dark:    #2D2520;
+      --warm-dark2:   #3D332D;
+      --brown:        #8B7355;
+      --brown-light:  #C4A882;
+      --amber:        #f59e0b;
+      --red:          #DC3545;
+      --divider:      #EDE5DA;
+      --shadow:       0 2px 12px rgba(45,37,32,0.10);
+      --shadow-md:    0 4px 20px rgba(45,37,32,0.14);
+      --font-head:    'Playfair Display', Georgia, serif;
+      --font-body:    'DM Sans', system-ui, sans-serif;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: #EAE0D5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px;
+      gap: 64px;
+    }
+
+    /* ─── Page Labels ───────────────────────────────────────────── */
+    .screen-label {
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--brown);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    /* ─── Phone Frame ───────────────────────────────────────────── */
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: var(--cream);
+      border-radius: 44px;
+      box-shadow:
+        0 0 0 1px rgba(45,37,32,0.08),
+        0 8px 40px rgba(45,37,32,0.22),
+        0 32px 80px rgba(45,37,32,0.14);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* ─── Status Bar ────────────────────────────────────────────── */
+    .status-bar {
+      height: 44px;
+      background: var(--warm-dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px 0 24px;
+      flex-shrink: 0;
+    }
+    .status-time {
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--cream);
+      letter-spacing: 0.01em;
+    }
+    .status-icons { display: flex; gap: 6px; align-items: center; }
+    .status-icons svg { color: var(--cream); }
+
+    /* ─── Nav Header ────────────────────────────────────────────── */
+    .nav-header {
+      background: var(--warm-dark);
+      padding: 4px 20px 18px;
+      flex-shrink: 0;
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .back-btn {
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,251,245,0.1);
+      border-radius: 10px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .back-btn svg { color: var(--cream); }
+    .nav-title {
+      font-family: var(--font-head);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--cream);
+      letter-spacing: -0.01em;
+    }
+    .nav-title-only {
+      font-family: var(--font-head);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--cream);
+      letter-spacing: -0.01em;
+      padding: 4px 0;
+    }
+
+    /* ─── Scrollable Content ────────────────────────────────────── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--cream);
+      scrollbar-width: none;
+    }
+    .content::-webkit-scrollbar { display: none; }
+
+    /* ─── Cards & Sections ──────────────────────────────────────── */
+    .section { padding: 16px 16px 0; }
+    .section:last-child { padding-bottom: 24px; }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    /* ─── SCREEN 1: PROFILE ─────────────────────────────────────── */
+    .profile-user-card {
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: var(--shadow-md);
+      margin: 20px 16px 0;
+      padding: 24px 20px 22px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .avatar {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      background: var(--orange-light);
+      border: 2.5px solid var(--orange);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .user-info { flex: 1; }
+    .user-name {
+      font-family: var(--font-head);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--warm-dark);
+      letter-spacing: -0.01em;
+      margin-bottom: 3px;
+    }
+    .user-email {
+      font-family: var(--font-body);
+      font-size: 13px;
+      color: var(--brown);
+      font-weight: 400;
+    }
+    .edit-badge {
+      background: var(--orange-light);
+      border: 1.5px solid var(--orange);
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--orange);
+      letter-spacing: 0.04em;
+    }
+
+    .info-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--divider);
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label {
+      font-family: var(--font-body);
+      font-size: 13px;
+      color: var(--brown);
+      font-weight: 400;
+    }
+    .info-value {
+      font-family: var(--font-body);
+      font-size: 13px;
+      color: var(--warm-dark);
+      font-weight: 500;
+    }
+    .tier-badge {
+      background: var(--orange-light);
+      border: 1px solid var(--orange);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--orange);
+      letter-spacing: 0.04em;
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--divider);
+      cursor: pointer;
+    }
+    .menu-item:last-child { border-bottom: none; }
+    .menu-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .menu-icon.amber { background: #FEF3C7; }
+    .menu-icon.brown { background: #F5EFE6; }
+    .menu-text {
+      flex: 1;
+      font-family: var(--font-body);
+      font-size: 15px;
+      color: var(--warm-dark);
+      font-weight: 500;
+    }
+    .menu-chevron { color: var(--brown-light); }
+
+    .signout-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      margin: 14px 16px 0;
+      padding: 15px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+    }
+    .signout-text {
+      font-family: var(--font-body);
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--red);
+    }
+
+    /* ─── SCREEN 2: MY NUTRITION ─────────────────────────────────── */
+    .calendar-strip {
+      display: flex;
+      gap: 6px;
+      padding: 16px 16px 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .calendar-strip::-webkit-scrollbar { display: none; }
+    .cal-day {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      padding: 10px 8px 8px;
+      border-radius: 14px;
+      min-width: 46px;
+      cursor: pointer;
+      background: transparent;
+      position: relative;
+    }
+    .cal-day.today { background: var(--orange-light); }
+    .cal-day.selected { background: var(--orange); }
+    .cal-dow {
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--brown);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .cal-day.selected .cal-dow { color: rgba(255,251,245,0.75); }
+    .cal-num {
+      font-family: var(--font-body);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--warm-dark);
+    }
+    .cal-day.selected .cal-num { color: var(--cream); }
+    .cal-day.today .cal-num { color: var(--orange); }
+    .cal-dots { display: flex; gap: 3px; margin-top: 2px; height: 5px; align-items: center; }
+    .cal-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--orange);
+    }
+    .cal-day.selected .cal-dot { background: rgba(255,251,245,0.7); }
+
+    /* Nutrition Summary Card */
+    .nutrition-card {
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: var(--shadow-md);
+      margin: 14px 16px 0;
+      padding: 20px;
+    }
+    .nutrition-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .nutrition-title {
+      font-family: var(--font-head);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--warm-dark);
+    }
+    .nutrition-date {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--brown);
+    }
+
+    /* Calories ring + macros */
+    .cal-macros-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .ring-wrap {
+      position: relative;
+      width: 90px;
+      height: 90px;
+      flex-shrink: 0;
+    }
+    .ring-wrap svg { transform: rotate(-90deg); }
+    .ring-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .ring-cal {
+      font-family: var(--font-body);
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--warm-dark);
+      line-height: 1;
+    }
+    .ring-label {
+      font-family: var(--font-body);
+      font-size: 9px;
+      font-weight: 500;
+      color: var(--brown);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .macros-list { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+    .macro-row { display: flex; flex-direction: column; gap: 4px; }
+    .macro-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .macro-name {
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--warm-dark);
+    }
+    .macro-vals {
+      font-family: var(--font-body);
+      font-size: 11px;
+      color: var(--brown);
+    }
+    .bar-track {
+      height: 6px;
+      background: var(--divider);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: var(--orange);
+      border-radius: 3px;
+    }
+
+    /* Meal Log Section */
+    .section-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 16px 10px;
+    }
+    .section-title {
+      font-family: var(--font-head);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--warm-dark);
+    }
+    .log-btn {
+      background: var(--orange-light);
+      border: 1.5px solid var(--orange);
+      border-radius: 10px;
+      padding: 6px 12px;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--orange);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .meal-card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      margin: 0 16px 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .meal-emoji {
+      font-size: 22px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .meal-info { flex: 1; }
+    .meal-label {
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--brown);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 2px;
+    }
+    .meal-name {
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--warm-dark);
+      margin-bottom: 4px;
+    }
+    .meal-macros {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--brown);
+      display: flex;
+      gap: 10px;
+    }
+    .meal-cals {
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--orange);
+      flex-shrink: 0;
+    }
+
+    /* Goals + Weight */
+    .goal-badges { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 16px 12px; }
+    .goal-badge {
+      background: var(--orange-light);
+      border: 1.5px solid var(--orange);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--orange);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .goal-card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      margin: 0 16px 10px;
+      padding: 14px 16px;
+    }
+    .goal-card-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .goal-card-name {
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--warm-dark);
+    }
+    .goal-card-vals {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--brown);
+    }
+
+    /* Weight Chart */
+    .weight-chart-card {
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: var(--shadow-md);
+      margin: 0 16px 0;
+      padding: 18px 16px 14px;
+    }
+    .chart-title {
+      font-family: var(--font-head);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--warm-dark);
+      margin-bottom: 14px;
+    }
+    .chart-area { position: relative; height: 80px; }
+    .chart-svg { width: 100%; height: 80px; }
+
+    .weight-entries { display: flex; flex-direction: column; gap: 0; margin-top: 12px; }
+    .weight-entry {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--divider);
+    }
+    .weight-entry:last-child { border-bottom: none; }
+    .weight-date {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--brown);
+    }
+    .weight-val {
+      font-family: var(--font-body);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--warm-dark);
+    }
+    .weight-delta {
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      color: #22c55e;
+    }
+    .weight-delta.neg { color: var(--orange); }
+
+    /* ─── SCREEN 3: PREFERENCES ─────────────────────────────────── */
+    .pref-section-label {
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--brown);
+      padding: 18px 16px 8px;
+    }
+
+    .pref-row {
+      background: #fff;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--divider);
+    }
+    .pref-row:first-of-type { border-radius: 16px 16px 0 0; }
+    .pref-row:last-of-type { border-radius: 0 0 16px 16px; border-bottom: none; }
+    .pref-row.solo { border-radius: 16px; border-bottom: none; }
+    .pref-text-wrap { flex: 1; }
+    .pref-title {
+      font-family: var(--font-body);
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--warm-dark);
+    }
+    .pref-sub {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--brown);
+      margin-top: 1px;
+    }
+
+    /* Toggle Switch */
+    .toggle {
+      position: relative;
+      width: 46px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+    .toggle-track {
+      width: 46px;
+      height: 26px;
+      border-radius: 13px;
+      transition: background 0.2s;
+    }
+    .toggle-track.on  { background: var(--orange); }
+    .toggle-track.off { background: #D9CFC7; }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+      transition: left 0.2s;
+    }
+    .toggle-track.on  + .toggle-thumb { left: 23px; }
+    .toggle-track.off + .toggle-thumb { left: 3px; }
+
+    /* Household size selector */
+    .household-row {
+      display: flex;
+      gap: 8px;
+      padding: 14px 16px 6px;
+    }
+    .hh-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-body);
+      font-size: 16px;
+      font-weight: 600;
+      background: #fff;
+      color: var(--brown);
+      box-shadow: var(--shadow);
+      border: 1.5px solid transparent;
+      cursor: pointer;
+    }
+    .hh-btn.selected {
+      background: var(--orange-light);
+      border-color: var(--orange);
+      color: var(--orange);
+    }
+
+    /* Reminder time chips */
+    .reminder-time {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--orange);
+      font-weight: 600;
+      background: var(--orange-light);
+      border-radius: 8px;
+      padding: 3px 8px;
+      margin-right: 10px;
+    }
+
+    /* Icon in pref row */
+    .pref-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--orange-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Save Button */
+    .save-btn {
+      background: var(--warm-dark);
+      border-radius: 16px;
+      margin: 16px 16px 0;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .save-btn-text {
+      font-family: var(--font-body);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--cream);
+      letter-spacing: 0.01em;
+    }
+
+    /* ─── Bottom Tab Bar ─────────────────────────────────────────── */
+    .tab-bar {
+      height: 84px;
+      background: var(--warm-dark);
+      display: flex;
+      align-items: flex-start;
+      padding-top: 12px;
+      flex-shrink: 0;
+      border-top: 1px solid rgba(255,251,245,0.08);
+    }
+    .tab-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .tab-icon { width: 24px; height: 24px; }
+    .tab-label {
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 500;
+      color: rgba(255,251,245,0.4);
+      letter-spacing: 0.02em;
+    }
+    .tab-item.active .tab-label { color: var(--orange); }
+    .tab-item.active svg { color: var(--orange); }
+
+    /* ─── Screen Dividers ────────────────────────────────────────── */
+    .screen-divider {
+      width: 100%;
+      max-width: 540px;
+      text-align: center;
+      position: relative;
+    }
+    .screen-divider::before, .screen-divider::after {
+      content: '';
+      display: block;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(45,37,32,0.2), transparent);
+      margin: 8px 0;
+    }
+    .divider-label {
+      font-family: var(--font-body);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(45,37,32,0.35);
+      margin: 4px 0;
+    }
+
+    /* Notification description rows */
+    .notif-row-desc {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--brown);
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 1 — PROFILE
+══════════════════════════════════════════════════════════════ -->
+<p class="screen-label">Screen 1 — Profile</p>
+
+<div class="phone">
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span class="status-time">9:41</span>
+    <div class="status-icons">
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+        <rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity="0.4"/>
+        <rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity="0.6"/>
+        <rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+        <rect x="13.5" y="0" width="2.5" height="12" rx="1" fill="currentColor"/>
+      </svg>
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+        <path d="M8 2.5C10.2 2.5 12.2 3.4 13.6 4.9L15 3.5C13.2 1.7 10.7 0.5 8 0.5C5.3 0.5 2.8 1.7 1 3.5L2.4 4.9C3.8 3.4 5.8 2.5 8 2.5Z" fill="currentColor"/>
+        <path d="M8 5.5C9.4 5.5 10.7 6.1 11.6 7L13 5.6C11.7 4.3 10 3.5 8 3.5C6 3.5 4.3 4.3 3 5.6L4.4 7C5.3 6.1 6.6 5.5 8 5.5Z" fill="currentColor"/>
+        <circle cx="8" cy="10" r="1.5" fill="currentColor"/>
+      </svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+        <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" stroke-opacity="0.35"/>
+        <rect x="2" y="2" width="16" height="8" rx="2" fill="currentColor"/>
+        <path d="M23 4v4a2 2 0 000-4z" fill="currentColor" opacity="0.4"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Nav Header (no back arrow for Profile) -->
+  <div class="nav-header">
+    <div class="nav-title-only">Profile</div>
+  </div>
+
+  <!-- Scrollable Content -->
+  <div class="content">
+    <!-- User Card -->
+    <div class="profile-user-card">
+      <div class="avatar">
+        <!-- Person icon -->
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="8" r="4" fill="#D4652E"/>
+          <path d="M4 20c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="#D4652E" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="user-info">
+        <div class="user-name">Tommy Pritchett</div>
+        <div class="user-email">tommy@example.com</div>
+      </div>
+      <div class="edit-badge">Edit</div>
+    </div>
+
+    <!-- Account Info -->
+    <div class="section" style="padding-top:14px;">
+      <div class="card">
+        <div class="info-row">
+          <span class="info-label">Subscription</span>
+          <span class="tier-badge">PRO</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Member since</span>
+          <span class="info-value">Jan 2025</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Recipes saved</span>
+          <span class="info-value">42</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Menu Items -->
+    <div class="section" style="padding-top:14px;">
+      <div class="card">
+        <div class="menu-item">
+          <div class="menu-icon amber">
+            <!-- Trophy -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M8 21h8M12 17v4M5 3H3v4a4 4 0 004 4h.5M19 3h2v4a4 4 0 01-4 4h-.5" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M8 3h8v6a4 4 0 01-8 0V3z" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <span class="menu-text">My Nutrition</span>
+          <svg class="menu-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="menu-item">
+          <div class="menu-icon brown">
+            <!-- Gear -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="3" stroke="#8B7355" stroke-width="2"/>
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="#8B7355" stroke-width="2"/>
+            </svg>
+          </div>
+          <span class="menu-text">Preferences</span>
+          <svg class="menu-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="menu-item">
+          <div class="menu-icon brown">
+            <!-- Bell -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" stroke="#8B7355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <span class="menu-text">Notifications</span>
+          <svg class="menu-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="menu-item" style="border-bottom:none;">
+          <div class="menu-icon brown">
+            <!-- Shield / Privacy -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#8B7355" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <span class="menu-text">Privacy & Legal</span>
+          <svg class="menu-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sign Out -->
+    <div class="signout-card">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="#DC3545" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="signout-text">Sign Out</span>
+    </div>
+
+    <div style="height:24px;"></div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <div class="tab-item">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="rgba(255,251,245,0.4)" stroke-width="2">
+        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      <span class="tab-label">Home</span>
+    </div>
+    <div class="tab-item">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="rgba(255,251,245,0.4)" stroke-width="2">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      <span class="tab-label">Meal Plan</span>
+    </div>
+    <div class="tab-item">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="rgba(255,251,245,0.4)" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <span class="tab-label">Recipes</span>
+    </div>
+    <div class="tab-item">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="rgba(255,251,245,0.4)" stroke-width="2">
+        <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+        <line x1="3" y1="6" x2="21" y2="6"/>
+      </svg>
+      <span class="tab-label">Shopping</span>
+    </div>
+    <div class="tab-item active">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="#D4652E" stroke-width="2">
+        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>
+      <span class="tab-label">Profile</span>
+    </div>
+  </div>
+</div>
+
+<!-- Divider -->
+<div class="screen-divider">
+  <div class="divider-label">↓ Screen 2 — My Nutrition</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 2 — MY NUTRITION / HEALTH GOALS
+══════════════════════════════════════════════════════════════ -->
+<p class="screen-label">Screen 2 — My Nutrition</p>
+
+<div class="phone">
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span class="status-time">9:41</span>
+    <div class="status-icons">
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+        <rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity="0.4"/>
+        <rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity="0.6"/>
+        <rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+        <rect x="13.5" y="0" width="2.5" height="12" rx="1" fill="currentColor"/>
+      </svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+        <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" stroke-opacity="0.35"/>
+        <rect x="2" y="2" width="16" height="8" rx="2" fill="currentColor"/>
+        <path d="M23 4v4a2 2 0 000-4z" fill="currentColor" opacity="0.4"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Nav Header with back arrow -->
+  <div class="nav-header">
+    <div class="nav-inner">
+      <div class="back-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="nav-title">My Nutrition</span>
+    </div>
+  </div>
+
+  <!-- Scrollable Content -->
+  <div class="content">
+    <!-- Calendar Strip -->
+    <div class="calendar-strip">
+      <div class="cal-day">
+        <span class="cal-dow">MON</span>
+        <span class="cal-num">7</span>
+        <div class="cal-dots"><div class="cal-dot"></div></div>
+      </div>
+      <div class="cal-day">
+        <span class="cal-dow">TUE</span>
+        <span class="cal-num">8</span>
+        <div class="cal-dots"><div class="cal-dot"></div><div class="cal-dot"></div></div>
+      </div>
+      <div class="cal-day">
+        <span class="cal-dow">WED</span>
+        <span class="cal-num">9</span>
+        <div class="cal-dots"><div class="cal-dot"></div><div class="cal-dot"></div><div class="cal-dot"></div></div>
+      </div>
+      <div class="cal-day">
+        <span class="cal-dow">THU</span>
+        <span class="cal-num">10</span>
+        <div class="cal-dots"><div class="cal-dot"></div></div>
+      </div>
+      <div class="cal-day today">
+        <span class="cal-dow" style="color:var(--orange);">FRI</span>
+        <span class="cal-num">11</span>
+        <div class="cal-dots"></div>
+      </div>
+      <div class="cal-day selected">
+        <span class="cal-dow">SAT</span>
+        <span class="cal-num">12</span>
+        <div class="cal-dots"><div class="cal-dot"></div><div class="cal-dot"></div></div>
+      </div>
+      <div class="cal-day">
+        <span class="cal-dow">SUN</span>
+        <span class="cal-num">13</span>
+        <div class="cal-dots"></div>
+      </div>
+    </div>
+
+    <!-- Daily Nutrition Summary -->
+    <div class="nutrition-card">
+      <div class="nutrition-header">
+        <span class="nutrition-title">Daily Summary</span>
+        <span class="nutrition-date">Sat, Apr 12</span>
+      </div>
+      <div class="cal-macros-row">
+        <!-- SVG Ring -->
+        <div class="ring-wrap">
+          <svg width="90" height="90" viewBox="0 0 90 90">
+            <circle cx="45" cy="45" r="38" stroke="#EDE5DA" stroke-width="9" fill="none"/>
+            <circle cx="45" cy="45" r="38" stroke="#D4652E" stroke-width="9" fill="none"
+              stroke-dasharray="238.76"
+              stroke-dashoffset="57"
+              stroke-linecap="round"/>
+          </svg>
+          <div class="ring-center">
+            <span class="ring-cal">1,840</span>
+            <span class="ring-label">kcal</span>
+          </div>
+        </div>
+        <!-- Macro Bars -->
+        <div class="macros-list">
+          <div class="macro-row">
+            <div class="macro-top">
+              <span class="macro-name">Protein</span>
+              <span class="macro-vals">128g / 160g</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:80%;"></div></div>
+          </div>
+          <div class="macro-row">
+            <div class="macro-top">
+              <span class="macro-name">Carbs</span>
+              <span class="macro-vals">195g / 250g</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:78%;"></div></div>
+          </div>
+          <div class="macro-row">
+            <div class="macro-top">
+              <span class="macro-name">Fat</span>
+              <span class="macro-vals">58g / 70g</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:83%;"></div></div>
+          </div>
+          <div style="margin-top:4px;">
+            <span style="font-family:var(--font-body);font-size:11px;color:var(--brown);">Goal: 2,200 kcal · <span style="color:var(--orange);font-weight:600;">360 remaining</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Today's Meals -->
+    <div class="section-title-row">
+      <span class="section-title">Today's Meals</span>
+      <div class="log-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+          <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        Log a Meal
+      </div>
+    </div>
+
+    <div class="meal-card">
+      <div class="meal-emoji">🌅</div>
+      <div class="meal-info">
+        <div class="meal-label">Breakfast</div>
+        <div class="meal-name">Greek Yogurt Parfait</div>
+        <div class="meal-macros">
+          <span>P: 24g</span>
+          <span>C: 38g</span>
+          <span>F: 8g</span>
+        </div>
+      </div>
+      <div class="meal-cals">420</div>
+    </div>
+
+    <div class="meal-card">
+      <div class="meal-emoji">☀️</div>
+      <div class="meal-info">
+        <div class="meal-label">Lunch</div>
+        <div class="meal-name">Grilled Chicken Bowl</div>
+        <div class="meal-macros">
+          <span>P: 52g</span>
+          <span>C: 65g</span>
+          <span>F: 18g</span>
+        </div>
+      </div>
+      <div class="meal-cals">640</div>
+    </div>
+
+    <div class="meal-card">
+      <div class="meal-emoji">🌙</div>
+      <div class="meal-info">
+        <div class="meal-label">Dinner</div>
+        <div class="meal-name">Salmon with Roasted Veg</div>
+        <div class="meal-macros">
+          <span>P: 52g</span>
+          <span>C: 42g</span>
+          <span>F: 32g</span>
+        </div>
+      </div>
+      <div class="meal-cals">780</div>
+    </div>
+
+    <!-- Primary Goals -->
+    <div class="section-title-row" style="padding-bottom:4px;">
+      <span class="section-title">Primary Goals</span>
+    </div>
+    <div class="goal-badges">
+      <div class="goal-badge">🔥 High Protein</div>
+      <div class="goal-badge">⚡ Active Lifestyle</div>
+      <div class="goal-badge">🥗 Whole Foods</div>
+    </div>
+
+    <div class="goal-card">
+      <div class="goal-card-row">
+        <span class="goal-card-name">Daily Protein Target</span>
+        <span class="goal-card-vals">128 / 160g</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width:80%;"></div></div>
+    </div>
+
+    <div class="goal-card">
+      <div class="goal-card-row">
+        <span class="goal-card-name">Calorie Goal</span>
+        <span class="goal-card-vals">1,840 / 2,200 kcal</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width:84%;"></div></div>
+    </div>
+
+    <!-- Weight Chart -->
+    <div class="section-title-row">
+      <span class="section-title">Weight</span>
+      <span style="font-family:var(--font-body);font-size:12px;color:var(--orange);font-weight:600;">+ Log</span>
+    </div>
+    <div class="weight-chart-card">
+      <svg class="chart-svg" viewBox="0 0 358 80" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+        <!-- Grid lines -->
+        <line x1="0" y1="20" x2="358" y2="20" stroke="#EDE5DA" stroke-width="1"/>
+        <line x1="0" y1="40" x2="358" y2="40" stroke="#EDE5DA" stroke-width="1"/>
+        <line x1="0" y1="60" x2="358" y2="60" stroke="#EDE5DA" stroke-width="1"/>
+        <!-- Area fill -->
+        <path d="M10,60 L68,52 L126,48 L184,42 L242,38 L300,32 L348,28 L348,80 L10,80 Z" fill="url(#orangeGrad)" opacity="0.18"/>
+        <!-- Line -->
+        <path d="M10,60 L68,52 L126,48 L184,42 L242,38 L300,32 L348,28" stroke="#D4652E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <!-- Dots -->
+        <circle cx="10"  cy="60" r="4" fill="#D4652E"/>
+        <circle cx="68"  cy="52" r="4" fill="#D4652E"/>
+        <circle cx="126" cy="48" r="4" fill="#D4652E"/>
+        <circle cx="184" cy="42" r="4" fill="#D4652E"/>
+        <circle cx="242" cy="38" r="4" fill="#D4652E"/>
+        <circle cx="300" cy="32" r="4" fill="#D4652E"/>
+        <circle cx="348" cy="28" r="5" fill="#D4652E" stroke="#fff" stroke-width="2"/>
+        <defs>
+          <linearGradient id="orangeGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#D4652E"/>
+            <stop offset="100%" stop-color="#D4652E" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="weight-entries">
+        <div class="weight-entry">
+          <span class="weight-date">Apr 12</span>
+          <span class="weight-val">182.4 lbs</span>
+          <span class="weight-delta">▼ 0.6</span>
+        </div>
+        <div class="weight-entry">
+          <span class="weight-date">Apr 9</span>
+          <span class="weight-val">183.0 lbs</span>
+          <span class="weight-delta">▼ 0.8</span>
+        </div>
+        <div class="weight-entry">
+          <span class="weight-date">Apr 6</span>
+          <span class="weight-val">183.8 lbs</span>
+          <span class="weight-delta neg">▲ 0.2</span>
+        </div>
+        <div class="weight-entry">
+          <span class="weight-date">Apr 3</span>
+          <span class="weight-val">183.6 lbs</span>
+          <span class="weight-delta">▼ 1.2</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:24px;"></div>
+  </div>
+</div>
+
+<!-- Divider -->
+<div class="screen-divider">
+  <div class="divider-label">↓ Screen 3 — Preferences</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 3 — PREFERENCES
+══════════════════════════════════════════════════════════════ -->
+<p class="screen-label">Screen 3 — Preferences</p>
+
+<div class="phone">
+  <div class="status-bar">
+    <span class="status-time">9:41</span>
+    <div class="status-icons">
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+        <rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity="0.4"/>
+        <rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity="0.6"/>
+        <rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+        <rect x="13.5" y="0" width="2.5" height="12" rx="1" fill="currentColor"/>
+      </svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+        <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" stroke-opacity="0.35"/>
+        <rect x="2" y="2" width="16" height="8" rx="2" fill="currentColor"/>
+        <path d="M23 4v4a2 2 0 000-4z" fill="currentColor" opacity="0.4"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="nav-header">
+    <div class="nav-inner">
+      <div class="back-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="nav-title">Preferences</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Tracking Section -->
+    <div class="pref-section-label">Tracking</div>
+    <div style="margin:0 16px;">
+      <div class="card">
+        <div class="pref-row" style="border-radius:16px 16px 0 0;">
+          <div class="pref-text-wrap">
+            <div class="pref-title">Macro Tracking</div>
+            <div class="pref-sub">Track protein, carbs &amp; fat daily</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+        <div class="pref-row" style="border-radius:0 0 16px 16px; border-bottom:none;">
+          <div class="pref-text-wrap">
+            <div class="pref-title">Calorie Counting</div>
+            <div class="pref-sub">Show calorie totals on all meals</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Household Section -->
+    <div class="pref-section-label">Household</div>
+    <div style="margin:0 16px;">
+      <div class="card" style="padding:16px;">
+        <div class="pref-title" style="margin-bottom:4px;">Household Size</div>
+        <div class="pref-sub" style="margin-bottom:12px;">Used for recipe scaling &amp; shopping quantities</div>
+        <div class="household-row" style="padding:0;">
+          <div class="hh-btn">1</div>
+          <div class="hh-btn">2</div>
+          <div class="hh-btn selected">3</div>
+          <div class="hh-btn">4</div>
+          <div class="hh-btn">5</div>
+          <div class="hh-btn">6+</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Meal Reminders -->
+    <div class="pref-section-label">Meal Reminders</div>
+    <div style="margin:0 16px;">
+      <div class="card">
+        <div class="pref-row" style="border-radius:16px 16px 0 0;">
+          <div class="pref-text-wrap">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="pref-title">Breakfast</div>
+              <span class="reminder-time">8:00 AM</span>
+            </div>
+            <div class="pref-sub">Morning meal reminder</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+        <div class="pref-row">
+          <div class="pref-text-wrap">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="pref-title">Lunch</div>
+              <span class="reminder-time">12:30 PM</span>
+            </div>
+            <div class="pref-sub">Midday meal reminder</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+        <div class="pref-row" style="border-radius:0 0 16px 16px;border-bottom:none;">
+          <div class="pref-text-wrap">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="pref-title">Dinner</div>
+              <span class="reminder-time">7:00 PM</span>
+            </div>
+            <div class="pref-sub">Evening meal reminder</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track off"></div>
+            <div class="toggle-thumb" style="left:3px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dietary Info Link -->
+    <div class="pref-section-label">Dietary</div>
+    <div style="margin:0 16px;">
+      <div class="card">
+        <div class="pref-row solo" style="border-radius:16px;border-bottom:none;cursor:pointer;">
+          <div class="pref-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="#D4652E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="pref-text-wrap">
+            <div class="pref-title">Dietary Preferences &amp; Allergies</div>
+            <div class="pref-sub">Vegetarian, gluten-free, nut-free…</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="color:var(--brown-light);flex-shrink:0;">
+            <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="save-btn" style="margin-bottom:0;">
+      <span class="save-btn-text">Save Preferences</span>
+    </div>
+    <div style="height:24px;"></div>
+  </div>
+</div>
+
+<!-- Divider -->
+<div class="screen-divider">
+  <div class="divider-label">↓ Screen 4 — Notifications</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN 4 — NOTIFICATIONS
+══════════════════════════════════════════════════════════════ -->
+<p class="screen-label">Screen 4 — Notifications</p>
+
+<div class="phone">
+  <div class="status-bar">
+    <span class="status-time">9:41</span>
+    <div class="status-icons">
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+        <rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity="0.4"/>
+        <rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity="0.6"/>
+        <rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+        <rect x="13.5" y="0" width="2.5" height="12" rx="1" fill="currentColor"/>
+      </svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+        <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" stroke-opacity="0.35"/>
+        <rect x="2" y="2" width="16" height="8" rx="2" fill="currentColor"/>
+        <path d="M23 4v4a2 2 0 000-4z" fill="currentColor" opacity="0.4"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="nav-header">
+    <div class="nav-inner">
+      <div class="back-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="nav-title">Notifications</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="pref-section-label">Alert Preferences</div>
+    <div style="margin:0 16px;">
+      <div class="card">
+
+        <!-- Expiring Items -->
+        <div class="pref-row" style="border-radius:16px 16px 0 0;">
+          <div class="pref-text-wrap">
+            <div class="pref-title">Expiring Items</div>
+            <div class="pref-sub">Get alerted when pantry items are about to expire</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+
+        <!-- Meal Reminders -->
+        <div class="pref-row">
+          <div class="pref-text-wrap">
+            <div class="pref-title">Meal Reminders</div>
+            <div class="pref-sub">Reminders to log breakfast, lunch &amp; dinner</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+
+        <!-- Recipe Suggestions -->
+        <div class="pref-row">
+          <div class="pref-text-wrap">
+            <div class="pref-title">Recipe Suggestions</div>
+            <div class="pref-sub">Daily recipe ideas based on your pantry &amp; goals</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+
+        <!-- Sale & Deal Alerts -->
+        <div class="pref-row" style="border-radius:0 0 16px 16px;border-bottom:none;">
+          <div class="pref-text-wrap">
+            <div class="pref-title">Sale &amp; Deal Alerts</div>
+            <div class="pref-sub">Notify me when grocery deals match my shopping list</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track off"></div>
+            <div class="toggle-thumb" style="left:3px;"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Weekly Summary -->
+    <div class="pref-section-label">Weekly</div>
+    <div style="margin:0 16px;">
+      <div class="card">
+        <div class="pref-row solo" style="border-radius:16px;border-bottom:none;">
+          <div class="pref-text-wrap">
+            <div class="pref-title">Weekly Summary</div>
+            <div class="pref-sub">Sunday wrap-up: nutrition, meals logged &amp; goals</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quiet Hours -->
+    <div class="pref-section-label">Quiet Hours</div>
+    <div style="margin:0 16px;">
+      <div class="card" style="padding:18px 16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <div>
+            <div class="pref-title">Do Not Disturb</div>
+            <div class="pref-sub">Silence all notifications during these hours</div>
+          </div>
+          <div class="toggle">
+            <div class="toggle-track on"></div>
+            <div class="toggle-thumb" style="left:23px;"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+          <div style="flex:1;background:var(--orange-light);border:1.5px solid var(--orange);border-radius:12px;padding:10px 14px;text-align:center;">
+            <div style="font-family:var(--font-body);font-size:11px;color:var(--brown);font-weight:500;margin-bottom:2px;">FROM</div>
+            <div style="font-family:var(--font-body);font-size:18px;font-weight:700;color:var(--warm-dark);">10:00 PM</div>
+          </div>
+          <div style="display:flex;align-items:center;color:var(--brown);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div style="flex:1;background:var(--orange-light);border:1.5px solid var(--orange);border-radius:12px;padding:10px 14px;text-align:center;">
+            <div style="font-family:var(--font-body);font-size:11px;color:var(--brown);font-weight:500;margin-bottom:2px;">TO</div>
+            <div style="font-family:var(--font-body);font-size:18px;font-weight:700;color:var(--warm-dark);">7:00 AM</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="save-btn">
+      <span class="save-btn-text">Save Notification Settings</span>
+    </div>
+    <div style="height:24px;"></div>
+  </div>
+</div>
+
+</body>
+</html>

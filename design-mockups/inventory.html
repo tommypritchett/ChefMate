@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Kitcho AI — Inventory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── Reset & Root ── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --cream:        #FFFBF5;
+      --cream-dark:   #F5EDE0;
+      --cream-deeper: #ECD9C6;
+      --orange:       #D4652E;
+      --orange-light: #FFF0E8;
+      --orange-mid:   #F0916A;
+      --dark:         #2D2520;
+      --dark-mid:     #4A3728;
+      --brown:        #8B7355;
+      --brown-light:  #B09880;
+      --red:          #ef4444;
+      --white:        #FFFFFF;
+      --shadow-warm:  0 4px 20px rgba(45,37,32,0.10);
+      --shadow-card:  0 2px 12px rgba(45,37,32,0.08);
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #E8DDD0;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 48px;
+      padding: 40px 24px 60px;
+      /* subtle paper texture */
+      background-image:
+        radial-gradient(circle at 20% 30%, rgba(212,101,46,0.06) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(139,115,85,0.08) 0%, transparent 50%);
+    }
+
+    /* ── Page Title ── */
+    .page-label {
+      font-family: 'Playfair Display', serif;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--dark-mid);
+      text-align: center;
+      margin-bottom: 14px;
+      opacity: 0.7;
+    }
+
+    .view-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Phone Frame ── */
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: var(--cream);
+      border-radius: 44px;
+      overflow: hidden;
+      position: relative;
+      box-shadow:
+        0 0 0 1px rgba(45,37,32,0.12),
+        0 24px 60px rgba(45,37,32,0.28),
+        0 8px 24px rgba(45,37,32,0.12),
+        inset 0 1px 0 rgba(255,255,255,0.6);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Status Bar ── */
+    .status-bar {
+      height: 44px;
+      background: var(--dark);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 24px 0;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .status-bar::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 1px;
+      background: rgba(255,255,255,0.06);
+    }
+    .status-time {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--cream);
+      letter-spacing: 0.01em;
+    }
+    .status-icons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-icons svg { fill: var(--cream); }
+
+    /* ── Header ── */
+    .header {
+      background: var(--dark);
+      padding: 14px 24px 20px;
+      flex-shrink: 0;
+    }
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--cream);
+      letter-spacing: -0.02em;
+    }
+    .header-icon-btn {
+      width: 38px;
+      height: 38px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+    .stats-row {
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .stat-chip {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--brown-light);
+      letter-spacing: 0.01em;
+    }
+    .stat-dot {
+      width: 3px; height: 3px;
+      background: var(--brown-light);
+      border-radius: 50%;
+      opacity: 0.5;
+    }
+    .stat-chip.warning {
+      color: var(--orange-mid);
+      font-weight: 600;
+    }
+
+    /* ── Scrollable Body ── */
+    .scroll-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      /* hide scrollbar */
+      scrollbar-width: none;
+    }
+    .scroll-body::-webkit-scrollbar { display: none; }
+
+    /* ── Search ── */
+    .search-wrap {
+      padding: 16px 20px 0;
+    }
+    .search-bar {
+      background: var(--cream-dark);
+      border: 1.5px solid var(--cream-deeper);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 14px;
+    }
+    .search-icon { font-size: 16px; opacity: 0.5; }
+    .search-text {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14.5px;
+      color: var(--brown);
+      font-weight: 400;
+      flex: 1;
+    }
+    .search-filter {
+      width: 28px; height: 28px;
+      background: var(--white);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      box-shadow: var(--shadow-card);
+    }
+
+    /* ── Category Pills ── */
+    .categories-wrap {
+      padding: 14px 0 4px;
+    }
+    .categories-scroll {
+      display: flex;
+      gap: 8px;
+      padding: 0 20px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .categories-scroll::-webkit-scrollbar { display: none; }
+    .cat-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
+    }
+    .cat-pill.active {
+      background: var(--orange-light);
+      border: 1.5px solid var(--orange);
+      color: var(--orange);
+    }
+    .cat-pill.inactive {
+      background: var(--white);
+      border: 1.5px solid var(--cream-deeper);
+      color: var(--brown);
+    }
+
+    /* ── Section Label ── */
+    .section-label {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      color: var(--brown-light);
+      padding: 14px 20px 8px;
+    }
+
+    /* ── Item Cards ── */
+    .items-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 0 20px;
+    }
+    .item-card {
+      background: var(--white);
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow-card);
+      border: 1px solid rgba(45,37,32,0.05);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: box-shadow 0.15s;
+    }
+    .item-card:active { box-shadow: var(--shadow-warm); }
+
+    .item-icon-wrap {
+      width: 42px; height: 42px;
+      background: var(--orange-light);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .item-icon-wrap.fridge  { background: #EEF6FF; }
+    .item-icon-wrap.pantry  { background: #FFF5E8; }
+    .item-icon-wrap.spice   { background: #FFF0F0; }
+    .item-icon-wrap.freezer { background: #F0F0FF; }
+
+    .item-body { flex: 1; min-width: 0; }
+    .item-name {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14.5px;
+      font-weight: 500;
+      color: var(--dark);
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .item-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 3px;
+    }
+    .item-qty {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--brown);
+    }
+    .item-meta-dot {
+      width: 3px; height: 3px;
+      background: var(--brown-light);
+      border-radius: 50%;
+    }
+    .item-updated {
+      font-size: 11.5px;
+      color: var(--brown-light);
+      font-weight: 400;
+    }
+
+    .item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+
+    .exp-label {
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--brown);
+      white-space: nowrap;
+    }
+    .exp-label.warn {
+      color: var(--orange);
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .exp-label.expired {
+      color: var(--red);
+    }
+    .expired-badge {
+      font-size: 10px;
+      font-weight: 600;
+      background: #fef2f2;
+      color: var(--red);
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      padding: 2px 6px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .chevron { font-size: 13px; color: var(--brown-light); }
+
+    /* ── Quick-Add Row ── */
+    .quickadd-wrap {
+      padding: 14px 20px 20px;
+    }
+    .quickadd-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      color: var(--brown-light);
+      margin-bottom: 10px;
+    }
+    .quickadd-row {
+      display: flex;
+      gap: 8px;
+    }
+    .quickadd-btn {
+      flex: 1;
+      background: var(--orange-light);
+      border: 1.5px solid rgba(212,101,46,0.18);
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 12px 6px;
+      cursor: pointer;
+    }
+    .quickadd-emoji { font-size: 20px; }
+    .quickadd-text {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--orange);
+      text-align: center;
+      letter-spacing: 0.01em;
+      line-height: 1.3;
+    }
+
+    /* ── FAB ── */
+    .fab {
+      position: absolute;
+      bottom: 28px;
+      right: 24px;
+      width: 54px; height: 54px;
+      background: var(--dark);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px rgba(45,37,32,0.35);
+      cursor: pointer;
+      z-index: 20;
+    }
+    .fab-icon {
+      font-size: 26px;
+      color: var(--cream);
+      font-weight: 300;
+      line-height: 1;
+      margin-top: -2px;
+    }
+
+    /* ── Bottom Nav ── */
+    .bottom-nav {
+      height: 82px;
+      background: var(--white);
+      border-top: 1px solid var(--cream-deeper);
+      display: flex;
+      align-items: flex-start;
+      padding-top: 12px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .nav-icon { font-size: 22px; }
+    .nav-text {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--brown-light);
+    }
+    .nav-item.active .nav-text { color: var(--orange); font-weight: 600; }
+    .nav-item.active .nav-icon { filter: none; }
+    .nav-active-dot {
+      position: absolute;
+      top: 5px;
+      width: 4px; height: 4px;
+      background: var(--orange);
+      border-radius: 50%;
+    }
+
+
+    /* ═══════════════════════════════════════
+       VIEW 2 — ADD ITEM FLOW
+    ═══════════════════════════════════════ */
+
+    /* ── Tab Bar ── */
+    .add-tabs {
+      display: flex;
+      gap: 0;
+      background: var(--cream-dark);
+      border-bottom: 1px solid var(--cream-deeper);
+      flex-shrink: 0;
+    }
+    .add-tab {
+      flex: 1;
+      padding: 13px 0;
+      text-align: center;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--brown);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .add-tab.active {
+      color: var(--orange);
+      border-bottom-color: var(--orange);
+      background: var(--white);
+    }
+
+    /* ── Scan Panel ── */
+    .scan-panel {
+      padding: 18px 20px 0;
+    }
+    .scan-banner {
+      background: var(--dark);
+      border-radius: 18px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .scan-icon-circle {
+      width: 44px; height: 44px;
+      background: rgba(212,101,46,0.20);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .scan-banner-text {}
+    .scan-banner-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--cream);
+      margin-bottom: 2px;
+    }
+    .scan-banner-sub {
+      font-size: 11.5px;
+      color: var(--brown-light);
+      font-weight: 400;
+    }
+    .scan-banner-badge {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--orange-mid);
+      background: rgba(212,101,46,0.15);
+      border: 1px solid rgba(212,101,46,0.25);
+      border-radius: 8px;
+      padding: 4px 8px;
+      flex-shrink: 0;
+    }
+
+    .scanned-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      color: var(--brown-light);
+      margin-bottom: 10px;
+    }
+    .scanned-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .scanned-item {
+      background: var(--white);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: var(--shadow-card);
+      border: 1px solid rgba(45,37,32,0.05);
+    }
+    .checkbox {
+      width: 22px; height: 22px;
+      border-radius: 7px;
+      border: 2px solid var(--orange);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .checkbox.checked {
+      background: var(--orange);
+    }
+    .checkbox.checked::after {
+      content: '✓';
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .scanned-body { flex: 1; min-width: 0; }
+    .scanned-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--dark);
+      letter-spacing: -0.01em;
+    }
+    .scanned-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .scanned-cat {
+      font-size: 11px;
+      color: var(--brown);
+      background: var(--cream-dark);
+      border-radius: 5px;
+      padding: 2px 7px;
+      font-weight: 500;
+    }
+    .scanned-qty {
+      font-size: 11.5px;
+      color: var(--brown-light);
+    }
+    .scanned-conf {
+      font-size: 11px;
+      font-weight: 600;
+      color: #22c55e;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      padding: 2px 7px;
+    }
+
+    .add-selected-btn {
+      margin: 16px 0 0;
+      background: var(--dark);
+      border-radius: 16px;
+      padding: 15px;
+      text-align: center;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--cream);
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .add-selected-count {
+      background: var(--orange);
+      border-radius: 8px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+    }
+
+    /* ── Manual Form ── */
+    .form-panel {
+      padding: 18px 20px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--brown);
+    }
+    .form-input {
+      background: var(--cream-dark);
+      border: 1.5px solid var(--cream-deeper);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      color: var(--dark);
+      font-weight: 400;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .form-input.filled { border-color: rgba(212,101,46,0.30); background: var(--white); }
+    .form-input.focused { border-color: var(--orange); background: var(--white); box-shadow: 0 0 0 3px rgba(212,101,46,0.10); }
+    .form-input-placeholder { color: var(--brown-light); }
+    .form-row { display: flex; gap: 10px; }
+    .form-row .form-group { flex: 1; }
+    .form-select-arrow { font-size: 12px; color: var(--brown-light); }
+    .form-add-btn {
+      background: var(--dark);
+      border-radius: 14px;
+      padding: 14px;
+      text-align: center;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--cream);
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    /* ── Voice Panel ── */
+    .voice-panel {
+      padding: 24px 20px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .voice-hint {
+      font-size: 13px;
+      color: var(--brown);
+      text-align: center;
+      margin-bottom: 28px;
+      line-height: 1.5;
+    }
+    .voice-mic-outer {
+      width: 96px; height: 96px;
+      background: rgba(212,101,46,0.10);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 6px;
+      position: relative;
+    }
+    .voice-mic-outer.active { animation: pulse-ring 1.6s ease-out infinite; }
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0 rgba(212,101,46,0.25); }
+      70%  { box-shadow: 0 0 0 22px rgba(212,101,46,0); }
+      100% { box-shadow: 0 0 0 0 rgba(212,101,46,0); }
+    }
+    .voice-mic-btn {
+      width: 72px; height: 72px;
+      background: var(--dark);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(45,37,32,0.3);
+    }
+    .voice-state-text {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--orange);
+      margin-bottom: 20px;
+      letter-spacing: 0.04em;
+    }
+    .voice-transcription {
+      width: 100%;
+      background: var(--cream-dark);
+      border: 1.5px solid var(--cream-deeper);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+    .transcription-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      color: var(--brown-light);
+      margin-bottom: 6px;
+    }
+    .transcription-text {
+      font-size: 14px;
+      color: var(--dark);
+      line-height: 1.5;
+      font-style: italic;
+    }
+    .transcription-cursor {
+      display: inline-block;
+      width: 2px; height: 16px;
+      background: var(--orange);
+      border-radius: 1px;
+      margin-left: 2px;
+      vertical-align: middle;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .voice-parsed-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      color: var(--brown-light);
+      margin-bottom: 8px;
+      align-self: flex-start;
+    }
+    .voice-parsed-list {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .voice-parsed-item {
+      background: var(--white);
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: var(--shadow-card);
+    }
+    .parsed-check {
+      width: 20px; height: 20px;
+      background: var(--orange);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: white;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .parsed-name { font-size: 13.5px; font-weight: 500; color: var(--dark); flex: 1; }
+    .parsed-detail {
+      font-size: 12px;
+      color: var(--brown);
+      background: var(--orange-light);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-weight: 500;
+    }
+
+    /* ── Outer layout for two phones side-by-side ── */
+    .two-phones {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+
+<div class="two-phones">
+
+  <!-- ══════════════════════════════════
+       VIEW 1: Pantry Overview
+  ══════════════════════════════════ -->
+  <div class="view-wrapper">
+    <div class="page-label">View 1 — Pantry Overview</div>
+    <div class="phone" id="view1">
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="16" height="12" viewBox="0 0 16 12"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/><rect x="13.5" y="0" width="2.5" height="12" rx="1" opacity="0.3"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 2C5.2 2 2.7 3.2 1 5.2l1.5 1.5C3.8 5 5.8 4 8 4s4.2 1 5.5 2.7L15 5.2C13.3 3.2 10.8 2 8 2z"/><path d="M8 6c-1.7 0-3.2.7-4.2 1.8l1.5 1.5C6 8.5 7 8 8 8s2 .5 2.7 1.3l1.5-1.5C11.2 6.7 9.7 6 8 6z"/><circle cx="8" cy="11" r="1.5"/></svg>
+          <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0" y="1" width="22" height="10" rx="3" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="22.5" y="4" width="2" height="4" rx="1" fill="currentColor" opacity="0.4"/><rect x="1.5" y="2.5" width="16" height="7" rx="2" fill="currentColor"/></svg>
+        </div>
+      </div>
+
+      <!-- Header -->
+      <div class="header">
+        <div class="header-row">
+          <span class="header-title">Pantry</span>
+          <div style="display:flex;gap:8px;">
+            <div class="header-icon-btn">🔔</div>
+            <div class="header-icon-btn">⋯</div>
+          </div>
+        </div>
+        <div class="stats-row">
+          <span class="stat-chip">24 items</span>
+          <div class="stat-dot"></div>
+          <span class="stat-chip warning">⚠ 3 expiring soon</span>
+          <div class="stat-dot"></div>
+          <span class="stat-chip">1 expired</span>
+        </div>
+      </div>
+
+      <!-- Scrollable body -->
+      <div class="scroll-body">
+
+        <!-- Search -->
+        <div class="search-wrap">
+          <div class="search-bar">
+            <span class="search-icon">🔍</span>
+            <span class="search-text">Search your pantry…</span>
+            <div class="search-filter">⊞</div>
+          </div>
+        </div>
+
+        <!-- Category pills -->
+        <div class="categories-wrap">
+          <div class="categories-scroll">
+            <div class="cat-pill active">🧊 Fridge</div>
+            <div class="cat-pill inactive">🏪 Pantry</div>
+            <div class="cat-pill inactive">❄️ Freezer</div>
+            <div class="cat-pill inactive">🌶️ Spices</div>
+            <div class="cat-pill inactive">🥬 Produce</div>
+          </div>
+        </div>
+
+        <!-- Items -->
+        <div class="section-label">Fridge · 9 items</div>
+        <div class="items-list">
+
+          <!-- Normal item -->
+          <div class="item-card">
+            <div class="item-icon-wrap fridge">🥛</div>
+            <div class="item-body">
+              <div class="item-name">Whole Milk</div>
+              <div class="item-meta">
+                <span class="item-qty">1 gallon</span>
+                <div class="item-meta-dot"></div>
+                <span class="item-updated">Added 2 days ago</span>
+              </div>
+            </div>
+            <div class="item-right">
+              <span class="exp-label">Exp Apr 20</span>
+              <span class="chevron">›</span>
+            </div>
+          </div>
+
+          <!-- Expiring soon -->
+          <div class="item-card">
+            <div class="item-icon-wrap fridge">🧀</div>
+            <div class="item-body">
+              <div class="item-name">Parmesan Cheese</div>
+              <div class="item-meta">
+                <span class="item-qty">200 g</span>
+                <div class="item-meta-dot"></div>
+                <span class="item-updated">Added 5 days ago</span>
+              </div>
+            </div>
+            <div class="item-right">
+              <span class="exp-label warn">⚠ 2 days left</span>
+              <span class="chevron">›</span>
+            </div>
+          </div>
+
+          <!-- Expiring soon -->
+          <div class="item-card">
+            <div class="item-icon-wrap fridge">🥚</div>
+            <div class="item-body">
+              <div class="item-name">Free-range Eggs</div>
+              <div class="item-meta">
+                <span class="item-qty">6 eggs</span>
+                <div class="item-meta-dot"></div>
+                <span class="item-updated">Added 1 week ago</span>
+              </div>
+            </div>
+            <div class="item-right">
+              <span class="exp-label warn">⚠ 3 days left</span>
+              <span class="chevron">›</span>
+            </div>
+          </div>
+
+          <!-- Expired -->
+          <div class="item-card">
+            <div class="item-icon-wrap fridge">🧃</div>
+            <div class="item-body">
+              <div class="item-name">Orange Juice</div>
+              <div class="item-meta">
+                <span class="item-qty">500 ml</span>
+                <div class="item-meta-dot"></div>
+                <span class="item-updated">Added 10 days ago</span>
+              </div>
+            </div>
+            <div class="item-right">
+              <span class="exp-label expired">Exp Apr 12</span>
+              <span class="expired-badge">Expired</span>
+            </div>
+          </div>
+
+          <!-- Normal item -->
+          <div class="item-card">
+            <div class="item-icon-wrap fridge">🧈</div>
+            <div class="item-body">
+              <div class="item-name">Unsalted Butter</div>
+              <div class="item-meta">
+                <span class="item-qty">250 g</span>
+                <div class="item-meta-dot"></div>
+                <span class="item-updated">Added 3 days ago</span>
+              </div>
+            </div>
+            <div class="item-right">
+              <span class="exp-label">Exp May 2</span>
+              <span class="chevron">›</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Quick Add -->
+        <div class="quickadd-wrap">
+          <div class="quickadd-label">Quick Add</div>
+          <div class="quickadd-row">
+            <div class="quickadd-btn">
+              <div class="quickadd-emoji">📸</div>
+              <div class="quickadd-text">Scan<br>Receipt</div>
+            </div>
+            <div class="quickadd-btn">
+              <div class="quickadd-emoji">🎤</div>
+              <div class="quickadd-text">Voice<br>Add</div>
+            </div>
+            <div class="quickadd-btn">
+              <div class="quickadd-emoji">✏️</div>
+              <div class="quickadd-text">Manual<br>Entry</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- extra padding so FAB doesn't overlap last card -->
+        <div style="height: 100px;"></div>
+
+      </div><!-- /scroll-body -->
+
+      <!-- FAB -->
+      <div class="fab">
+        <span class="fab-icon">+</span>
+      </div>
+
+      <!-- Bottom Nav -->
+      <div class="bottom-nav">
+        <div class="nav-item">
+          <span class="nav-icon">🏠</span>
+          <span class="nav-text">Home</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">🍽️</span>
+          <span class="nav-text">Meals</span>
+        </div>
+        <div class="nav-item active" style="position:relative;">
+          <span class="nav-icon">🧺</span>
+          <span class="nav-text" style="color:var(--orange);">Pantry</span>
+          <div class="nav-active-dot" style="left:50%;transform:translateX(-50%);"></div>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">🛒</span>
+          <span class="nav-text">Shopping</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">👤</span>
+          <span class="nav-text">Profile</span>
+        </div>
+      </div>
+
+    </div><!-- /phone view1 -->
+  </div><!-- /view-wrapper -->
+
+
+  <!-- ══════════════════════════════════
+       VIEW 2: Add Item Flow
+  ══════════════════════════════════ -->
+  <div class="view-wrapper">
+    <div class="page-label">View 2 — Add Item Flow</div>
+    <div class="phone" id="view2">
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <svg width="16" height="12" viewBox="0 0 16 12"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/><rect x="13.5" y="0" width="2.5" height="12" rx="1" opacity="0.3"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 2C5.2 2 2.7 3.2 1 5.2l1.5 1.5C3.8 5 5.8 4 8 4s4.2 1 5.5 2.7L15 5.2C13.3 3.2 10.8 2 8 2z"/><path d="M8 6c-1.7 0-3.2.7-4.2 1.8l1.5 1.5C6 8.5 7 8 8 8s2 .5 2.7 1.3l1.5-1.5C11.2 6.7 9.7 6 8 6z"/><circle cx="8" cy="11" r="1.5"/></svg>
+          <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0" y="1" width="22" height="10" rx="3" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="22.5" y="4" width="2" height="4" rx="1" fill="currentColor" opacity="0.4"/><rect x="1.5" y="2.5" width="16" height="7" rx="2" fill="currentColor"/></svg>
+        </div>
+      </div>
+
+      <!-- Header (smaller, back-nav style) -->
+      <div class="header" style="padding:12px 20px 16px;">
+        <div class="header-row">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="header-icon-btn" style="font-size:14px;">←</div>
+            <span class="header-title" style="font-size:22px;">Add Items</span>
+          </div>
+          <div class="header-icon-btn">?</div>
+        </div>
+      </div>
+
+      <!-- Add Method Tabs -->
+      <div class="add-tabs">
+        <div class="add-tab active" id="tab-scan">📸 Scan</div>
+        <div class="add-tab" id="tab-manual">✏️ Manual</div>
+        <div class="add-tab" id="tab-voice">🎤 Voice</div>
+      </div>
+
+      <!-- Scrollable body for add flow -->
+      <div class="scroll-body" id="add-scroll">
+
+        <!-- ── SCAN PANEL (default visible) ── -->
+        <div class="scan-panel" id="panel-scan">
+
+          <div class="scan-banner">
+            <div class="scan-icon-circle">📸</div>
+            <div class="scan-banner-text">
+              <div class="scan-banner-title">Receipt Scanned</div>
+              <div class="scan-banner-sub">Whole Foods — Apr 14, 2026</div>
+            </div>
+            <div class="scan-banner-badge">4 found</div>
+          </div>
+
+          <div class="scanned-label">Detected Items — tap to deselect</div>
+          <div class="scanned-list">
+
+            <div class="scanned-item">
+              <div class="checkbox checked"></div>
+              <div class="scanned-body">
+                <div class="scanned-name">Organic Chicken Breast</div>
+                <div class="scanned-meta">
+                  <span class="scanned-cat">🧊 Fridge</span>
+                  <span class="scanned-qty">1.2 lbs</span>
+                </div>
+              </div>
+              <span class="scanned-conf">98%</span>
+            </div>
+
+            <div class="scanned-item">
+              <div class="checkbox checked"></div>
+              <div class="scanned-body">
+                <div class="scanned-name">Cherry Tomatoes</div>
+                <div class="scanned-meta">
+                  <span class="scanned-cat">🥬 Produce</span>
+                  <span class="scanned-qty">1 pint</span>
+                </div>
+              </div>
+              <span class="scanned-conf">95%</span>
+            </div>
+
+            <div class="scanned-item">
+              <div class="checkbox checked"></div>
+              <div class="scanned-body">
+                <div class="scanned-name">Kalamata Olives</div>
+                <div class="scanned-meta">
+                  <span class="scanned-cat">🏪 Pantry</span>
+                  <span class="scanned-qty">6 oz jar</span>
+                </div>
+              </div>
+              <span class="scanned-conf">91%</span>
+            </div>
+
+            <div class="scanned-item">
+              <div class="checkbox" style="border-color:var(--cream-deeper);"></div>
+              <div class="scanned-body">
+                <div class="scanned-name">Sparkling Water</div>
+                <div class="scanned-meta">
+                  <span class="scanned-cat">🧊 Fridge</span>
+                  <span class="scanned-qty">12 pack</span>
+                </div>
+              </div>
+              <span class="scanned-conf" style="color:var(--brown);background:var(--cream-dark);border-color:var(--cream-deeper);">72%</span>
+            </div>
+
+          </div>
+
+          <div class="add-selected-btn">
+            Add to Pantry
+            <span class="add-selected-count">3 items</span>
+          </div>
+
+          <div style="height: 40px;"></div>
+        </div>
+
+        <!-- ── MANUAL PANEL (hidden by default) ── -->
+        <div class="form-panel" id="panel-manual" style="display:none;">
+
+          <div class="form-group">
+            <div class="form-label">Item Name</div>
+            <div class="form-input focused">
+              <span>Greek Yogurt</span>
+              <span style="font-size:11px;color:var(--orange);font-weight:600;">✕</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">Category</div>
+            <div class="form-input filled">
+              <span>🧊 Fridge</span>
+              <span class="form-select-arrow">▾</span>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <div class="form-label">Quantity</div>
+              <div class="form-input filled"><span>2</span></div>
+            </div>
+            <div class="form-group">
+              <div class="form-label">Unit</div>
+              <div class="form-input filled">
+                <span>containers</span>
+                <span class="form-select-arrow">▾</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">Brand (optional)</div>
+            <div class="form-input">
+              <span class="form-input-placeholder">e.g. Chobani</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">Expiration Date</div>
+            <div class="form-input filled">
+              <span>Apr 28, 2026</span>
+              <span style="font-size:16px;opacity:0.4;">📅</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">Location</div>
+            <div class="form-input filled">
+              <span>Main shelf</span>
+              <span class="form-select-arrow">▾</span>
+            </div>
+          </div>
+
+          <div class="form-add-btn">Add to Pantry</div>
+
+          <div style="height: 40px;"></div>
+        </div>
+
+        <!-- ── VOICE PANEL (hidden by default) ── -->
+        <div class="voice-panel" id="panel-voice" style="display:none;">
+
+          <div class="voice-hint">
+            Tap the mic and say what you bought.<br>
+            <span style="color:var(--brown-light);font-size:12px;">"2 avocados, a bag of rice, and some cheddar cheese"</span>
+          </div>
+
+          <div class="voice-mic-outer active">
+            <div class="voice-mic-btn">🎤</div>
+          </div>
+          <div class="voice-state-text">Listening…</div>
+
+          <div class="voice-transcription">
+            <div class="transcription-label">Transcription</div>
+            <div class="transcription-text">
+              "Two avocados, a bag of jasmine rice, and some sharp cheddar cheese"<span class="transcription-cursor"></span>
+            </div>
+          </div>
+
+          <div class="voice-parsed-label">Parsed Items</div>
+          <div class="voice-parsed-list">
+
+            <div class="voice-parsed-item">
+              <div class="parsed-check">✓</div>
+              <span class="parsed-name">Avocados</span>
+              <span class="parsed-detail">× 2</span>
+            </div>
+
+            <div class="voice-parsed-item">
+              <div class="parsed-check">✓</div>
+              <span class="parsed-name">Jasmine Rice</span>
+              <span class="parsed-detail">1 bag</span>
+            </div>
+
+            <div class="voice-parsed-item">
+              <div class="parsed-check">✓</div>
+              <span class="parsed-name">Sharp Cheddar</span>
+              <span class="parsed-detail">🧊 Fridge</span>
+            </div>
+
+          </div>
+
+          <div class="add-selected-btn" style="width:100%;margin-top:16px;">
+            Add All Items
+            <span class="add-selected-count">3</span>
+          </div>
+
+          <div style="height: 40px;"></div>
+        </div>
+
+      </div><!-- /scroll-body -->
+
+      <!-- Bottom Nav -->
+      <div class="bottom-nav">
+        <div class="nav-item">
+          <span class="nav-icon">🏠</span>
+          <span class="nav-text">Home</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">🍽️</span>
+          <span class="nav-text">Meals</span>
+        </div>
+        <div class="nav-item active" style="position:relative;">
+          <span class="nav-icon">🧺</span>
+          <span class="nav-text" style="color:var(--orange);">Pantry</span>
+          <div class="nav-active-dot" style="left:50%;transform:translateX(-50%);"></div>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">🛒</span>
+          <span class="nav-text">Shopping</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon">👤</span>
+          <span class="nav-text">Profile</span>
+        </div>
+      </div>
+
+    </div><!-- /phone view2 -->
+  </div><!-- /view-wrapper -->
+
+</div><!-- /two-phones -->
+
+<script>
+  /* ── Tab switching for View 2 ── */
+  const tabs = {
+    scan:   { tab: 'tab-scan',   panel: 'panel-scan'   },
+    manual: { tab: 'tab-manual', panel: 'panel-manual' },
+    voice:  { tab: 'tab-voice',  panel: 'panel-voice'  },
+  };
+
+  function switchTab(key) {
+    Object.values(tabs).forEach(({ tab, panel }) => {
+      document.getElementById(tab).classList.remove('active');
+      document.getElementById(panel).style.display = 'none';
+    });
+    document.getElementById(tabs[key].tab).classList.add('active');
+    document.getElementById(tabs[key].panel).style.display =
+      key === 'voice' ? 'flex' : 'block';
+    document.getElementById('add-scroll').scrollTop = 0;
+  }
+
+  document.getElementById('tab-scan').addEventListener('click',   () => switchTab('scan'));
+  document.getElementById('tab-manual').addEventListener('click', () => switchTab('manual'));
+  document.getElementById('tab-voice').addEventListener('click',  () => switchTab('voice'));
+
+  /* ── Checkbox toggle on scan panel ── */
+  document.querySelectorAll('.scanned-item .checkbox').forEach(cb => {
+    cb.addEventListener('click', () => {
+      cb.classList.toggle('checked');
+      updateCount();
+    });
+  });
+
+  function updateCount() {
+    const checked = document.querySelectorAll('#panel-scan .checkbox.checked').length;
+    const countEl = document.querySelector('#panel-scan .add-selected-count');
+    if (countEl) {
+      countEl.textContent = checked + (checked === 1 ? ' item' : ' items');
+    }
+  }
+
+  /* ── Category pills in View 1 ── */
+  document.querySelectorAll('#view1 .cat-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('#view1 .cat-pill').forEach(p => {
+        p.classList.remove('active');
+        p.classList.add('inactive');
+      });
+      pill.classList.remove('inactive');
+      pill.classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

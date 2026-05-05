@@ -5,71 +5,25 @@ import {
   ScrollView,
   FlatList,
   TouchableOpacity,
-  Pressable,
   Modal,
-  TextInput,
   ActivityIndicator,
   Alert,
-  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { mealPlansApi, recipesApi, nutritionApi } from '../../src/services/api';
-import { useMealPrepStore, ChatState } from '../../src/store/chatStore';
-import MessageBubble from '../../src/components/chat/MessageBubble';
-import ChatInput from '../../src/components/chat/ChatInput';
+import { useMealPrepStore } from '../../src/store/chatStore';
 import ThreadList from '../../src/components/chat/ThreadList';
-
-const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
-
-/** Platform-safe confirm dialog (Alert.alert can be unreliable on web) */
-function confirmAction(title: string, message: string, onConfirm: () => void) {
-  if (Platform.OS === 'web') {
-    if (window.confirm(`${title}\n${message}`)) {
-      onConfirm();
-    }
-  } else {
-    Alert.alert(title, message, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Confirm', style: 'destructive', onPress: onConfirm },
-    ]);
-  }
-}
-const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function getWeekDates(offset = 0): Date[] {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + mondayOffset + offset * 7);
-  monday.setHours(0, 0, 0, 0);
-
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return d;
-  });
-}
-
-function formatDate(d: Date) {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-/** Generate array of dates between start and end inclusive */
-function getDateRange(startStr: string, endStr: string): Date[] {
-  const dates: Date[] = [];
-  const cur = new Date(startStr + 'T00:00:00');
-  const end = new Date(endStr + 'T00:00:00');
-  while (cur <= end) {
-    dates.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
-  return dates;
-}
+import SmartMealPrepChat from '../../src/components/meal-plan/SmartMealPrepChat';
+import EditSlotModal from '../../src/components/meal-plan/EditSlotModal';
+import LogMealModal from '../../src/components/meal-plan/LogMealModal';
+import { CreatePlanModal, PlanSettingsModal } from '../../src/components/meal-plan/PlanModals';
+import AddRecipeModal from '../../src/components/meal-plan/AddRecipeModal';
+import {
+  MEAL_TYPES, SHORT_DAYS,
+  confirmAction, getWeekDates, formatDate, getDateRange, validateMacro,
+} from '../../src/components/meal-plan/mealPlanHelpers';
+import { resetFoodLogReminder } from '../../src/services/notifications';
 
 export default function MealPlanScreen() {
   const [plan, setPlan] = useState<any>(null);
@@ -121,18 +75,6 @@ export default function MealPlanScreen() {
 
   const weekDates = getWeekDates(weekOffset);
   const weekLabel = `${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-
-  // ─── Validation helpers ────────────────────────────────────────────────
-
-  const validateMacro = (value: string, macroName: string): string => {
-    if (!value.trim()) return '';
-    const num = parseFloat(value);
-    if (isNaN(num)) return 'Please enter a valid number';
-    if (num < 0) return `${macroName} cannot be negative`;
-    if (macroName === 'Calories' && num > 5000) return 'Calories seem too high (max 5000)';
-    if (macroName !== 'Calories' && num > 500) return `${macroName} seems too high (max 500g)`;
-    return '';
-  };
 
   // Derive displayed days from plan dates (Enhancement B) or fall back to week dates
   const planDates = plan
@@ -361,6 +303,7 @@ export default function MealPlanScreen() {
         fat: logFat ? parseFloat(logFat) : undefined,
       });
       await mealPlansApi.markSlotCompleted(plan.id, slot.id, true);
+      resetFoodLogReminder().catch(() => {});
       setLogMealModal(null);
       fetchPlan();
     } catch (err) {
@@ -426,6 +369,7 @@ export default function MealPlanScreen() {
 
       // Mark slot as completed
       await mealPlansApi.markSlotCompleted(plan.id, slot.id, true);
+      resetFoodLogReminder().catch(() => {});
       setEditSlotModal(null);
       fetchPlan();
     } catch (err) {
@@ -478,84 +422,140 @@ export default function MealPlanScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-gray-50">
-        <ActivityIndicator size="large" color="#10b981" />
+      <View className="flex-1 items-center justify-center bg-cream">
+        <ActivityIndicator size="large" color="#D4652E" />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View className="flex-1 bg-cream">
       {/* Header */}
-      <View className="bg-primary-500 pt-3 pb-5 px-5">
+      <View className="bg-warm-dark pt-14 px-6 pb-1">
         <View className="flex-row justify-between items-center">
-          <Text className="text-white text-3xl font-bold tracking-tight">Meal Plan</Text>
-          <View className="flex-row gap-2">
+          <Text className="text-cream text-[28px] font-serif-bold" style={{ letterSpacing: -0.5 }}>Meal Plan</Text>
+          <View className="flex-row gap-2 items-center">
             <TouchableOpacity
-              className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+              style={{ backgroundColor: 'rgba(255,251,245,0.1)' }}
+              className="w-9 h-9 rounded-xl items-center justify-center"
               onPress={() => router.push('/health-goals')}
             >
-              <Ionicons name="stats-chart" size={20} color="white" />
+              <Ionicons name="stats-chart" size={20} color="#FFFBF5" />
             </TouchableOpacity>
             {plan && (
               <TouchableOpacity
-                className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+                style={{ backgroundColor: 'rgba(255,251,245,0.1)' }}
+                className="w-9 h-9 rounded-xl items-center justify-center"
                 onPress={openSettingsModal}
               >
-                <Ionicons name="settings-outline" size={20} color="white" />
+                <Ionicons name="settings-outline" size={20} color="#FFFBF5" />
               </TouchableOpacity>
             )}
             <TouchableOpacity
               testID="profile-icon"
               onPress={() => router.push('/(tabs)/profile')}
-              className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
+              className="w-[38px] h-[38px] rounded-full items-center justify-center"
+              style={{ backgroundColor: '#FFF0E8', borderWidth: 2, borderColor: 'rgba(212,101,46,0.4)' }}
             >
-              <Ionicons name="person-circle-outline" size={20} color="white" />
+              <Ionicons name="person" size={18} color="#D4652E" />
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
       {/* Week navigation */}
-      <View className="bg-white border-b border-gray-200">
-        <View className="flex-row items-center justify-between px-5 py-3">
-          <TouchableOpacity onPress={() => setWeekOffset(w => w - 1)}>
-            <Text className="text-2xl text-gray-600">‹</Text>
-          </TouchableOpacity>
-          <View className="items-center">
-            <Text className="text-base font-semibold text-gray-800">{weekLabel}</Text>
-            {weekOffset !== 0 && (
-              <TouchableOpacity onPress={() => setWeekOffset(0)}>
-                <Text className="text-xs text-primary-600 font-medium">Jump to Today</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <TouchableOpacity onPress={() => setWeekOffset(w => w + 1)}>
-            <Text className="text-2xl text-gray-600">›</Text>
-          </TouchableOpacity>
+      <View className="bg-warm-dark px-5 pb-[18px] flex-row items-center" style={{ gap: 12 }}>
+        <TouchableOpacity
+          onPress={() => setWeekOffset(w => w - 1)}
+          className="w-[34px] h-[34px] rounded-[10px] items-center justify-center"
+          style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}
+        >
+          <Text className="text-base" style={{ color: '#B8A68E' }}>‹</Text>
+        </TouchableOpacity>
+        <View className="flex-1 items-center">
+          <Text className="text-base font-serif-semibold text-cream" style={{ letterSpacing: -0.2 }}>{weekLabel}</Text>
         </View>
+        {weekOffset !== 0 && (
+          <TouchableOpacity
+            onPress={() => setWeekOffset(0)}
+            className="rounded-lg px-3 py-[5px]"
+            style={{ borderWidth: 1, borderColor: 'rgba(212,101,46,0.5)' }}
+          >
+            <Text className="text-xs font-sans-semibold" style={{ color: '#D4652E', letterSpacing: 0.3 }}>Today</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          onPress={() => setWeekOffset(w => w + 1)}
+          className="w-[34px] h-[34px] rounded-[10px] items-center justify-center"
+          style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}
+        >
+          <Text className="text-base" style={{ color: '#B8A68E' }}>›</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Day strip */}
+      <View className="bg-warm-dark px-5">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 18 }}>
+          {weekDates.map((date, idx) => {
+            const isSelected = plan && formatDate(date) >= new Date(plan.startDate).toISOString().split('T')[0] && formatDate(date) <= new Date(plan.endDate).toISOString().split('T')[0];
+            const isToday = formatDate(date) === formatDate(new Date());
+            const daySlots = getSlotsForDay(date);
+            const hasMeals = daySlots.length > 0;
+            return (
+              <View
+                key={idx}
+                className="items-center rounded-xl px-[10px] py-2"
+                style={[
+                  { minWidth: 44 },
+                  isToday ? { backgroundColor: '#D4652E' } : {},
+                ]}
+              >
+                <Text
+                  className="text-[11px] font-sans-medium uppercase"
+                  style={{ color: isToday ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)', letterSpacing: 0.8 }}
+                >
+                  {SHORT_DAYS[date.getDay()]}
+                </Text>
+                <Text
+                  className="text-base font-sans-semibold"
+                  style={{ color: isToday ? '#fff' : 'rgba(255,255,255,0.4)' }}
+                >
+                  {date.getDate()}
+                </Text>
+                {hasMeals && (
+                  <View
+                    className="w-1 h-1 rounded-full mt-0.5"
+                    style={{ backgroundColor: isToday ? 'rgba(255,255,255,0.7)' : 'rgba(212,101,46,0.6)' }}
+                  />
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {!plan ? (
         /* No plan — show create button opening modal */
         <View className="flex-1 items-center justify-center px-6">
-          <Ionicons name="calendar-outline" size={48} color="#d1d5db" />
-          <Text className="text-gray-400 mt-3 text-center">
+          <Ionicons name="calendar-outline" size={48} color="#B8A68E" />
+          <Text className="text-brown-light mt-3 text-center font-sans">
             No meal plan for this week yet.
           </Text>
           <TouchableOpacity
             onPress={openCreateModal}
-            className="mt-4 bg-primary-500 px-6 py-3 rounded-lg"
+            className="mt-4 px-6 py-4 rounded-2xl flex-row items-center justify-center"
+            style={{ backgroundColor: '#2D2520', shadowColor: '#2D2520', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 14, elevation: 4 }}
           >
-            <Text className="text-white font-medium">Create Meal Plan</Text>
+            <Text className="text-lg mr-2">✦</Text>
+            <Text className="text-cream font-sans-semibold text-[15px]" style={{ letterSpacing: -0.2 }}>Create Meal Plan</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { mealPrep.loadThreads(); setShowMealPrep(true); }}
-            className="mt-3 px-6 py-3 rounded-lg flex-row items-center"
-            style={{ backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa' }}
+            className="mt-3 px-6 py-3 rounded-xl flex-row items-center"
+            style={{ backgroundColor: '#FFF0E8', borderWidth: 1, borderColor: '#FDDCC9' }}
           >
-            <Ionicons name="flame" size={18} color="#f97316" />
-            <Text className="ml-2 font-medium" style={{ color: '#ea580c' }}>Smart Meal Prep</Text>
+            <Ionicons name="flame" size={18} color="#D4652E" />
+            <Text className="ml-2 font-sans-medium" style={{ color: '#D4652E' }}>Smart Meal Prep</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -567,22 +567,58 @@ export default function MealPlanScreen() {
             const dayName = SHORT_DAYS[date.getDay()];
 
             return (
-              <View key={formatDate(date)} className={`mx-4 mt-4 bg-white rounded-2xl p-4 shadow-sm ${isToday ? 'border-2 border-primary-500' : ''}`}>
+              <View
+                key={formatDate(date)}
+                className={`mx-4 mt-4 bg-white rounded-2xl p-4 ${isToday ? 'border-2 border-primary-500' : ''}`}
+                style={{ shadowColor: '#2D2520', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}
+              >
                 <View className="flex-row items-center justify-between mb-3">
                   <View className="flex-row items-center">
-                    <Text className={`text-base font-bold ${isToday ? 'text-primary-600' : 'text-gray-900'}`}>
+                    <Text className={`text-base font-sans-bold ${isToday ? 'text-primary-600' : 'text-warm-dark'}`}>
                       {dayName}
                     </Text>
-                    <Text className="text-sm text-gray-500 ml-2">
+                    <Text className="text-sm text-brown ml-2 font-sans">
                       {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </Text>
                     {isToday && (
-                      <View className="ml-2 bg-primary-100 px-2.5 py-1 rounded-lg">
-                        <Text className="text-xs text-primary-700 font-bold">TODAY</Text>
+                      <View className="ml-2 bg-orange-light px-2.5 py-1 rounded-lg">
+                        <Text className="text-xs text-orange-dark font-sans-bold">TODAY</Text>
                       </View>
                     )}
                   </View>
                 </View>
+
+                {/* Daily macro estimates */}
+                {slots.length > 0 && (() => {
+                  const dayTotals = slots.reduce(
+                    (acc: { calories: number; protein: number; carbs: number; fat: number }, slot: any) => {
+                      const n = getScaledNutrition(slot);
+                      return {
+                        calories: acc.calories + n.calories,
+                        protein: acc.protein + n.protein,
+                        carbs: acc.carbs + n.carbs,
+                        fat: acc.fat + n.fat,
+                      };
+                    },
+                    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+                  );
+                  return dayTotals.calories > 0 ? (
+                    <View className="flex-row items-center bg-orange-light rounded-xl px-3 py-2 mb-2" style={{ gap: 12 }}>
+                      <Text className="text-xs font-sans-bold" style={{ color: '#D4652E' }}>
+                        {dayTotals.calories} kcal
+                      </Text>
+                      <Text className="text-[11px] font-sans text-brown">
+                        P: {Math.round(dayTotals.protein)}g
+                      </Text>
+                      <Text className="text-[11px] font-sans text-brown">
+                        C: {Math.round(dayTotals.carbs)}g
+                      </Text>
+                      <Text className="text-[11px] font-sans text-brown">
+                        F: {Math.round(dayTotals.fat)}g
+                      </Text>
+                    </View>
+                  ) : null;
+                })()}
 
                 {/* Meal type rows */}
                 {MEAL_TYPES.map((mealType) => {
@@ -590,40 +626,40 @@ export default function MealPlanScreen() {
                   const mealIcon = mealType === 'breakfast' ? '🍳' : mealType === 'lunch' ? '🥗' : mealType === 'dinner' ? '🍽️' : '🍎';
 
                   return (
-                    <View key={mealType} className="flex-row items-start py-2 border-t border-gray-100">
-                      <Text className="text-xs text-gray-600 font-semibold w-20 pt-1">{mealIcon} {mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
+                    <View key={mealType} className="flex-row items-start py-2 border-t border-cream-deeper">
+                      <Text className="text-xs text-brown font-sans-semibold w-20 pt-1">{mealIcon} {mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
                       <View className="flex-1 flex-row flex-wrap gap-2">
                         {mealSlots.map((slot: any) => (
                           <TouchableOpacity
                             key={slot.id}
-                            className={`rounded-xl px-3 py-2 flex-row items-center ${slot.isCompleted ? 'bg-green-50 border-2 border-green-200' : 'bg-primary-50 border-2 border-primary-200'}`}
+                            className={`rounded-xl px-3 py-2 flex-row items-center ${slot.isCompleted ? 'bg-orange-light border-2 border-orange-soft' : 'bg-primary-50 border-2 border-primary-200'}`}
                             onPress={() => openEditSlotModal(slot)}
                           >
                             <View className="flex-1">
                               <Text
-                                className={`text-sm font-medium ${slot.isCompleted ? 'text-gray-700' : 'text-primary-700'}`}
+                                className={`text-sm font-sans-medium ${slot.isCompleted ? 'text-warm-soft' : 'text-primary-700'}`}
                                 numberOfLines={1}
                               >
                                 {slot.recipe?.title || slot.customName || 'Meal'}
                               </Text>
                               {slot.isCompleted && (
-                                <View className="bg-green-100 self-start px-2 py-0.5 rounded-md mt-1">
-                                  <Text className="text-xs font-bold text-green-700">✓ Logged</Text>
+                                <View className="bg-orange-light self-start px-2 py-0.5 rounded-md mt-1">
+                                  <Text className="text-xs font-sans-bold text-orange-dark">✓ Logged</Text>
                                 </View>
                               )}
                             </View>
                             {slot.servings && slot.servings > 1 && (
-                              <View className={`ml-2 rounded-lg px-2 py-1 ${slot.isCompleted ? 'bg-gray-200' : 'bg-primary-200'}`}>
-                                <Text className={`text-xs font-bold ${slot.isCompleted ? 'text-gray-600' : 'text-primary-800'}`}>{slot.servings}x</Text>
+                              <View className={`ml-2 rounded-lg px-2 py-1 ${slot.isCompleted ? 'bg-cream-deeper' : 'bg-primary-200'}`}>
+                                <Text className={`text-xs font-sans-bold ${slot.isCompleted ? 'text-warm-soft' : 'text-primary-800'}`}>{slot.servings}x</Text>
                               </View>
                             )}
                           </TouchableOpacity>
                         ))}
                         <TouchableOpacity
-                          className="w-8 h-8 rounded-full bg-gray-100 border-2 border-gray-300 items-center justify-center"
+                          className="w-8 h-8 rounded-full bg-cream-dark border-2 border-cream-deeper items-center justify-center"
                           onPress={() => openAddMeal(date, mealType)}
                         >
-                          <Ionicons name="add" size={18} color="#9ca3af" />
+                          <Ionicons name="add" size={18} color="#B8A68E" />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -643,7 +679,7 @@ export default function MealPlanScreen() {
           style={{ backgroundColor: '#f97316', elevation: 4 }}
         >
           <Ionicons name="flame" size={20} color="#ffffff" />
-          <Text className="ml-2 text-white font-semibold text-sm">Smart Meal Prep</Text>
+          <Text className="ml-2 text-white font-sans-semibold text-sm">Smart Meal Prep</Text>
         </TouchableOpacity>
       )}
 
@@ -665,704 +701,92 @@ export default function MealPlanScreen() {
         </Modal>
       </Modal>
 
-      {/* ===== Enhancement A: Edit Slot Modal ===== */}
-      <Modal visible={!!editSlotModal} transparent animationType="fade" onRequestClose={() => setEditSlotModal(null)}>
-        <Pressable className="flex-1 bg-black/40 justify-end" onPress={(e) => { if (e.target === e.currentTarget) setEditSlotModal(null); }}>
-          <View className="bg-white rounded-t-2xl px-5 pt-5 pb-8">
-            {/* Recipe name */}
-            <Text className="text-base font-semibold text-gray-800 mb-0.5">
-              {editSlotModal?.recipe?.title || editSlotModal?.customName || 'Meal'}
-            </Text>
-            <Text className="text-xs text-gray-400 mb-4 capitalize">
-              {editSlotModal?.mealType} · {new Date(editSlotModal?.date || '').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              {editSlotModal?.isCompleted ? ' · Eaten' : ''}
-            </Text>
-
-            {editSlotModal?.isCompleted ? (
-              /* Completed slot: show View in Nutrition, Undo, and Delete */
-              <>
-                <View className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-3">
-                  <View className="flex-row items-center mb-1">
-                    <Ionicons name="checkmark-circle" size={16} color="#10b981" style={{ marginRight: 6 }} />
-                    <Text className="text-sm font-medium text-green-700">Logged to Nutrition Tracker</Text>
-                  </View>
-                  <Text className="text-xs text-gray-600">This meal was logged on {new Date(editSlotModal.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.</Text>
-                </View>
-
-                <TouchableOpacity
-                  className="py-2.5 rounded-lg bg-primary-500 items-center mb-2"
-                  onPress={() => {
-                    setEditSlotModal(null);
-                    router.push('/health-goals');
-                  }}
-                >
-                  <Text className="text-sm font-medium text-white">View in Nutrition Tracker</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  className="py-2.5 rounded-lg bg-gray-100 border border-gray-200 items-center mb-2"
-                  onPress={handleUndoCompleted}
-                >
-                  <Text className="text-sm font-medium text-gray-700">Undo (Mark as Not Eaten)</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  className="py-2.5 rounded-lg items-center"
-                  onPress={handleDeleteFromEdit}
-                >
-                  <Text className="text-sm font-medium text-red-500">Delete Slot</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              /* Active slot: full edit UI */
-              <>
-                {/* Servings picker */}
-                <Text className="text-xs text-gray-500 mb-1.5 font-medium">Servings</Text>
-                <View className="flex-row gap-2 mb-3">
-                  {[1, 2, 4].map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      onPress={() => setEditServings(s)}
-                      className={`flex-1 py-2 rounded-lg border items-center ${
-                        editServings === s ? 'bg-primary-50 border-primary-400' : 'bg-white border-gray-200'
-                      }`}
-                    >
-                      <Text className={`text-sm font-medium ${editServings === s ? 'text-primary-700' : 'text-gray-600'}`}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (Alert.prompt) {
-                        Alert.prompt('Custom servings', 'How many servings?', (text: string) => {
-                          const n = parseInt(text);
-                          if (n > 0) setEditServings(n);
-                        });
-                      }
-                    }}
-                    className={`flex-1 py-2 rounded-lg border items-center ${
-                      ![1, 2, 4].includes(editServings) ? 'bg-primary-50 border-primary-400' : 'bg-white border-gray-200'
-                    }`}
-                  >
-                    <Text className={`text-sm font-medium ${![1, 2, 4].includes(editServings) ? 'text-primary-700' : 'text-gray-600'}`}>
-                      {![1, 2, 4].includes(editServings) ? editServings : '...'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Meal type selector */}
-                <Text className="text-xs text-gray-500 mb-1.5 font-medium">Meal Type</Text>
-                <View className="flex-row gap-2 mb-4">
-                  {MEAL_TYPES.map((mt) => (
-                    <TouchableOpacity
-                      key={mt}
-                      onPress={() => setEditMealType(mt)}
-                      className={`flex-1 py-2 rounded-lg border items-center ${
-                        editMealType === mt ? 'bg-primary-50 border-primary-400' : 'bg-white border-gray-200'
-                      }`}
-                    >
-                      <Text className={`text-xs font-medium capitalize ${editMealType === mt ? 'text-primary-700' : 'text-gray-600'}`}>{mt}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Action buttons */}
-                <Text className="text-xs text-gray-500 mb-1.5 font-medium">Log Meal</Text>
-                <View className="flex-row gap-2 mb-1">
-                  <TouchableOpacity
-                    className="flex-1 py-2.5 rounded-lg bg-green-500 items-center"
-                    onPress={handleQuickLogFromEdit}
-                  >
-                    <Text className="text-sm font-medium text-white">Log as Eaten</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    className="flex-1 py-2.5 rounded-lg bg-primary-50 border border-primary-300 items-center"
-                    onPress={handleEditLogFromEdit}
-                  >
-                    <Text className="text-sm font-medium text-primary-700">Adjust & Log</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text className="text-xs text-gray-400 mb-3">
-                  Logs this meal to your nutrition tracker. Use "Adjust & Log" to modify macros.
-                </Text>
-
-                <Text className="text-xs text-gray-500 mb-1.5 font-medium">Edit Slot</Text>
-                <TouchableOpacity
-                  className="py-2.5 rounded-lg bg-gray-100 items-center mb-2"
-                  onPress={handleSaveSlotEdits}
-                  disabled={savingSlot}
-                >
-                  <Text className="text-sm font-medium text-gray-700">
-                    {savingSlot ? 'Saving...' : 'Save Changes'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  className="py-2.5 rounded-lg items-center"
-                  onPress={handleDeleteFromEdit}
-                >
-                  <Text className="text-sm font-medium text-red-500">Delete Slot</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </Pressable>
-      </Modal>
+      {/* ===== Edit Slot Modal ===== */}
+      <EditSlotModal
+        editSlotModal={editSlotModal}
+        onClose={() => setEditSlotModal(null)}
+        editServings={editServings}
+        setEditServings={setEditServings}
+        editMealType={editMealType}
+        setEditMealType={setEditMealType}
+        savingSlot={savingSlot}
+        onSaveSlotEdits={handleSaveSlotEdits}
+        onQuickLog={handleQuickLogFromEdit}
+        onEditLog={handleEditLogFromEdit}
+        onUndoCompleted={handleUndoCompleted}
+        onDelete={handleDeleteFromEdit}
+      />
 
       {/* ===== Edit & Log Modal ===== */}
-      <Modal visible={!!logMealModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setLogMealModal(null)}>
-        <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => setLogMealModal(null)}>
-              <Text className="text-gray-500">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">Edit & Log</Text>
-            <TouchableOpacity onPress={handleSaveEditLog} disabled={savingLog}>
-              <Text className={`font-medium ${savingLog ? 'text-gray-300' : 'text-primary-500'}`}>
-                {savingLog ? 'Saving...' : 'Log'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+      <LogMealModal
+        logMealModal={logMealModal}
+        onClose={() => setLogMealModal(null)}
+        logCalories={logCalories}
+        setLogCalories={setLogCalories}
+        logCaloriesError={logCaloriesError}
+        setLogCaloriesError={setLogCaloriesError}
+        logProtein={logProtein}
+        setLogProtein={setLogProtein}
+        logProteinError={logProteinError}
+        setLogProteinError={setLogProteinError}
+        logCarbs={logCarbs}
+        setLogCarbs={setLogCarbs}
+        logCarbsError={logCarbsError}
+        setLogCarbsError={setLogCarbsError}
+        logFat={logFat}
+        setLogFat={setLogFat}
+        logFatError={logFatError}
+        setLogFatError={setLogFatError}
+        savingLog={savingLog}
+        onSave={handleSaveEditLog}
+      />
 
-          <ScrollView className="px-4 pt-4" contentContainerStyle={{ paddingBottom: 30 }}>
-            <Text className="text-base font-semibold text-gray-800 mb-1">
-              {logMealModal?.recipe?.title || logMealModal?.customName || 'Meal'}
-            </Text>
-            <Text className="text-xs text-gray-400 mb-4 capitalize">
-              {logMealModal?.mealType}
-              {logMealModal?.servings > 1 ? ` · ${logMealModal.servings} servings` : ''}
-            </Text>
+      {/* ===== Create Plan Modal ===== */}
+      <CreatePlanModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        createName={createName}
+        setCreateName={setCreateName}
+        createType={createType}
+        setCreateType={setCreateType}
+        customStart={customStart}
+        setCustomStart={setCustomStart}
+        customEnd={customEnd}
+        setCustomEnd={setCustomEnd}
+        weekDates={weekDates}
+        creating={creating}
+        onCreatePlan={handleCreatePlan}
+      />
 
-            <Text className="text-sm font-medium text-gray-700 mb-2">Adjust Nutrition</Text>
-            <View className="flex-row gap-2 mb-2">
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Calories</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800"
-                  placeholder="kcal"
-                  placeholderTextColor="#d1d5db"
-                  value={logCalories}
-                  onChangeText={(text) => {
-                    setLogCalories(text);
-                    const error = validateMacro(text, 'Calories');
-                    setLogCaloriesError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {logCaloriesError ? (
-                  <Text className="text-xs text-red-500 mt-0.5">{logCaloriesError}</Text>
-                ) : null}
-              </View>
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Protein (g)</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800"
-                  placeholder="g"
-                  placeholderTextColor="#d1d5db"
-                  value={logProtein}
-                  onChangeText={(text) => {
-                    setLogProtein(text);
-                    const error = validateMacro(text, 'Protein');
-                    setLogProteinError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {logProteinError ? (
-                  <Text className="text-xs text-red-500 mt-0.5">{logProteinError}</Text>
-                ) : null}
-              </View>
-            </View>
-            <View className="flex-row gap-2">
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Carbs (g)</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800"
-                  placeholder="g"
-                  placeholderTextColor="#d1d5db"
-                  value={logCarbs}
-                  onChangeText={(text) => {
-                    setLogCarbs(text);
-                    const error = validateMacro(text, 'Carbs');
-                    setLogCarbsError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {logCarbsError ? (
-                  <Text className="text-xs text-red-500 mt-0.5">{logCarbsError}</Text>
-                ) : null}
-              </View>
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Fat (g)</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800"
-                  placeholder="g"
-                  placeholderTextColor="#d1d5db"
-                  value={logFat}
-                  onChangeText={(text) => {
-                    setLogFat(text);
-                    const error = validateMacro(text, 'Fat');
-                    setLogFatError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {logFatError ? (
-                  <Text className="text-xs text-red-500 mt-0.5">{logFatError}</Text>
-                ) : null}
-              </View>
-            </View>
+      {/* ===== Plan Settings Modal ===== */}
+      <PlanSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        settingsName={settingsName}
+        setSettingsName={setSettingsName}
+        settingsStart={settingsStart}
+        setSettingsStart={setSettingsStart}
+        settingsEnd={settingsEnd}
+        setSettingsEnd={setSettingsEnd}
+        isPlanWeekdaysOnly={!!isPlanWeekdaysOnly}
+        savingSettings={savingSettings}
+        onSaveSettings={handleSaveSettings}
+        onDeletePlan={handleDeletePlan}
+      />
 
-            <Text className="text-xs text-gray-400 mt-3">
-              Pre-filled from recipe nutrition. Adjust if your portion differs.
-            </Text>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* ===== Enhancement B: Create Plan Modal ===== */}
-      <Modal visible={showCreateModal} transparent animationType="fade" onRequestClose={() => setShowCreateModal(false)}>
-        <Pressable className="flex-1 bg-black/40 justify-center items-center" onPress={(e) => { if (e.target === e.currentTarget) setShowCreateModal(false); }}>
-          <View className="bg-white rounded-2xl mx-6 p-5 w-80">
-            <Text className="text-lg font-semibold text-gray-800 mb-3 text-center">New Meal Plan</Text>
-
-            {/* Plan name */}
-            <Text className="text-xs text-gray-500 mb-1 font-medium">Plan Name</Text>
-            <TextInput
-              className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 mb-3"
-              placeholder="Week of Mar 3"
-              placeholderTextColor="#d1d5db"
-              value={createName}
-              onChangeText={setCreateName}
-            />
-
-            {/* Duration type */}
-            <Text className="text-xs text-gray-500 mb-1.5 font-medium">Duration</Text>
-            {(['full', 'weekdays', 'custom'] as const).map((type) => {
-              const labels = { full: 'Full Week (Mon–Sun)', weekdays: 'Weekdays Only (Mon–Fri)', custom: 'Custom Range' };
-              return (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => {
-                    setCreateType(type);
-                    const monday = weekDates[0];
-                    const friday = weekDates[4];
-                    const sunday = weekDates[6];
-                    if (type === 'full') { setCustomStart(formatDate(monday)); setCustomEnd(formatDate(sunday)); }
-                    else if (type === 'weekdays') { setCustomStart(formatDate(monday)); setCustomEnd(formatDate(friday)); }
-                  }}
-                  className={`flex-row items-center py-2.5 px-3 rounded-lg mb-1.5 border ${
-                    createType === type ? 'bg-primary-50 border-primary-400' : 'bg-white border-gray-200'
-                  }`}
-                >
-                  <Ionicons
-                    name={createType === type ? 'radio-button-on' : 'radio-button-off'}
-                    size={18}
-                    color={createType === type ? '#10b981' : '#d1d5db'}
-                  />
-                  <Text className={`text-sm ml-2 ${createType === type ? 'text-primary-700 font-medium' : 'text-gray-600'}`}>
-                    {labels[type]}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-
-            {/* Custom date inputs */}
-            {createType === 'custom' && (
-              <View className="flex-row gap-2 mt-2">
-                <View className="flex-1">
-                  <Text className="text-xs text-gray-500 mb-1">Start (YYYY-MM-DD)</Text>
-                  <TextInput
-                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800"
-                    placeholder="2025-03-03"
-                    placeholderTextColor="#d1d5db"
-                    value={customStart}
-                    onChangeText={setCustomStart}
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-xs text-gray-500 mb-1">End (YYYY-MM-DD)</Text>
-                  <TextInput
-                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800"
-                    placeholder="2025-03-09"
-                    placeholderTextColor="#d1d5db"
-                    value={customEnd}
-                    onChangeText={setCustomEnd}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* Create button */}
-            <TouchableOpacity
-              className="mt-4 py-3 rounded-lg bg-primary-500 items-center"
-              onPress={handleCreatePlan}
-              disabled={creating}
-            >
-              <Text className="text-white font-semibold">
-                {creating ? 'Creating...' : 'Create Plan'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* ===== Enhancement C: Plan Settings Modal ===== */}
-      <Modal visible={showSettingsModal} transparent animationType="fade" onRequestClose={() => setShowSettingsModal(false)}>
-        <Pressable className="flex-1 bg-black/40 justify-center items-center" onPress={(e) => { if (e.target === e.currentTarget) setShowSettingsModal(false); }}>
-          <View className="bg-white rounded-2xl mx-6 p-5 w-80">
-            <Text className="text-lg font-semibold text-gray-800 mb-3 text-center">Plan Settings</Text>
-
-            {/* Plan name */}
-            <Text className="text-xs text-gray-500 mb-1 font-medium">Plan Name</Text>
-            <TextInput
-              className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 mb-3"
-              value={settingsName}
-              onChangeText={setSettingsName}
-            />
-
-            {/* Dates */}
-            <View className="flex-row gap-2 mb-3">
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1 font-medium">Start Date</Text>
-                <TextInput
-                  className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800"
-                  value={settingsStart}
-                  onChangeText={setSettingsStart}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#d1d5db"
-                />
-              </View>
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1 font-medium">End Date</Text>
-                <TextInput
-                  className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800"
-                  value={settingsEnd}
-                  onChangeText={setSettingsEnd}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#d1d5db"
-                />
-              </View>
-            </View>
-
-            {/* Quick toggles — show context-aware buttons */}
-            {isPlanWeekdaysOnly && (
-              <View className="flex-row gap-2 mb-3">
-                <TouchableOpacity
-                  className="flex-1 py-2 rounded-lg border border-primary-300 bg-primary-50 items-center"
-                  onPress={() => {
-                    // Add Saturday: extend end by 1
-                    const fri = new Date(settingsEnd + 'T00:00:00');
-                    const sat = new Date(fri);
-                    sat.setDate(fri.getDate() + 1);
-                    setSettingsEnd(formatDate(sat));
-                  }}
-                >
-                  <Text className="text-xs font-medium text-primary-700">+ Include Sat</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className="flex-1 py-2 rounded-lg border border-primary-300 bg-primary-50 items-center"
-                  onPress={() => {
-                    // Add Sat + Sun: extend end by 2
-                    const fri = new Date(settingsEnd + 'T00:00:00');
-                    const sun = new Date(fri);
-                    sun.setDate(fri.getDate() + 2);
-                    setSettingsEnd(formatDate(sun));
-                  }}
-                >
-                  <Text className="text-xs font-medium text-primary-700">+ Include Sat & Sun</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Save */}
-            <TouchableOpacity
-              className="py-3 rounded-lg bg-primary-500 items-center mb-2"
-              onPress={handleSaveSettings}
-              disabled={savingSettings}
-            >
-              <Text className="text-white font-semibold">
-                {savingSettings ? 'Saving...' : 'Save Changes'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Delete Plan */}
-            <TouchableOpacity
-              className="py-2.5 rounded-lg items-center"
-              onPress={handleDeletePlan}
-            >
-              <Text className="text-sm font-medium text-red-500">Delete Plan</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* ===== Add Meal Modal ===== */}
-      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddModal(false)}>
-        <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => setShowAddModal(false)}>
-              <Text className="text-gray-500">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">
-              Add {selectedMealType}
-            </Text>
-            <View className="w-12" />
-          </View>
-
-          {selectedDay && (
-            <Text className="text-sm text-gray-500 text-center py-2">
-              {selectedDay.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-            </Text>
-          )}
-
-          {/* Servings picker */}
-          <View className="px-4 pt-2">
-            <Text className="text-xs text-gray-500 mb-1.5">Servings</Text>
-            <View className="flex-row gap-2">
-              {[1, 2, 4].map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  onPress={() => setSelectedServings(s)}
-                  className={`flex-1 py-2 rounded-lg border items-center ${
-                    selectedServings === s
-                      ? 'bg-primary-50 border-primary-400'
-                      : 'bg-white border-gray-200'
-                  }`}
-                >
-                  <Text className={`text-sm font-medium ${
-                    selectedServings === s ? 'text-primary-700' : 'text-gray-600'
-                  }`}>{s}</Text>
-                  <Text className={`text-[10px] ${
-                    selectedServings === s ? 'text-primary-500' : 'text-gray-400'
-                  }`}>
-                    {s === 1 ? 'Single' : s === 2 ? 'Leftovers' : 'Meal prep'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                onPress={() => {
-                  if (Alert.prompt) {
-                    Alert.prompt('Custom servings', 'How many servings?', (text: string) => {
-                      const n = parseInt(text);
-                      if (n > 0) setSelectedServings(n);
-                    });
-                  }
-                }}
-                className={`flex-1 py-2 rounded-lg border items-center ${
-                  ![1, 2, 4].includes(selectedServings)
-                    ? 'bg-primary-50 border-primary-400'
-                    : 'bg-white border-gray-200'
-                }`}
-              >
-                <Text className={`text-sm font-medium ${
-                  ![1, 2, 4].includes(selectedServings) ? 'text-primary-700' : 'text-gray-600'
-                }`}>
-                  {![1, 2, 4].includes(selectedServings) ? selectedServings : '...'}
-                </Text>
-                <Text className={`text-[10px] ${
-                  ![1, 2, 4].includes(selectedServings) ? 'text-primary-500' : 'text-gray-400'
-                }`}>Custom</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Search */}
-          <View className="px-4 py-2">
-            <View className="flex-row items-center bg-white border border-gray-200 rounded-xl px-3">
-              <Ionicons name="search" size={16} color="#9ca3af" />
-              <TextInput
-                className="flex-1 py-2.5 px-2 text-sm text-gray-800"
-                placeholder="Search recipes..."
-                placeholderTextColor="#9ca3af"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
-          </View>
-
-          <ScrollView className="flex-1 px-4">
-            {recipes
-              .filter(r => !searchQuery || r.title.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map((recipe: any) => (
-                <TouchableOpacity
-                  key={recipe.id}
-                  className="bg-white rounded-xl p-3 mb-2 flex-row items-center"
-                  onPress={() => handleAddSlot(recipe.id)}
-                >
-                  <View className="w-10 h-10 rounded-lg bg-primary-100 items-center justify-center mr-3">
-                    <Ionicons name="restaurant" size={18} color="#10b981" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-800" numberOfLines={1}>{recipe.title}</Text>
-                    <Text className="text-xs text-gray-400">
-                      {(recipe.prepTimeMinutes || 0) + (recipe.cookTimeMinutes || 0)} min
-                      {recipe.nutrition?.calories ? ` · ${recipe.nutrition.calories} cal` : ''}
-                    </Text>
-                  </View>
-                  <Ionicons name="add-circle" size={24} color="#10b981" />
-                </TouchableOpacity>
-              ))}
-          </ScrollView>
-        </View>
-      </Modal>
-    </View>
-  );
-}
-
-// ─── Smart Meal Prep Chat (inline component) ─────────────────────────────────
-
-const MEAL_PREP_PROMPTS = [
-  'Easy crockpot meal prep for the week',
-  'High protein sheet pan meal prep',
-  'Meal prep lunches for the next 5 work days',
-  'Batch cook chicken — half fridge, half freezer',
-  'Budget meal prep under $30',
-];
-
-function SmartMealPrepChat({
-  store,
-  flatListRef,
-  onClose,
-  onShowThreads,
-}: {
-  store: ChatState;
-  flatListRef: React.RefObject<FlatList | null>;
-  onClose: () => void;
-  onShowThreads: () => void;
-}) {
-  const {
-    messages,
-    isSending,
-    streamingContent,
-    error,
-    sendMessage,
-    createThread,
-    retryLastMessage,
-    clearError,
-  } = store;
-
-  useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [messages.length, streamingContent]);
-
-  const handleSend = useCallback((text: string) => sendMessage(text), [sendMessage]);
-
-  const renderMessage = useCallback(
-    ({ item }: { item: any }) => (
-      <MessageBubble role={item.role} message={item.message} />
-    ),
-    []
-  );
-
-  const showWelcome = messages.length === 0 && !isSending;
-
-  return (
-    <View className="flex-1 bg-gray-50">
-      {/* Header */}
-      <View className="bg-primary-500 pt-3 pb-5 px-5">
-        <View className="flex-row justify-between items-center">
-          <TouchableOpacity testID="meal-prep-close-button" onPress={onClose} className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center">
-            <Ionicons name="close" size={20} color="white" />
-          </TouchableOpacity>
-          <Text className="text-white text-2xl font-bold tracking-tight">Meal Prep AI</Text>
-          <View className="flex-row gap-2">
-            <TouchableOpacity testID="meal-prep-thread-list-button" onPress={onShowThreads} className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center">
-              <Ionicons name="list" size={20} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity testID="meal-prep-new-thread-button" onPress={() => createThread()} className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center">
-              <Ionicons name="add" size={20} color="white" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
-      {showWelcome ? (
-        <View className="flex-1 px-5 py-6">
-          {/* Welcome Card */}
-          <View className="bg-white rounded-3xl p-8 items-center shadow-md mb-6">
-            <View className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full items-center justify-center mb-5">
-              <Text className="text-5xl">🍳</Text>
-            </View>
-            <Text className="text-2xl font-bold text-gray-900 mb-2">
-              Plan Your Week
-            </Text>
-            <Text className="text-gray-500 text-center leading-6">
-              I'm your meal prep assistant. I'll check your inventory, suggest batch-cooking recipes, and build your shopping list.
-            </Text>
-          </View>
-
-          {/* Quick Prompts */}
-          <Text className="text-gray-700 font-semibold mb-3 px-1 text-base">Quick Start</Text>
-          <View className="gap-3">
-            {[
-              { icon: '🥘', text: 'Easy crockpot meal prep — 10 servings' },
-              { icon: '🍗', text: 'High protein sheet pan meal prep for the week' },
-              { icon: '🥗', text: 'Meal prep lunches for the next 5 work days' },
-              { icon: '❄️', text: 'Batch cook chicken — half fridge, half freezer' },
-              { icon: '💰', text: 'Budget meal prep under $30 — 10 servings' },
-            ].map((item, idx) => (
-              <TouchableOpacity
-                key={idx}
-                className="bg-white border-2 border-gray-200 rounded-2xl p-4 flex-row items-center shadow-sm active:bg-primary-50 active:border-primary-500"
-                onPress={() => handleSend(item.text)}
-              >
-                <View className="bg-primary-50 w-10 h-10 rounded-xl items-center justify-center mr-3">
-                  <Text className="text-xl">{item.icon}</Text>
-                </View>
-                <Text className="text-gray-800 font-medium flex-1">
-                  {item.text}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      ) : (
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingVertical: 16 }}
-          showsVerticalScrollIndicator={false}
-          ListFooterComponent={
-            <>
-              {streamingContent ? (
-                <MessageBubble role="assistant" message={streamingContent} isStreaming />
-              ) : null}
-              {isSending && !streamingContent ? (
-                <View className="flex-row items-center px-4 mb-3">
-                  <View className="rounded-full w-8 h-8 items-center justify-center mr-2" style={{ backgroundColor: '#d1fae5' }}>
-                    <Ionicons name="restaurant" size={16} color="#10b981" />
-                  </View>
-                  <View className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3">
-                    <ActivityIndicator size="small" color="#10b981" />
-                  </View>
-                </View>
-              ) : null}
-              {error && !isSending ? (
-                <View className="mx-4 mb-3 bg-red-50 border border-red-200 rounded-xl p-3">
-                  <View className="flex-row items-center mb-1">
-                    <Ionicons name="alert-circle" size={16} color="#ef4444" />
-                    <Text className="text-sm text-red-600 ml-1.5 flex-1">{error}</Text>
-                  </View>
-                  <View className="flex-row gap-2 mt-2">
-                    <TouchableOpacity className="bg-red-100 px-3 py-1.5 rounded-lg" onPress={() => retryLastMessage()}>
-                      <Text className="text-xs text-red-700 font-medium">Retry</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity className="px-3 py-1.5 rounded-lg" onPress={() => clearError()}>
-                      <Text className="text-xs text-gray-500">Dismiss</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : null}
-            </>
-          }
-        />
-      )}
-
-      <ChatInput onSend={handleSend} disabled={isSending} />
+      {/* ===== Add Recipe Modal ===== */}
+      <AddRecipeModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        selectedMealType={selectedMealType}
+        selectedDay={selectedDay}
+        selectedServings={selectedServings}
+        setSelectedServings={setSelectedServings}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        recipes={recipes}
+        onAddSlot={handleAddSlot}
+      />
     </View>
   );
 }

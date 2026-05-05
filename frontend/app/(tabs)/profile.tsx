@@ -1,39 +1,40 @@
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../src/store/authStore';
+import { ScreenHeader } from '../../src/components/ui/ScreenHeader';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuthStore();
 
   return (
-    <View className="flex-1 bg-gray-50">
-      {/* Header */}
-      <View className="bg-primary-500 pt-3 pb-5 px-5">
-        <Text className="text-white text-3xl font-bold tracking-tight">Profile</Text>
-      </View>
+    <View className="flex-1 bg-cream">
+      <ScreenHeader title="Profile" />
 
-      <View className="p-5">
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 20 }}>
         {/* User Info Card */}
-        <View className="bg-white rounded-2xl p-6 shadow-md mb-4">
+        <View
+          className="bg-white rounded-2xl p-6 mb-4"
+          style={{ shadowColor: '#2D2520', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}
+        >
           <View className="items-center mb-4">
-            <View className="bg-primary-100 rounded-full p-5 mb-4">
-              <Ionicons name="person" size={48} color="#10b981" />
+            <View className="bg-orange-light rounded-full p-5 mb-4">
+              <Ionicons name="person" size={48} color="#D4652E" />
             </View>
-            <Text className="text-2xl font-bold text-gray-900">
+            <Text className="text-2xl font-serif-bold text-warm-dark">
               {user?.firstName} {user?.lastName}
             </Text>
-            <Text className="text-gray-600 mt-1">{user?.email}</Text>
+            <Text className="text-brown mt-1 font-sans">{user?.email}</Text>
           </View>
 
-          <View className="border-t border-gray-100 pt-4">
+          <View className="border-t border-cream-deeper pt-4">
             <View className="flex-row justify-between mb-3">
-              <Text className="text-gray-600">Subscription</Text>
-              <Text className="text-gray-900 font-semibold capitalize">{user?.subscriptionTier || 'Free'}</Text>
+              <Text className="text-brown font-sans">Subscription</Text>
+              <Text className="text-warm-dark font-sans-semibold capitalize">{user?.subscriptionTier || 'Free'}</Text>
             </View>
             <View className="flex-row justify-between">
-              <Text className="text-gray-600">Member since</Text>
-              <Text className="text-gray-900 font-semibold">
+              <Text className="text-brown font-sans">Member since</Text>
+              <Text className="text-warm-dark font-sans-semibold">
                 {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
               </Text>
             </View>
@@ -41,46 +42,80 @@ export default function ProfileScreen() {
         </View>
 
         {/* Menu Items */}
-        <View className="bg-white rounded-2xl shadow-md mb-4">
+        <View
+          className="bg-white rounded-2xl mb-4"
+          style={{ shadowColor: '#2D2520', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}
+        >
           <TouchableOpacity
             testID="my-nutrition-button"
-            className="flex-row items-center p-5 border-b border-gray-100"
+            className="flex-row items-center p-5 border-b border-cream-deeper"
             onPress={() => router.push('/health-goals')}
           >
             <Ionicons name="trophy-outline" size={24} color="#f59e0b" />
-            <Text className="text-gray-900 font-medium ml-4 flex-1 text-base">My Nutrition</Text>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            <Text className="text-warm-dark font-sans-medium ml-4 flex-1 text-base">My Nutrition</Text>
+            <Ionicons name="chevron-forward" size={20} color="#B8A68E" />
           </TouchableOpacity>
           <TouchableOpacity
             testID="preferences-button"
-            className="flex-row items-center p-5 border-b border-gray-100"
+            className="flex-row items-center p-5 border-b border-cream-deeper"
             onPress={() => router.push('/preferences')}
           >
-            <Ionicons name="settings-outline" size={24} color="#6b7280" />
-            <Text className="text-gray-900 font-medium ml-4 flex-1 text-base">Preferences</Text>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            <Ionicons name="settings-outline" size={24} color="#B8A68E" />
+            <Text className="text-warm-dark font-sans-medium ml-4 flex-1 text-base">Preferences</Text>
+            <Ionicons name="chevron-forward" size={20} color="#B8A68E" />
           </TouchableOpacity>
           <TouchableOpacity
             testID="notifications-button"
             className="flex-row items-center p-5"
             onPress={() => router.push('/notifications')}
           >
-            <Ionicons name="notifications-outline" size={24} color="#6b7280" />
-            <Text className="text-gray-900 font-medium ml-4 flex-1 text-base">Notifications</Text>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            <Ionicons name="notifications-outline" size={24} color="#B8A68E" />
+            <Text className="text-warm-dark font-sans-medium ml-4 flex-1 text-base">Notifications</Text>
+            <Ionicons name="chevron-forward" size={20} color="#B8A68E" />
           </TouchableOpacity>
+        </View>
+
+        {/* Legal & Privacy */}
+        <View
+          className="bg-white rounded-2xl mb-4"
+          style={{ shadowColor: '#2D2520', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}
+        >
+          <TouchableOpacity
+            className="flex-row items-center p-5 border-b border-cream-deeper"
+            onPress={() => router.push('/privacy-policy')}
+          >
+            <Ionicons name="shield-checkmark-outline" size={24} color="#B8A68E" />
+            <Text className="text-warm-dark font-sans-medium ml-4 flex-1 text-base">Privacy Policy</Text>
+            <Ionicons name="chevron-forward" size={20} color="#B8A68E" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="flex-row items-center p-5"
+            onPress={() => router.push('/terms-of-service')}
+          >
+            <Ionicons name="document-text-outline" size={24} color="#B8A68E" />
+            <Text className="text-warm-dark font-sans-medium ml-4 flex-1 text-base">Terms of Service</Text>
+            <Ionicons name="chevron-forward" size={20} color="#B8A68E" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Disclaimer */}
+        <View className="bg-orange-light rounded-2xl px-5 py-4 mb-4">
+          <Text className="text-xs text-brown font-sans leading-[18px]">
+            Kitcho AI is not responsible for users not validating data accuracy. Nutritional estimates, macro calculations, and expiration dates are approximations — always verify important information yourself.
+          </Text>
         </View>
 
         {/* Logout Button */}
         <TouchableOpacity
           testID="sign-out-button"
-          className="bg-white rounded-2xl p-5 shadow-md flex-row items-center justify-center"
+          className="bg-white rounded-2xl p-5 flex-row items-center justify-center"
+          style={{ shadowColor: '#2D2520', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}
           onPress={logout}
         >
           <Ionicons name="log-out-outline" size={24} color="#ef4444" />
-          <Text className="text-red-500 font-bold ml-2 text-base">Sign Out</Text>
+          <Text className="text-red-500 font-sans-bold ml-2 text-base">Sign Out</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </View>
   );
 }

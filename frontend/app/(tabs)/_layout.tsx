@@ -10,7 +10,7 @@ function ProfileHeaderButton() {
       style={{ marginRight: 12 }}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
     >
-      <Ionicons name="person-circle-outline" size={26} color="#ffffff" />
+      <Ionicons name="person-circle-outline" size={26} color="#FFFBF5" />
     </TouchableOpacity>
   );
 }
@@ -19,24 +19,27 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#10b981',
-        tabBarInactiveTintColor: '#6b7280',
+        tabBarActiveTintColor: '#D4652E',
+        tabBarInactiveTintColor: '#B8A68E',
         tabBarStyle: {
-          backgroundColor: '#ffffff',
-          borderTopColor: '#e5e7eb',
+          backgroundColor: '#FFFBF5',
+          borderTopColor: 'rgba(139,115,85,0.1)',
+          borderTopWidth: 1,
           paddingBottom: 4,
           height: 60,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
+          fontSize: 10,
+          fontFamily: 'DMSans_600SemiBold',
+          letterSpacing: 0.3,
         },
         headerStyle: {
-          backgroundColor: '#10b981',
+          backgroundColor: '#2D2520',
         },
-        headerTintColor: '#ffffff',
+        headerTintColor: '#FFFBF5',
         headerTitleStyle: {
-          fontWeight: 'bold',
+          fontFamily: 'PlayfairDisplay_700Bold',
+          fontSize: 20,
         },
         headerRight: () => <ProfileHeaderButton />,
       }}
@@ -74,7 +77,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="meal-prep"
         options={{
-          href: null, // Accessed via modal from Meal Plan tab
+          href: null,
           headerTitle: 'Smart Meal Prep',
         }}
       />
@@ -91,7 +94,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="inventory"
         options={{
-          title: 'Inventory',
+          title: 'My Food',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cube" size={size} color={color} />
           ),
@@ -101,7 +104,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          href: null, // Hidden from tab bar
+          href: null,
           headerShown: false,
         }}
       />

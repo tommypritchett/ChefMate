@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kitcho AI — Meal Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream:        #FFFBF5;
+    --cream-dark:   #F5EDE3;
+    --cream-deeper: #EDE0D0;
+    --warm-dark:    #2D2520;
+    --warm-dark-soft: #3D3530;
+    --brown:        #8B7355;
+    --brown-light:  #B8A68E;
+    --orange:       #D4652E;
+    --orange-light: #FFF0E8;
+    --orange-soft:  #FDDCC9;
+    --serif: 'Playfair Display', Georgia, serif;
+    --sans:  'DM Sans', -apple-system, sans-serif;
+    --shadow-sm:   0 1px 3px rgba(45,37,32,0.08);
+    --shadow-md:   0 4px 12px rgba(45,37,32,0.10);
+    --shadow-lg:   0 8px 30px rgba(45,37,32,0.14);
+    --shadow-card: 0 2px 8px rgba(45,37,32,0.07), 0 0 0 1px rgba(45,37,32,0.04);
+    --radius-sm:  10px;
+    --radius-md:  16px;
+    --radius-lg:  22px;
+    --radius-xl:  28px;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background: #1a1612;
+    font-family: var(--sans);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 80px;
+    gap: 60px;
+    color: var(--warm-dark);
+  }
+
+  /* ─── Page labels ──────────────────────────────── */
+  .mockup-label {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--brown-light);
+    margin-bottom: 10px;
+    text-align: center;
+  }
+
+  .mockup-sublabel {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--cream);
+    margin-bottom: 28px;
+    text-align: center;
+    font-style: italic;
+  }
+
+  /* ─── Phone frame ──────────────────────────────── */
+  .phone-frame {
+    width: 390px;
+    height: 844px;
+    background: var(--cream);
+    border-radius: 44px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 0 0 2px rgba(255,255,255,0.05),
+      0 25px 60px rgba(0,0,0,0.45),
+      inset 0 0 0 1px rgba(255,255,255,0.08);
+  }
+
+  .phone-scroll {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+  .phone-scroll::-webkit-scrollbar { display: none; }
+
+  /* ─── STATUS BAR ───────────────────────────────── */
+  .status-bar {
+    background: var(--warm-dark);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 28px 10px;
+  }
+  .status-time {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--cream);
+    letter-spacing: -0.3px;
+  }
+  .status-icons {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .status-icons span {
+    color: var(--cream);
+    font-size: 13px;
+  }
+
+  /* ─── HEADER ───────────────────────────────────── */
+  .meal-header {
+    background: var(--warm-dark);
+    padding: 4px 24px 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .meal-header::after {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 180px; height: 180px;
+    background: radial-gradient(circle, rgba(212,101,46,0.18) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .header-title {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--cream);
+    letter-spacing: -0.5px;
+  }
+  .header-profile {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--orange-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid rgba(212,101,46,0.4);
+    font-size: 18px;
+  }
+
+  /* ─── WEEK NAV ─────────────────────────────────── */
+  .week-nav {
+    background: var(--warm-dark);
+    padding: 0 20px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .week-arrow {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.10);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--brown-light);
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .week-label {
+    flex: 1;
+    text-align: center;
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--cream);
+    letter-spacing: -0.2px;
+  }
+  .today-btn {
+    background: transparent;
+    border: 1px solid rgba(212,101,46,0.5);
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--orange);
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* ─── DAY STRIP (horizontal scroll) ────────────── */
+  .day-strip-wrap {
+    background: var(--warm-dark);
+    padding: 0 20px 0;
+  }
+  .day-strip {
+    display: flex;
+    gap: 6px;
+    padding-bottom: 18px;
+    overflow-x: auto;
+  }
+  .day-strip::-webkit-scrollbar { display: none; }
+  .day-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+    min-width: 44px;
+    transition: background 0.15s;
+  }
+  .day-pill.active {
+    background: var(--orange);
+  }
+  .day-pill-name {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .day-pill.active .day-pill-name {
+    color: rgba(255,255,255,0.9);
+  }
+  .day-pill-date {
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.4);
+  }
+  .day-pill.active .day-pill-date {
+    color: #fff;
+  }
+  .day-pill.has-dot::after {
+    content: '';
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: rgba(212,101,46,0.6);
+  }
+  .day-pill.active.has-dot::after {
+    background: rgba(255,255,255,0.7);
+  }
+
+  /* ─── SCROLL BODY ──────────────────────────────── */
+  .scroll-body {
+    padding: 16px 16px 90px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--cream);
+  }
+
+  /* ─── DAY CARD ─────────────────────────────────── */
+  .day-card {
+    background: #fff;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+  .day-card.today {
+    border-left: 3px solid var(--orange);
+  }
+
+  .day-card-head {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--cream-dark);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .day-card-name {
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--warm-dark);
+    flex: 1;
+  }
+  .day-card-date {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--brown);
+    font-weight: 400;
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
+  .today-badge {
+    background: var(--orange-light);
+    border: 1px solid var(--orange-soft);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--orange);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+
+  /* ─── NUTRITION MINI BAR ────────────────────────── */
+  .nutrition-mini {
+    padding: 10px 16px 10px;
+    display: flex;
+    gap: 10px;
+    border-bottom: 1px solid var(--cream-dark);
+  }
+  .nutri-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .nutri-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .nutri-label {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--brown);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .nutri-val {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--warm-dark);
+  }
+  .nutri-track {
+    height: 4px;
+    background: var(--cream-dark);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .nutri-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--orange);
+    opacity: 0.85;
+  }
+
+  /* ─── MEAL SLOTS ────────────────────────────────── */
+  .meal-slots {
+    padding: 4px 0 4px;
+  }
+
+  .meal-slot {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    gap: 12px;
+    border-bottom: 1px solid var(--cream-dark);
+    position: relative;
+  }
+  .meal-slot:last-child {
+    border-bottom: none;
+  }
+
+  .slot-type-badge {
+    font-family: var(--sans);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--brown-light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
+    flex-shrink: 0;
+    height: 40px;
+    display: flex;
+    align-items: center;
+  }
+
+  .slot-image {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    object-fit: cover;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: var(--cream-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+  }
+
+  .slot-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .slot-name {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--warm-dark);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+  }
+  .slot-badges {
+    display: flex;
+    gap: 5px;
+    margin-top: 5px;
+    flex-wrap: wrap;
+  }
+  .slot-badge {
+    background: var(--cream-dark);
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--brown);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .slot-badge.cal { background: var(--orange-light); color: var(--orange); }
+
+  .slot-check {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--orange-light);
+    border: 1.5px solid var(--orange-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    color: var(--orange);
+  }
+
+  /* completed style */
+  .meal-slot.done .slot-name { color: var(--brown-light); }
+  .meal-slot.done .slot-image { opacity: 0.55; }
+  .meal-slot.done .slot-badge { opacity: 0.6; }
+
+  /* empty slot */
+  .meal-slot.empty .slot-image {
+    border: 1.5px dashed var(--cream-deeper);
+    background: transparent;
+    font-size: 18px;
+    color: var(--cream-deeper);
+  }
+  .slot-add-text {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--brown-light);
+    font-style: italic;
+  }
+  .slot-add-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--cream-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: var(--brown-light);
+    flex-shrink: 0;
+  }
+
+  /* ─── GENERATE AI BUTTON ─────────────────────────── */
+  .ai-btn-wrap {
+    padding: 0 16px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ai-btn {
+    flex: 1;
+    background: var(--warm-dark);
+    color: var(--cream);
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(45,37,32,0.18);
+  }
+  .ai-btn-sparkle {
+    font-size: 17px;
+  }
+  .ai-btn-sub {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--brown-light);
+    font-weight: 400;
+    display: block;
+    margin-top: 1px;
+  }
+
+  /* ─── TAB BAR ──────────────────────────────────── */
+  .tab-bar {
+    position: sticky;
+    bottom: 0;
+    background: rgba(255,251,245,0.97);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--cream-dark);
+    display: flex;
+    padding: 10px 0 20px;
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 0;
+    cursor: pointer;
+  }
+  .tab-icon { font-size: 22px; color: var(--brown-light); }
+  .tab-label {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--brown-light);
+    letter-spacing: 0.2px;
+  }
+  .tab-item.active .tab-icon { color: var(--orange); }
+  .tab-item.active .tab-label { color: var(--orange); font-weight: 600; }
+
+  /* ─── DIVIDER ──────────────────────────────────── */
+  .section-divider {
+    width: 100%;
+    max-width: 500px;
+    text-align: center;
+    padding: 10px 0;
+  }
+  .section-divider hr {
+    border: none;
+    border-top: 1px solid rgba(184,166,142,0.2);
+    margin-bottom: 32px;
+  }
+
+  /* ─── VIEW 2: MODAL ────────────────────────────── */
+  .modal-frame {
+    width: 390px;
+    height: 844px;
+    background: rgba(45,37,32,0.55);
+    border-radius: 44px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 0 0 2px rgba(255,255,255,0.05),
+      0 25px 60px rgba(0,0,0,0.45),
+      inset 0 0 0 1px rgba(255,255,255,0.08);
+  }
+
+  .modal-bg-screen {
+    position: absolute;
+    inset: 0;
+    background: var(--cream);
+  }
+
+  .modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(45,37,32,0.50);
+  }
+
+  .modal-sheet {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: #fff;
+    border-radius: 28px 28px 0 0;
+    padding: 0 0 0;
+    box-shadow: 0 -8px 40px rgba(45,37,32,0.18);
+    overflow: hidden;
+  }
+
+  .modal-handle-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 14px 0 0;
+  }
+  .modal-handle {
+    width: 38px; height: 4px;
+    border-radius: 2px;
+    background: var(--cream-deeper);
+  }
+
+  .modal-header {
+    padding: 18px 24px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--cream-dark);
+  }
+  .modal-title {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--warm-dark);
+  }
+  .modal-close {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--cream-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--brown);
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .modal-body {
+    padding: 0 0 20px;
+    overflow-y: auto;
+    max-height: 620px;
+  }
+  .modal-body::-webkit-scrollbar { display: none; }
+
+  /* Meal type selector */
+  .meal-type-section {
+    padding: 16px 20px 0;
+  }
+  .section-heading {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--brown);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 10px;
+  }
+  .meal-type-row {
+    display: flex;
+    gap: 7px;
+  }
+  .meal-type-btn {
+    flex: 1;
+    padding: 9px 4px;
+    border-radius: 10px;
+    border: 1.5px solid var(--cream-deeper);
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  .meal-type-btn.selected {
+    background: var(--orange-light);
+    border-color: var(--orange);
+  }
+  .meal-type-icon { font-size: 18px; }
+  .meal-type-label {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brown);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .meal-type-btn.selected .meal-type-label {
+    color: var(--orange);
+  }
+
+  /* Date row */
+  .date-chip-row {
+    display: flex;
+    gap: 6px;
+    padding: 14px 20px 0;
+  }
+  .date-chip {
+    background: var(--cream-dark);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--brown);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .date-chip.active {
+    background: var(--orange-light);
+    color: var(--orange);
+    border: 1px solid var(--orange-soft);
+  }
+
+  /* Search field */
+  .search-section {
+    padding: 16px 20px 0;
+  }
+  .search-field {
+    display: flex;
+    align-items: center;
+    background: var(--cream-dark);
+    border-radius: 12px;
+    padding: 12px 14px;
+    gap: 10px;
+    border: 1.5px solid var(--cream-deeper);
+  }
+  .search-icon { font-size: 15px; color: var(--brown-light); }
+  .search-placeholder {
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--brown-light);
+    flex: 1;
+  }
+  .search-mic {
+    font-size: 15px;
+    color: var(--brown-light);
+  }
+
+  /* Recipe suggestions */
+  .suggestions-section {
+    padding: 16px 20px 0;
+  }
+  .suggestion-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--cream-dark);
+    cursor: pointer;
+  }
+  .suggestion-card:last-child { border-bottom: none; }
+  .suggestion-img {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    background: var(--cream-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .suggestion-info { flex: 1; min-width: 0; }
+  .suggestion-name {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--warm-dark);
+    margin-bottom: 4px;
+  }
+  .suggestion-meta {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .suggestion-chip {
+    background: var(--cream-dark);
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--brown);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .suggestion-chip.cal-chip { background: var(--orange-light); color: var(--orange); }
+  .suggestion-add {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--orange-light);
+    border: 1.5px solid var(--orange-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--orange);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  /* Servings picker */
+  .servings-section {
+    padding: 16px 20px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .servings-label {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--warm-dark);
+  }
+  .servings-sub {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--brown-light);
+    margin-top: 2px;
+  }
+  .servings-picker {
+    display: flex;
+    gap: 5px;
+  }
+  .serving-btn {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--cream-dark);
+    border: 1.5px solid var(--cream-deeper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--brown);
+    cursor: pointer;
+  }
+  .serving-btn.active {
+    background: var(--orange-light);
+    border-color: var(--orange);
+    color: var(--orange);
+  }
+
+  /* Add to Plan button */
+  .modal-action {
+    padding: 20px 20px 6px;
+  }
+  .add-plan-btn {
+    width: 100%;
+    background: var(--warm-dark);
+    color: var(--cream);
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    letter-spacing: -0.2px;
+    box-shadow: 0 4px 14px rgba(45,37,32,0.18);
+  }
+
+  /* Background screen behind modal (blurred meal plan) */
+  .bg-meal-plan-preview {
+    position: absolute;
+    inset: 0;
+    background: var(--cream);
+    overflow: hidden;
+  }
+  .bg-preview-header {
+    height: 140px;
+    background: var(--warm-dark);
+  }
+  .bg-preview-content {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    filter: blur(3px);
+    opacity: 0.4;
+  }
+  .bg-preview-card {
+    height: 110px;
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: var(--shadow-sm);
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════
+     VIEW 1: WEEKLY MEAL PLAN OVERVIEW
+     ════════════════════════════════════════════════════════════ -->
+<div>
+  <div class="mockup-label">Kitcho AI · Meal Plan</div>
+  <div class="mockup-sublabel">Weekly Overview</div>
+
+  <div class="phone-frame">
+    <div class="phone-scroll">
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <span class="status-time">9:41</span>
+        <div class="status-icons">
+          <span>●●●</span>
+          <span>▲</span>
+          <span>🔋</span>
+        </div>
+      </div>
+
+      <!-- Header -->
+      <div class="meal-header">
+        <div class="header-row">
+          <div class="header-title">Meal Plan</div>
+          <div class="header-profile">👤</div>
+        </div>
+      </div>
+
+      <!-- Week Nav -->
+      <div class="week-nav">
+        <div class="week-arrow">‹</div>
+        <div class="week-label">Apr 14 – Apr 20</div>
+        <div class="today-btn">Today</div>
+        <div class="week-arrow">›</div>
+      </div>
+
+      <!-- Day strip -->
+      <div class="day-strip-wrap">
+        <div class="day-strip">
+          <div class="day-pill has-dot">
+            <div class="day-pill-name">Mon</div>
+            <div class="day-pill-date">14</div>
+          </div>
+          <div class="day-pill active has-dot">
+            <div class="day-pill-name">Tue</div>
+            <div class="day-pill-date">15</div>
+          </div>
+          <div class="day-pill has-dot">
+            <div class="day-pill-name">Wed</div>
+            <div class="day-pill-date">16</div>
+          </div>
+          <div class="day-pill">
+            <div class="day-pill-name">Thu</div>
+            <div class="day-pill-date">17</div>
+          </div>
+          <div class="day-pill">
+            <div class="day-pill-name">Fri</div>
+            <div class="day-pill-date">18</div>
+          </div>
+          <div class="day-pill">
+            <div class="day-pill-name">Sat</div>
+            <div class="day-pill-date">19</div>
+          </div>
+          <div class="day-pill">
+            <div class="day-pill-name">Sun</div>
+            <div class="day-pill-date">20</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scroll Body -->
+      <div class="scroll-body">
+
+        <!-- TODAY card -->
+        <div class="day-card today">
+          <div class="day-card-head">
+            <div>
+              <div class="day-card-name">Monday</div>
+              <div class="day-card-date">April 14</div>
+            </div>
+            <div class="today-badge">Today</div>
+          </div>
+
+          <!-- Nutrition mini bars -->
+          <div class="nutrition-mini">
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Cal</span>
+                <span class="nutri-val">1,420</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:72%"></div></div>
+            </div>
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Protein</span>
+                <span class="nutri-val">88g</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:58%;opacity:0.65"></div></div>
+            </div>
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Carbs</span>
+                <span class="nutri-val">165g</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:83%;opacity:0.5"></div></div>
+            </div>
+          </div>
+
+          <!-- Meals -->
+          <div class="meal-slots">
+            <!-- Breakfast - done -->
+            <div class="meal-slot done">
+              <div class="slot-type-badge">Brkfst</div>
+              <div class="slot-image">🥣</div>
+              <div class="slot-info">
+                <div class="slot-name">Greek Yogurt Parfait</div>
+                <div class="slot-badges">
+                  <span class="slot-badge">⏱ 5 min</span>
+                  <span class="slot-badge cal">🔥 320 cal</span>
+                  <span class="slot-badge">28g protein</span>
+                </div>
+              </div>
+              <div class="slot-check">✓</div>
+            </div>
+
+            <!-- Lunch - active -->
+            <div class="meal-slot">
+              <div class="slot-type-badge">Lunch</div>
+              <div class="slot-image">🥗</div>
+              <div class="slot-info">
+                <div class="slot-name">Mediterranean Grain Bowl</div>
+                <div class="slot-badges">
+                  <span class="slot-badge">⏱ 20 min</span>
+                  <span class="slot-badge cal">🔥 545 cal</span>
+                  <span class="slot-badge">32g protein</span>
+                </div>
+              </div>
+              <div class="slot-add-icon">›</div>
+            </div>
+
+            <!-- Dinner - active -->
+            <div class="meal-slot">
+              <div class="slot-type-badge">Dinner</div>
+              <div class="slot-image">🍗</div>
+              <div class="slot-info">
+                <div class="slot-name">Herb Roasted Chicken</div>
+                <div class="slot-badges">
+                  <span class="slot-badge">⏱ 45 min</span>
+                  <span class="slot-badge cal">🔥 555 cal</span>
+                  <span class="slot-badge">42g protein</span>
+                </div>
+              </div>
+              <div class="slot-add-icon">›</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tomorrow card -->
+        <div class="day-card">
+          <div class="day-card-head">
+            <div>
+              <div class="day-card-name">Tuesday</div>
+              <div class="day-card-date">April 15</div>
+            </div>
+          </div>
+
+          <div class="nutrition-mini">
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Cal</span>
+                <span class="nutri-val">—</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:0%"></div></div>
+            </div>
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Protein</span>
+                <span class="nutri-val">—</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:0%"></div></div>
+            </div>
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Carbs</span>
+                <span class="nutri-val">—</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:0%"></div></div>
+            </div>
+          </div>
+
+          <div class="meal-slots">
+            <!-- Breakfast - planned -->
+            <div class="meal-slot">
+              <div class="slot-type-badge">Brkfst</div>
+              <div class="slot-image">🍳</div>
+              <div class="slot-info">
+                <div class="slot-name">Avocado Eggs &amp; Toast</div>
+                <div class="slot-badges">
+                  <span class="slot-badge">⏱ 10 min</span>
+                  <span class="slot-badge cal">🔥 410 cal</span>
+                </div>
+              </div>
+              <div class="slot-add-icon">›</div>
+            </div>
+
+            <!-- Lunch - empty -->
+            <div class="meal-slot empty">
+              <div class="slot-type-badge">Lunch</div>
+              <div class="slot-image">＋</div>
+              <div class="slot-info">
+                <div class="slot-add-text">Tap to add lunch</div>
+              </div>
+              <div class="slot-add-icon">+</div>
+            </div>
+
+            <!-- Dinner - empty -->
+            <div class="meal-slot empty">
+              <div class="slot-type-badge">Dinner</div>
+              <div class="slot-image">＋</div>
+              <div class="slot-info">
+                <div class="slot-add-text">Tap to add dinner</div>
+              </div>
+              <div class="slot-add-icon">+</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Wednesday card - compact -->
+        <div class="day-card">
+          <div class="day-card-head">
+            <div>
+              <div class="day-card-name">Wednesday</div>
+              <div class="day-card-date">April 16</div>
+            </div>
+          </div>
+
+          <div class="nutrition-mini">
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Cal</span>
+                <span class="nutri-val">1,680</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:84%"></div></div>
+            </div>
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Protein</span>
+                <span class="nutri-val">102g</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:68%;opacity:0.65"></div></div>
+            </div>
+            <div class="nutri-item">
+              <div class="nutri-label-row">
+                <span class="nutri-label">Carbs</span>
+                <span class="nutri-val">190g</span>
+              </div>
+              <div class="nutri-track"><div class="nutri-fill" style="width:95%;opacity:0.5"></div></div>
+            </div>
+          </div>
+
+          <div class="meal-slots">
+            <div class="meal-slot">
+              <div class="slot-type-badge">Brkfst</div>
+              <div class="slot-image">🫐</div>
+              <div class="slot-info">
+                <div class="slot-name">Blueberry Oat Smoothie</div>
+                <div class="slot-badges">
+                  <span class="slot-badge">⏱ 5 min</span>
+                  <span class="slot-badge cal">🔥 380 cal</span>
+                </div>
+              </div>
+              <div class="slot-add-icon">›</div>
+            </div>
+            <div class="meal-slot">
+              <div class="slot-type-badge">Lunch</div>
+              <div class="slot-image">🥙</div>
+              <div class="slot-info">
+                <div class="slot-name">Chicken &amp; Hummus Wrap</div>
+                <div class="slot-badges">
+                  <span class="slot-badge">⏱ 15 min</span>
+                  <span class="slot-badge cal">🔥 520 cal</span>
+                </div>
+              </div>
+              <div class="slot-add-icon">›</div>
+            </div>
+            <div class="meal-slot">
+              <div class="slot-type-badge">Dinner</div>
+              <div class="slot-image">🍝</div>
+              <div class="slot-info">
+                <div class="slot-name">Pesto Pasta with Shrimp</div>
+                <div class="slot-badges">
+                  <span class="slot-badge">⏱ 30 min</span>
+                  <span class="slot-badge cal">🔥 780 cal</span>
+                </div>
+              </div>
+              <div class="slot-add-icon">›</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Generate AI Plan button -->
+        <div class="ai-btn-wrap">
+          <button class="ai-btn">
+            <span class="ai-btn-sparkle">✦</span>
+            <div>
+              Generate AI Plan
+              <span class="ai-btn-sub">For the full week · personalized</span>
+            </div>
+          </button>
+        </div>
+
+      </div><!-- /.scroll-body -->
+
+      <!-- Tab Bar -->
+      <div class="tab-bar">
+        <div class="tab-item">
+          <div class="tab-icon">🏠</div>
+          <div class="tab-label">Home</div>
+        </div>
+        <div class="tab-item">
+          <div class="tab-icon">🍽️</div>
+          <div class="tab-label">Recipes</div>
+        </div>
+        <div class="tab-item active">
+          <div class="tab-icon">📅</div>
+          <div class="tab-label">Meal Plan</div>
+        </div>
+        <div class="tab-item">
+          <div class="tab-icon">🛒</div>
+          <div class="tab-label">Shopping</div>
+        </div>
+        <div class="tab-item">
+          <div class="tab-icon">👤</div>
+          <div class="tab-label">Profile</div>
+        </div>
+      </div>
+
+    </div><!-- /.phone-scroll -->
+  </div><!-- /.phone-frame -->
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     DIVIDER
+     ════════════════════════════════════════════════════════════ -->
+<div class="section-divider">
+  <hr>
+  <div class="mockup-label">Kitcho AI · Meal Plan</div>
+  <div class="mockup-sublabel">Add / Edit Meal — Modal</div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     VIEW 2: ADD/EDIT MEAL MODAL
+     ════════════════════════════════════════════════════════════ -->
+<div>
+  <div class="modal-frame">
+
+    <!-- Background: blurred meal plan screen -->
+    <div class="bg-meal-plan-preview">
+      <!-- Status bar + header (warm dark) -->
+      <div class="bg-preview-header"></div>
+      <!-- Blurred content cards -->
+      <div class="bg-preview-content">
+        <div class="bg-preview-card"></div>
+        <div class="bg-preview-card"></div>
+      </div>
+    </div>
+
+    <!-- Dim overlay -->
+    <div class="modal-overlay"></div>
+
+    <!-- Bottom sheet -->
+    <div class="modal-sheet">
+
+      <!-- Drag handle -->
+      <div class="modal-handle-wrap">
+        <div class="modal-handle"></div>
+      </div>
+
+      <!-- Modal header -->
+      <div class="modal-header">
+        <div class="modal-title">Add Meal</div>
+        <div class="modal-close">✕</div>
+      </div>
+
+      <!-- Modal body -->
+      <div class="modal-body">
+
+        <!-- Meal type selector -->
+        <div class="meal-type-section">
+          <div class="section-heading">Meal Type</div>
+          <div class="meal-type-row">
+            <button class="meal-type-btn">
+              <span class="meal-type-icon">☀️</span>
+              <span class="meal-type-label">Brkfst</span>
+            </button>
+            <button class="meal-type-btn selected">
+              <span class="meal-type-icon">🌤️</span>
+              <span class="meal-type-label">Lunch</span>
+            </button>
+            <button class="meal-type-btn">
+              <span class="meal-type-icon">🌙</span>
+              <span class="meal-type-label">Dinner</span>
+            </button>
+            <button class="meal-type-btn">
+              <span class="meal-type-icon">🍎</span>
+              <span class="meal-type-label">Snack</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Day chips -->
+        <div class="date-chip-row">
+          <div class="date-chip">📅 Mon, Apr 14</div>
+          <div class="date-chip active" style="margin-left:auto">Change ›</div>
+        </div>
+
+        <!-- Search -->
+        <div class="search-section">
+          <div class="section-heading">Search Recipes</div>
+          <div class="search-field">
+            <span class="search-icon">🔍</span>
+            <span class="search-placeholder">Chicken, pasta, salad…</span>
+            <span class="search-mic">🎤</span>
+          </div>
+        </div>
+
+        <!-- Suggestions -->
+        <div class="suggestions-section">
+          <div class="section-heading">Suggested for You</div>
+
+          <div class="suggestion-card">
+            <div class="suggestion-img">🥗</div>
+            <div class="suggestion-info">
+              <div class="suggestion-name">Mediterranean Grain Bowl</div>
+              <div class="suggestion-meta">
+                <span class="suggestion-chip cal-chip">🔥 545 cal</span>
+                <span class="suggestion-chip">⏱ 20 min</span>
+                <span class="suggestion-chip">32g protein</span>
+              </div>
+            </div>
+            <div class="suggestion-add">+</div>
+          </div>
+
+          <div class="suggestion-card" style="background:var(--orange-light);margin:0 -20px;padding:12px 20px;border-bottom:1px solid var(--orange-soft);">
+            <div class="suggestion-img" style="background:var(--orange-soft)">🥙</div>
+            <div class="suggestion-info">
+              <div class="suggestion-name">Chicken &amp; Hummus Wrap</div>
+              <div class="suggestion-meta">
+                <span class="suggestion-chip cal-chip">🔥 520 cal</span>
+                <span class="suggestion-chip">⏱ 15 min</span>
+                <span class="suggestion-chip">38g protein</span>
+              </div>
+            </div>
+            <div class="suggestion-add" style="background:var(--orange);color:#fff;border-color:var(--orange)">✓</div>
+          </div>
+
+          <div class="suggestion-card">
+            <div class="suggestion-img">🍜</div>
+            <div class="suggestion-info">
+              <div class="suggestion-name">Thai Basil Noodle Bowl</div>
+              <div class="suggestion-meta">
+                <span class="suggestion-chip cal-chip">🔥 610 cal</span>
+                <span class="suggestion-chip">⏱ 25 min</span>
+                <span class="suggestion-chip">28g protein</span>
+              </div>
+            </div>
+            <div class="suggestion-add">+</div>
+          </div>
+
+          <div class="suggestion-card">
+            <div class="suggestion-img">🥬</div>
+            <div class="suggestion-info">
+              <div class="suggestion-name">Quinoa Niçoise Salad</div>
+              <div class="suggestion-meta">
+                <span class="suggestion-chip cal-chip">🔥 470 cal</span>
+                <span class="suggestion-chip">⏱ 15 min</span>
+                <span class="suggestion-chip">24g protein</span>
+              </div>
+            </div>
+            <div class="suggestion-add">+</div>
+          </div>
+        </div>
+
+        <!-- Servings picker -->
+        <div class="servings-section">
+          <div>
+            <div class="servings-label">Servings</div>
+            <div class="servings-sub">Chicken &amp; Hummus Wrap</div>
+          </div>
+          <div class="servings-picker">
+            <button class="serving-btn">1</button>
+            <button class="serving-btn active">2</button>
+            <button class="serving-btn">3</button>
+            <button class="serving-btn">4</button>
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="modal-action">
+          <button class="add-plan-btn">
+            📅 Add to Meal Plan
+          </button>
+        </div>
+
+      </div><!-- /.modal-body -->
+    </div><!-- /.modal-sheet -->
+  </div><!-- /.modal-frame -->
+</div>
+
+</body>
+</html>

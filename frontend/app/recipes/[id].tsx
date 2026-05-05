@@ -37,7 +37,6 @@ export default function RecipeDetailScreen() {
         ]);
         setRecipe(recipeData.recipe);
 
-        // Compare ingredients against inventory
         const inventoryItems = inventoryData.items || [];
         const invNames = inventoryItems.map((i: any) => i.name.toLowerCase());
         const ings = recipeData.recipe.ingredients || [];
@@ -65,7 +64,6 @@ export default function RecipeDetailScreen() {
     })();
   }, [id]);
 
-  // Fetch cost estimation when recipe loads
   useEffect(() => {
     if (!recipe?.id) return;
     (async () => {
@@ -81,17 +79,17 @@ export default function RecipeDetailScreen() {
         const data = await recipeCostApi.getRecipeCost(recipe.id, lat, lng);
         setCostData(data);
       } catch {
-        // Cost estimation unavailable — not critical
+        // Cost estimation unavailable
       } finally {
         setLoadingCost(false);
       }
     })();
   }, [recipe?.id]);
 
+  const haveItems = ingredientStatuses.filter(i => i.inInventory);
   const missingItems = ingredientStatuses.filter(i => !i.inInventory);
-  const haveCount = ingredientStatuses.filter(i => i.inInventory).length;
   const totalCount = ingredientStatuses.length;
-  const coveragePercent = totalCount > 0 ? Math.round((haveCount / totalCount) * 100) : 0;
+  const coveragePercent = totalCount > 0 ? Math.round((haveItems.length / totalCount) * 100) : 0;
 
   const handleAddMissing = async () => {
     try {
@@ -162,18 +160,18 @@ export default function RecipeDetailScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-gray-50">
-        <ActivityIndicator size="large" color="#10b981" />
+      <View className="flex-1 items-center justify-center bg-cream">
+        <ActivityIndicator size="large" color="#D4652E" />
       </View>
     );
   }
 
   if (!recipe) {
     return (
-      <View className="flex-1 items-center justify-center bg-gray-50">
-        <Text className="text-gray-500">Recipe not found</Text>
+      <View className="flex-1 items-center justify-center bg-cream">
+        <Text className="text-brown font-sans">Recipe not found</Text>
         <TouchableOpacity onPress={() => router.back()} className="mt-4">
-          <Text className="text-primary-500">Go back</Text>
+          <Text className="text-orange font-sans-semibold">Go back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -185,141 +183,191 @@ export default function RecipeDetailScreen() {
   const instructions = recipe.instructions || [];
 
   return (
-    <ScrollView className="flex-1 bg-gray-50">
-      {/* Header image */}
+    <ScrollView className="flex-1 bg-cream">
+      {/* Hero image */}
       {recipe.imageUrl ? (
-        <Image source={{ uri: recipe.imageUrl }} className="w-full h-56" contentFit="cover" cachePolicy="memory-disk" />
+        <Image source={{ uri: recipe.imageUrl }} className="w-full h-72" contentFit="cover" cachePolicy="memory-disk" />
       ) : (
-        <View className="w-full h-56 bg-gray-200 items-center justify-center">
-          <Ionicons name="restaurant-outline" size={60} color="#d1d5db" />
+        <View className="w-full h-72 bg-cream-dark items-center justify-center">
+          <Ionicons name="restaurant-outline" size={60} color="#B8A68E" />
         </View>
       )}
 
       {/* Back button overlay */}
       <TouchableOpacity
         onPress={() => router.back()}
-        className="absolute top-12 left-4 bg-white/90 rounded-full w-10 h-10 items-center justify-center"
+        className="absolute top-14 left-5 rounded-2xl w-10 h-10 items-center justify-center"
+        style={{ backgroundColor: 'rgba(255,251,245,0.85)' }}
       >
-        <Ionicons name="arrow-back" size={22} color="#374151" />
+        <Ionicons name="arrow-back" size={20} color="#2D2520" />
       </TouchableOpacity>
 
       {/* Save button overlay */}
       <TouchableOpacity
         onPress={handleSave}
-        className="absolute top-12 right-4 bg-white/90 rounded-full w-10 h-10 items-center justify-center"
+        className="absolute top-14 right-5 rounded-2xl w-10 h-10 items-center justify-center"
+        style={{ backgroundColor: 'rgba(255,251,245,0.85)' }}
       >
-        <Ionicons name={saved ? 'heart' : 'heart-outline'} size={22} color={saved ? '#ef4444' : '#374151'} />
+        <Ionicons name={saved ? 'heart' : 'heart-outline'} size={20} color={saved ? '#E8445A' : '#2D2520'} />
       </TouchableOpacity>
 
-      <View className="px-4 py-4">
+      <View className="px-6 py-5 -mt-6 bg-cream rounded-t-3xl">
         {/* Title & brand */}
-        <Text className="text-2xl font-bold text-gray-800">{recipe.title}</Text>
+        <Text className="text-2xl font-serif-bold text-warm-dark leading-tight">{recipe.title}</Text>
         {recipe.brand && (
-          <Text className="text-sm text-primary-600 mt-1">Inspired by {recipe.brand}</Text>
+          <Text className="text-sm text-orange font-sans-semibold mt-1.5">Inspired by {recipe.brand}</Text>
         )}
-        <Text className="text-gray-500 mt-2">{recipe.description}</Text>
+        <Text className="text-brown mt-2 font-sans leading-6 text-sm">{recipe.description}</Text>
 
         {/* Stats row */}
-        <View className="flex-row justify-around bg-white rounded-xl p-4 mt-4">
+        <View className="flex-row justify-around bg-white rounded-2xl p-4 mt-5"
+          style={{ shadowColor: '#2D2520', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}
+        >
           <View className="items-center">
-            <Ionicons name="time-outline" size={20} color="#10b981" />
-            <Text className="text-xs text-gray-500 mt-1">Total</Text>
-            <Text className="text-sm font-semibold text-gray-800">{totalTime} min</Text>
+            <View className="w-9 h-9 rounded-xl bg-orange-light items-center justify-center mb-1.5">
+              <Ionicons name="time-outline" size={18} color="#D4652E" />
+            </View>
+            <Text className="text-sm font-sans-bold text-warm-dark">{totalTime} min</Text>
+            <Text className="text-[10px] text-brown-light font-sans-medium uppercase" style={{ letterSpacing: 0.5 }}>Total</Text>
           </View>
           <View className="items-center">
-            <Ionicons name="flame-outline" size={20} color="#10b981" />
-            <Text className="text-xs text-gray-500 mt-1">Calories</Text>
-            <Text className="text-sm font-semibold text-gray-800">{nutrition.calories || '—'}</Text>
+            <View className="w-9 h-9 rounded-xl items-center justify-center mb-1.5" style={{ backgroundColor: '#FEE2E2' }}>
+              <Ionicons name="flame-outline" size={18} color="#991B1B" />
+            </View>
+            <Text className="text-sm font-sans-bold text-warm-dark">{nutrition.calories || '—'}</Text>
+            <Text className="text-[10px] text-brown-light font-sans-medium uppercase" style={{ letterSpacing: 0.5 }}>Calories</Text>
           </View>
           <View className="items-center">
-            <Ionicons name="people-outline" size={20} color="#10b981" />
-            <Text className="text-xs text-gray-500 mt-1">Servings</Text>
-            <Text className="text-sm font-semibold text-gray-800">{recipe.servings}</Text>
+            <View className="w-9 h-9 rounded-xl items-center justify-center mb-1.5" style={{ backgroundColor: '#E0E7FF' }}>
+              <Ionicons name="people-outline" size={18} color="#3730A3" />
+            </View>
+            <Text className="text-sm font-sans-bold text-warm-dark">{recipe.servings}</Text>
+            <Text className="text-[10px] text-brown-light font-sans-medium uppercase" style={{ letterSpacing: 0.5 }}>Servings</Text>
           </View>
           <View className="items-center">
-            <Ionicons name="speedometer-outline" size={20} color="#10b981" />
-            <Text className="text-xs text-gray-500 mt-1">Difficulty</Text>
-            <Text className="text-sm font-semibold text-gray-800 capitalize">{recipe.difficulty}</Text>
+            <View className="w-9 h-9 rounded-xl bg-orange-light items-center justify-center mb-1.5">
+              <Ionicons name="speedometer-outline" size={18} color="#D4652E" />
+            </View>
+            <Text className="text-sm font-sans-bold text-warm-dark capitalize">{recipe.difficulty}</Text>
+            <Text className="text-[10px] text-brown-light font-sans-medium uppercase" style={{ letterSpacing: 0.5 }}>Difficulty</Text>
           </View>
         </View>
 
         {/* Nutrition breakdown */}
         {nutrition.protein && (
-          <View className="bg-white rounded-xl p-4 mt-3">
-            <Text className="text-base font-semibold text-gray-800 mb-3">Nutrition per serving</Text>
+          <View className="bg-white rounded-2xl p-4 mt-4"
+            style={{ shadowColor: '#2D2520', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}
+          >
+            <Text className="text-lg font-serif-bold text-warm-dark mb-4">Nutrition per Serving</Text>
             <View className="flex-row justify-between">
               {[
                 { label: 'Protein', value: `${nutrition.protein}g`, color: '#3b82f6' },
                 { label: 'Carbs', value: `${nutrition.carbs}g`, color: '#f59e0b' },
                 { label: 'Fat', value: `${nutrition.fat}g`, color: '#ef4444' },
-                { label: 'Fiber', value: `${nutrition.fiber}g`, color: '#10b981' },
+                { label: 'Fiber', value: `${nutrition.fiber}g`, color: '#D4652E' },
               ].map((item) => (
                 <View key={item.label} className="items-center flex-1">
-                  <View className="w-10 h-10 rounded-full items-center justify-center mb-1" style={{ backgroundColor: item.color + '20' }}>
-                    <Text className="text-xs font-bold" style={{ color: item.color }}>{item.value}</Text>
+                  <View className="w-12 h-12 rounded-full items-center justify-center mb-1.5" style={{ backgroundColor: item.color + '15', borderWidth: 3, borderColor: item.color + '30' }}>
+                    <Text className="text-xs font-sans-bold" style={{ color: item.color }}>{item.value}</Text>
                   </View>
-                  <Text className="text-xs text-gray-500">{item.label}</Text>
+                  <Text className="text-xs text-brown font-sans-medium">{item.label}</Text>
                 </View>
               ))}
             </View>
           </View>
         )}
 
-        {/* Ingredients with Inventory Indicators */}
-        <View className="bg-white rounded-xl p-4 mt-3">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-base font-semibold text-gray-800">
-              Ingredients ({totalCount})
-            </Text>
+        {/* Ingredients with Have/Need Split */}
+        <View className="mt-5">
+          <View className="flex-row items-center justify-between mb-4">
+            <Text className="text-lg font-serif-bold text-warm-dark">Ingredients</Text>
             {totalCount > 0 && (
-              <View className="flex-row items-center bg-gray-50 px-2.5 py-1 rounded-lg">
+              <View className="flex-row items-center bg-orange-light px-3 py-1.5 rounded-full">
                 <Ionicons
                   name={coveragePercent === 100 ? 'checkmark-circle' : 'pie-chart-outline'}
-                  size={14}
-                  color={coveragePercent === 100 ? '#10b981' : coveragePercent >= 50 ? '#f59e0b' : '#ef4444'}
+                  size={13}
+                  color="#D4652E"
                 />
-                <Text className={`text-xs font-medium ml-1 ${
-                  coveragePercent === 100 ? 'text-primary-600' : coveragePercent >= 50 ? 'text-amber-600' : 'text-red-500'
-                }`}>
-                  {haveCount}/{totalCount} in inventory ({coveragePercent}%)
+                <Text className="text-xs font-sans-semibold text-orange ml-1.5">
+                  {haveItems.length}/{totalCount} ({coveragePercent}%)
                 </Text>
               </View>
             )}
           </View>
-          {ingredientStatuses.map((ing, i) => (
-            <View key={i} className="flex-row items-start py-2 border-b border-gray-100">
-              <View className={`w-5 h-5 rounded-full items-center justify-center mr-3 mt-0.5 ${
-                ing.inInventory ? 'bg-primary-100' : 'bg-red-50'
-              }`}>
-                <Ionicons
-                  name={ing.inInventory ? 'checkmark' : 'close'}
-                  size={12}
-                  color={ing.inInventory ? '#10b981' : '#ef4444'}
-                />
-              </View>
-              <Text className={`flex-1 text-sm ${ing.inInventory ? 'text-gray-700' : 'text-gray-500'}`}>
-                <Text className="font-medium">{ing.amount} {ing.unit}</Text> {ing.name}
-                {ing.notes ? <Text className="text-gray-400"> ({ing.notes})</Text> : null}
-              </Text>
-            </View>
-          ))}
 
-          {/* Add Missing to Shopping List button */}
-          {missingItems.length > 0 && (
-            <TouchableOpacity
-              onPress={handleAddMissing}
-              className="flex-row items-center justify-center bg-primary-50 border border-primary-200 rounded-xl py-3 mt-3"
-            >
-              <Ionicons name="cart-outline" size={18} color="#10b981" />
-              <Text className="text-sm font-medium text-primary-600 ml-2">
-                Add {missingItems.length} Missing to Shopping List
-              </Text>
-            </TouchableOpacity>
+          {/* In Your Kitchen */}
+          {haveItems.length > 0 && (
+            <View className="mb-4">
+              <View className="flex-row items-center mb-2.5 gap-2">
+                <Ionicons name="home-outline" size={14} color="#D4652E" />
+                <Text className="text-xs font-sans-bold text-orange uppercase" style={{ letterSpacing: 1 }}>
+                  In Your Kitchen
+                </Text>
+                <Text className="text-xs text-orange font-sans" style={{ opacity: 0.7 }}>{haveItems.length} items</Text>
+              </View>
+              <View className="bg-orange-light rounded-2xl overflow-hidden">
+                {haveItems.map((ing, i) => (
+                  <View key={i} className={`flex-row items-center px-4 py-3 ${i > 0 ? 'border-t' : ''}`} style={{ borderColor: 'rgba(212,101,46,0.1)' }}>
+                    <View className="w-6 h-6 rounded-lg bg-orange items-center justify-center mr-3">
+                      <Ionicons name="checkmark" size={14} color="white" />
+                    </View>
+                    <Text className="flex-1 text-sm text-warm-dark font-sans">{ing.name}</Text>
+                    <Text className="text-sm text-brown font-sans-medium">
+                      {ing.amount} {ing.unit}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
           )}
+
+          {/* Need to Buy */}
+          {missingItems.length > 0 && (
+            <View className="mb-4">
+              <View className="flex-row items-center mb-2.5 gap-2">
+                <Ionicons name="cart-outline" size={14} color="#D4652E" />
+                <Text className="text-xs font-sans-bold text-orange uppercase" style={{ letterSpacing: 1 }}>
+                  Need to Buy
+                </Text>
+                <Text className="text-xs text-orange font-sans" style={{ opacity: 0.7 }}>{missingItems.length} items</Text>
+              </View>
+              <View className="bg-white rounded-2xl overflow-hidden border-2 border-orange-soft">
+                {missingItems.map((ing, i) => (
+                  <View
+                    key={i}
+                    className={`flex-row items-center px-4 py-3 ${i > 0 ? 'border-t' : ''}`}
+                    style={{ borderColor: 'rgba(212,101,46,0.08)', borderLeftWidth: 4, borderLeftColor: '#D4652E' }}
+                  >
+                    <View className="w-6 h-6 rounded-lg bg-orange-light items-center justify-center mr-3">
+                      <Ionicons name="cart-outline" size={13} color="#D4652E" />
+                    </View>
+                    <Text className="flex-1 text-sm text-warm-soft font-sans">{ing.name}</Text>
+                    <Text className="text-sm text-brown font-sans-medium">
+                      {ing.amount} {ing.unit}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Add Missing button */}
+              <TouchableOpacity
+                onPress={handleAddMissing}
+                className="flex-row items-center justify-center bg-orange rounded-2xl py-4 mt-3"
+                style={{ shadowColor: '#D4652E', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="cart-outline" size={18} color="white" />
+                <Text className="text-white font-sans-bold text-base ml-2.5">
+                  Add {missingItems.length} Missing to Shopping List
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {missingItems.length === 0 && totalCount > 0 && (
-            <View className="flex-row items-center justify-center bg-primary-50 rounded-xl py-3 mt-3">
-              <Ionicons name="checkmark-circle" size={18} color="#10b981" />
-              <Text className="text-sm font-medium text-primary-600 ml-2">
+            <View className="flex-row items-center justify-center bg-orange-light rounded-2xl py-4">
+              <Ionicons name="checkmark-circle" size={20} color="#D4652E" />
+              <Text className="text-base font-sans-semibold text-orange ml-2">
                 You have everything! Ready to cook
               </Text>
             </View>
@@ -328,44 +376,46 @@ export default function RecipeDetailScreen() {
 
         {/* Cost Estimation Card */}
         {(costData || loadingCost) && (
-          <View className="bg-white rounded-xl p-4 mt-3">
+          <View className="bg-white rounded-2xl p-4 mt-4"
+            style={{ shadowColor: '#2D2520', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}
+          >
             <View className="flex-row items-center justify-between mb-2">
               <View className="flex-row items-center">
-                <Ionicons name="pricetag-outline" size={18} color="#10b981" />
-                <Text className="text-base font-semibold text-gray-800 ml-2">Estimated Cost</Text>
+                <Ionicons name="pricetag-outline" size={16} color="#D4652E" />
+                <Text className="text-base font-serif-semibold text-warm-dark ml-2">Estimated Cost</Text>
               </View>
               {costData?.storeName && (
-                <Text className="text-xs text-gray-400">at {costData.storeName}</Text>
+                <Text className="text-xs text-brown-light font-sans">at {costData.storeName}</Text>
               )}
             </View>
             {loadingCost ? (
               <View className="items-center py-4">
-                <ActivityIndicator size="small" color="#10b981" />
-                <Text className="text-xs text-gray-400 mt-2">Estimating cost...</Text>
+                <ActivityIndicator size="small" color="#D4652E" />
+                <Text className="text-xs text-brown-light font-sans mt-2">Estimating cost...</Text>
               </View>
             ) : costData ? (
               <>
                 <View className="flex-row items-baseline gap-3 mb-3">
-                  <Text className="text-2xl font-bold text-gray-800">
+                  <Text className="text-2xl font-sans-bold text-warm-dark">
                     ${costData.totalCost?.toFixed(2)}
                   </Text>
                   {costData.perServing != null && (
-                    <Text className="text-sm text-gray-500">
+                    <Text className="text-sm text-brown font-sans">
                       ${costData.perServing.toFixed(2)}/serving
                     </Text>
                   )}
                 </View>
                 {costData.ingredients?.map((ing: any, i: number) => (
-                  <View key={i} className="flex-row items-center justify-between py-1.5 border-t border-gray-50">
+                  <View key={i} className="flex-row items-center justify-between py-1.5 border-t border-cream-dark">
                     <View className="flex-1 flex-row items-center">
-                      <Text className="text-sm text-gray-600">{ing.name}</Text>
+                      <Text className="text-sm text-brown font-sans">{ing.name}</Text>
                       {ing.isEstimated && (
-                        <View className="ml-1.5 bg-amber-50 px-1 py-0.5 rounded">
-                          <Text className="text-[8px] text-amber-600 font-medium">EST</Text>
+                        <View className="ml-1.5 bg-orange-light px-1.5 py-0.5 rounded">
+                          <Text className="text-[8px] text-orange font-sans-bold">EST</Text>
                         </View>
                       )}
                     </View>
-                    <Text className="text-sm font-medium text-gray-700">
+                    <Text className="text-sm font-sans-semibold text-warm-dark">
                       {ing.price != null ? `$${ing.price.toFixed(2)}` : '—'}
                     </Text>
                   </View>
@@ -376,20 +426,23 @@ export default function RecipeDetailScreen() {
         )}
 
         {/* Instructions */}
-        <View className="bg-white rounded-xl p-4 mt-3 mb-8">
-          <Text className="text-base font-semibold text-gray-800 mb-3">Instructions</Text>
+        <View className="mt-5 mb-10">
+          <Text className="text-lg font-serif-bold text-warm-dark mb-4">Instructions</Text>
           {instructions.map((step: any, i: number) => (
-            <View key={i} className="flex-row mb-4">
-              <View className="w-7 h-7 rounded-full bg-primary-500 items-center justify-center mr-3 mt-0.5">
-                <Text className="text-white text-xs font-bold">{step.step || i + 1}</Text>
+            <View key={i} className="flex-row mb-5">
+              <View className="w-9 h-9 rounded-xl bg-warm-dark items-center justify-center mr-4 mt-0.5">
+                <Text className="text-cream text-sm font-sans-bold">{step.step || i + 1}</Text>
               </View>
               <View className="flex-1">
-                <Text className="text-sm text-gray-700 leading-5">{step.text}</Text>
+                <Text className="text-sm text-warm-soft font-sans leading-6">{step.text}</Text>
                 {step.tips && (
-                  <Text className="text-xs text-primary-600 mt-1 italic">{step.tips}</Text>
+                  <Text className="text-xs text-orange font-sans-medium mt-1.5 italic">{step.tips}</Text>
                 )}
                 {step.time && (
-                  <Text className="text-xs text-gray-400 mt-1">{step.time} min</Text>
+                  <View className="flex-row items-center mt-1">
+                    <Ionicons name="time-outline" size={11} color="#B8A68E" />
+                    <Text className="text-xs text-brown-light font-sans ml-1">{step.time} min</Text>
+                  </View>
                 )}
               </View>
             </View>
@@ -405,57 +458,58 @@ export default function RecipeDetailScreen() {
         onRequestClose={() => setShowListPicker(false)}
       >
         <TouchableOpacity
-          className="flex-1 bg-black/40 justify-end"
+          className="flex-1 justify-end"
+          style={{ backgroundColor: 'rgba(45,37,32,0.5)' }}
           activeOpacity={1}
           onPress={() => !addingToList && setShowListPicker(false)}
         >
-          <View className="bg-white rounded-t-2xl px-4 pt-4 pb-8">
-            <Text className="text-base font-semibold text-gray-800 text-center mb-1">
+          <View className="bg-cream rounded-t-3xl px-5 pt-5 pb-10">
+            <Text className="text-base font-serif-bold text-warm-dark text-center mb-1">
               Add to Shopping List
             </Text>
-            <Text className="text-sm text-gray-500 text-center mb-4">
+            <Text className="text-sm text-brown text-center font-sans mb-5">
               {missingItems.length} missing ingredient{missingItems.length !== 1 ? 's' : ''}
             </Text>
 
             {addingToList ? (
               <View className="items-center py-6">
-                <ActivityIndicator size="small" color="#10b981" />
-                <Text className="text-sm text-gray-400 mt-2">Adding items...</Text>
+                <ActivityIndicator size="small" color="#D4652E" />
+                <Text className="text-sm text-brown-light font-sans mt-2">Adding items...</Text>
               </View>
             ) : (
               <>
                 {shoppingLists.map((list: any) => (
                   <TouchableOpacity
                     key={list.id}
-                    className="flex-row items-center py-3 border-b border-gray-100"
+                    className="flex-row items-center py-3.5 border-b border-cream-dark"
                     onPress={() => handleAddToList(list.id)}
                   >
-                    <Ionicons name="list-outline" size={20} color="#6b7280" />
+                    <Ionicons name="list-outline" size={20} color="#8B7355" />
                     <View className="flex-1 ml-3">
-                      <Text className="text-sm font-medium text-gray-800">{list.name}</Text>
-                      <Text className="text-xs text-gray-400">
+                      <Text className="text-sm font-sans-semibold text-warm-dark">{list.name}</Text>
+                      <Text className="text-xs text-brown-light font-sans">
                         {list.items?.length || 0} items
                       </Text>
                     </View>
-                    <Ionicons name="add-circle-outline" size={20} color="#10b981" />
+                    <Ionicons name="add-circle-outline" size={20} color="#D4652E" />
                   </TouchableOpacity>
                 ))}
 
                 <TouchableOpacity
-                  className="flex-row items-center py-3 mt-1"
+                  className="flex-row items-center py-3.5 mt-1"
                   onPress={handleCreateListAndAdd}
                 >
-                  <Ionicons name="add-outline" size={20} color="#10b981" />
-                  <Text className="text-sm font-medium text-primary-600 ml-3">
+                  <Ionicons name="add-outline" size={20} color="#D4652E" />
+                  <Text className="text-sm font-sans-semibold text-orange ml-3">
                     Create New List
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  className="mt-2 py-2"
+                  className="mt-3 py-2"
                   onPress={() => setShowListPicker(false)}
                 >
-                  <Text className="text-sm text-gray-400 text-center">Cancel</Text>
+                  <Text className="text-sm text-brown-light text-center font-sans">Cancel</Text>
                 </TouchableOpacity>
               </>
             )}

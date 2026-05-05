@@ -300,9 +300,95 @@ export const conversationsApi = {
 
   sendMessage: async (threadId: string, message: string, context?: any): Promise<{ userMessage: any; assistantMessage: any }> => {
     const response = await api.post(`/conversations/${threadId}/messages`, { message, context }, {
-      timeout: 90000, // 90s — AI tool execution can take multiple rounds
+      timeout: 120000, // 120s — AI tool execution can take multiple rounds
     });
     return response.data;
+  },
+
+  /** Stream a message via SSE — returns an AbortController to cancel */
+  sendMessageStream: async (
+    threadId: string,
+    message: string,
+    context: any,
+    onToken: (token: string) => void,
+    onDone: (data: { messageId: string; content: string; toolCalls: any[]; metadata: any }) => void,
+    onError: (error: string) => void,
+  ): Promise<AbortController> => {
+    const token = await tokenStorage.get();
+    const controller = new AbortController();
+
+    try {
+      const response = await fetch(`${getBaseUrl()}/conversations/${threadId}/messages/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify({ message, context }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        onError(`Server error: ${response.status}`);
+        return controller;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        onError('No response body');
+        return controller;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processStream = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === 'token') {
+                  onToken(data.content);
+                } else if (data.type === 'done') {
+                  onDone({
+                    messageId: data.messageId,
+                    content: data.content,
+                    toolCalls: data.toolCalls || [],
+                    metadata: data.metadata || {},
+                  });
+                } else if (data.type === 'error') {
+                  onError(data.message || 'Stream error');
+                }
+              } catch {
+                // Skip malformed JSON lines
+              }
+            }
+          }
+        } catch (err: any) {
+          if (err.name !== 'AbortError') {
+            onError(err.message || 'Stream failed');
+          }
+        }
+      };
+
+      processStream();
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        onError(err.message || 'Failed to connect');
+      }
+    }
+
+    return controller;
   },
 };
 
@@ -579,6 +665,7 @@ export const nutritionApi = {
     protein?: number;
     carbs?: number;
     fat?: number;
+    notes?: string;
   }): Promise<{ mealLog: any }> => {
     const response = await api.post('/nutrition/log-meal', data);
     return response.data;
@@ -591,6 +678,23 @@ export const nutritionApi = {
 
   estimateNutrition: async (query: string): Promise<{ mealName: string; calories: number; protein: number; carbs: number; fat: number }> => {
     const response = await api.get('/nutrition/estimate', { params: { q: query } });
+    return response.data;
+  },
+
+  estimateIngredients: async (ingredients: string[]): Promise<{
+    breakdown: Array<{ item: string; calories: number; protein: number; carbs: number; fat: number }>;
+    totals: { calories: number; protein: number; carbs: number; fat: number };
+  }> => {
+    const response = await api.post('/nutrition/estimate-ingredients', { ingredients });
+    return response.data;
+  },
+
+  getRecentMeals: async (): Promise<{ meals: Array<{
+    id: string; mealType: string; mealName: string | null; notes: string | null;
+    calories: number | null; proteinGrams: number | null; carbsGrams: number | null; fatGrams: number | null;
+    createdAt: string;
+  }> }> => {
+    const response = await api.get('/nutrition/recent-meals');
     return response.data;
   },
 
@@ -695,6 +799,24 @@ export const krogerApi = {
 
   addToCart: async (items: Array<{ upc: string; quantity: number }>, options?: { listId?: string; itemIds?: string[]; itemQuantities?: Record<string, number> }): Promise<{ success: boolean; message: string }> => {
     const response = await api.post('/kroger/add-to-cart', { items, ...options });
+    return response.data;
+  },
+};
+
+// Concepts API
+export const conceptsApi = {
+  getNewThisWeek: async (): Promise<{ concepts: any[] }> => {
+    const response = await api.get('/concepts/new-this-week');
+    return response.data;
+  },
+
+  list: async (params?: { category?: string; season?: string; page?: number; limit?: number }): Promise<{ concepts: any[]; pagination: any }> => {
+    const response = await api.get('/concepts', { params });
+    return response.data;
+  },
+
+  getBySlug: async (slug: string): Promise<{ concept: any; variants: any[] }> => {
+    const response = await api.get(`/concepts/${slug}`);
     return response.data;
   },
 };

@@ -153,30 +153,109 @@ router.get('/estimate', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// POST /api/nutrition/estimate-ingredients
+// Takes an ingredient list and returns per-item macro breakdown + totals
+router.post('/estimate-ingredients', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { ingredients } = req.body;
+    if (!ingredients || !Array.isArray(ingredients) || ingredients.length === 0) {
+      return res.status(400).json({ error: 'ingredients array is required' });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(501).json({ error: 'AI nutrition estimation requires an OpenAI API key' });
+    }
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const ingredientList = ingredients.join(', ');
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a nutrition expert. Given a list of ingredients with quantities, estimate the macros for each item AND the total. Return ONLY valid JSON: {"breakdown": [{"item": "string", "calories": number, "protein": number, "carbs": number, "fat": number}], "totals": {"calories": number, "protein": number, "carbs": number, "fat": number}}. Use grams for macros. Round to whole numbers. Be accurate using standard nutritional databases.',
+        },
+        { role: 'user', content: `Estimate nutrition for these ingredients: ${ingredientList}` },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+      max_tokens: 800,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return res.status(500).json({ error: 'No response from AI' });
+    }
+
+    const result = JSON.parse(content);
+    // Recalculate totals with Atwater formula for consistency
+    const breakdown = (result.breakdown || []).map((item: any) => ({
+      item: item.item,
+      calories: Math.round((item.protein || 0) * 4 + (item.carbs || 0) * 4 + (item.fat || 0) * 9),
+      protein: Math.round(item.protein || 0),
+      carbs: Math.round(item.carbs || 0),
+      fat: Math.round(item.fat || 0),
+    }));
+    const totals = breakdown.reduce(
+      (acc: any, item: any) => ({
+        calories: acc.calories + item.calories,
+        protein: acc.protein + item.protein,
+        carbs: acc.carbs + item.carbs,
+        fat: acc.fat + item.fat,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    );
+
+    res.json({ breakdown, totals });
+  } catch (error) {
+    console.error('Estimate ingredients error:', error);
+    res.status(500).json({ error: 'Failed to estimate nutrition from ingredients' });
+  }
+});
+
+// GET /api/nutrition/recent-meals — last 10 unique logged meals for quick re-log
+router.get('/recent-meals', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const meals = await prisma.mealLog.findMany({
+      where: {
+        userId: req.user!.userId,
+        mealName: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 30, // fetch extra to deduplicate
+      select: {
+        id: true,
+        mealType: true,
+        mealName: true,
+        notes: true,
+        calories: true,
+        proteinGrams: true,
+        carbsGrams: true,
+        fatGrams: true,
+        createdAt: true,
+      },
+    });
+
+    // Deduplicate by mealName (case-insensitive), keep most recent
+    const seen = new Set<string>();
+    const unique = meals.filter(m => {
+      const key = (m.mealName || '').toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 10);
+
+    res.json({ meals: unique });
+  } catch (error) {
+    console.error('Recent meals error:', error);
+    res.status(500).json({ error: 'Failed to fetch recent meals' });
+  }
+});
+
 // POST /api/nutrition/log-meal
 router.post('/log-meal', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { mealType, mealDate, recipeId, mealName, calories, protein, carbs, fat, mealTime } = req.body;
-
-    // Validate macro math if all values are provided
-    if (calories && protein != null && carbs != null && fat != null) {
-      const proteinVal = parseFloat(protein);
-      const carbsVal = parseFloat(carbs);
-      const fatVal = parseFloat(fat);
-      const caloriesVal = parseInt(calories);
-
-      // Atwater formula: cal ≈ (protein×4) + (carbs×4) + (fat×9)
-      const calculatedCalories = (proteinVal * 4) + (carbsVal * 4) + (fatVal * 9);
-      const variance = Math.abs(caloriesVal - calculatedCalories) / Math.max(calculatedCalories, 1);
-
-      // Allow ±15% variance for rounding and estimation
-      if (variance > 0.15) {
-        return res.status(400).json({
-          error: 'Calorie value doesn\'t match macros',
-          message: `Based on ${proteinVal}g protein, ${carbsVal}g carbs, and ${fatVal}g fat, calories should be approximately ${Math.round(calculatedCalories)} (you provided ${caloriesVal})`
-        });
-      }
-    }
+    const { mealType, mealDate, recipeId, mealName, calories, protein, carbs, fat, mealTime, notes } = req.body;
 
     const mealLog = await prisma.mealLog.create({
       data: {
@@ -189,7 +268,8 @@ router.post('/log-meal', requireAuth, async (req: AuthenticatedRequest, res) => 
         calories: calories ? parseInt(calories) : null,
         proteinGrams: protein ? parseFloat(protein) : null,
         carbsGrams: carbs ? parseFloat(carbs) : null,
-        fatGrams: fat ? parseFloat(fat) : null
+        fatGrams: fat ? parseFloat(fat) : null,
+        notes: notes || null,
       }
     });
     

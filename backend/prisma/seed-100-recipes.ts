@@ -3,6 +3,139 @@ import { randomUUID } from "crypto";
 
 const prisma = new PrismaClient();
 
+const FOOD_IMAGES: Record<string, string[]> = {
+  chicken: [
+    'https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=500',
+    'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=500',
+    'https://images.unsplash.com/photo-1632778149955-e80f8ceca2e8?w=500',
+  ],
+  mexican: [
+    'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=500',
+    'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=500',
+    'https://images.unsplash.com/photo-1624300629298-e9de39c13be5?w=500',
+  ],
+  burgers: [
+    'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500',
+    'https://images.unsplash.com/photo-1550547660-d9450f859349?w=500',
+    'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=500',
+  ],
+  pasta: [
+    'https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=500',
+    'https://images.unsplash.com/photo-1563379926898-05f4575a45d8?w=500',
+    'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=500',
+  ],
+  salad: [
+    'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500',
+    'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500',
+    'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=500',
+  ],
+  bowls: [
+    'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500',
+    'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=500',
+    'https://images.unsplash.com/photo-1511690743698-d9d18f7e20f1?w=500',
+  ],
+  pizza: [
+    'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=500',
+    'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=500',
+    'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500',
+  ],
+  dessert: [
+    'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=500',
+    'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=500',
+    'https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=500',
+  ],
+  breakfast: [
+    'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=500',
+    'https://images.unsplash.com/photo-1484723091739-30a097e8f929?w=500',
+    'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500',
+  ],
+  sides: [
+    'https://images.unsplash.com/photo-1543339308-d595c3a18b1e?w=500',
+    'https://images.unsplash.com/photo-1518977676601-b28d4e090167?w=500',
+    'https://images.unsplash.com/photo-1607532941433-304659e8198a?w=500',
+  ],
+  'sheet-pan': [
+    'https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=500',
+    'https://images.unsplash.com/photo-1432139509613-5c4255a78e03?w=500',
+    'https://images.unsplash.com/photo-1606728035253-49e8a23146de?w=500',
+  ],
+  crockpot: [
+    'https://images.unsplash.com/photo-1534939561126-855b8675edd7?w=500',
+    'https://images.unsplash.com/photo-1547592180-85f173990554?w=500',
+    'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500',
+  ],
+  trending: [
+    'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500',
+    'https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=500',
+    'https://images.unsplash.com/photo-1493770348161-369560ae357d?w=500',
+  ],
+};
+
+const FALLBACK_FOOD = [
+  'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500',
+  'https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=500',
+  'https://images.unsplash.com/photo-1493770348161-369560ae357d?w=500',
+  'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=500',
+  'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=500',
+  'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=500',
+];
+
+const TITLE_KEYWORD_MAP: Record<string, string> = {
+  chicken: 'chicken',
+  taco: 'mexican',
+  burrito: 'mexican',
+  enchilada: 'mexican',
+  fajita: 'mexican',
+  burger: 'burgers',
+  pasta: 'pasta',
+  spaghetti: 'pasta',
+  linguine: 'pasta',
+  fettuccine: 'pasta',
+  penne: 'pasta',
+  noodle: 'pasta',
+  salad: 'salad',
+  bowl: 'bowls',
+  pizza: 'pizza',
+  cake: 'dessert',
+  cookie: 'dessert',
+  brownie: 'dessert',
+  cheesecake: 'dessert',
+  muffin: 'dessert',
+  pancake: 'breakfast',
+  waffle: 'breakfast',
+  omelette: 'breakfast',
+  omelet: 'breakfast',
+  egg: 'breakfast',
+  frittata: 'breakfast',
+  oatmeal: 'breakfast',
+};
+
+function getFoodImage(title: string, category: string, index: number): string {
+  const lowerTitle = title.toLowerCase();
+  const lowerCategory = category.toLowerCase();
+
+  // Check title keywords first for more specific matches
+  for (const [keyword, imageCategory] of Object.entries(TITLE_KEYWORD_MAP)) {
+    if (lowerTitle.includes(keyword)) {
+      const images = FOOD_IMAGES[imageCategory];
+      if (images) return images[index % images.length];
+    }
+  }
+
+  // Check category against FOOD_IMAGES keys
+  for (const key of Object.keys(FOOD_IMAGES)) {
+    if (lowerCategory.includes(key) || key.includes(lowerCategory)) {
+      const images = FOOD_IMAGES[key];
+      return images[index % images.length];
+    }
+  }
+
+  // Fall back to generic food images
+  return FALLBACK_FOOD[index % FALLBACK_FOOD.length];
+}
+
+let recipeIndex = 0;
+
 function slug(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
@@ -38,7 +171,7 @@ function r(
     dietaryTags, proteinType,
     cuisineStyle: opts?.cuisineStyle || null,
     cookingMethod: opts?.cookingMethod || null,
-    imageUrl: `https://picsum.photos/seed/${slug(title)}/400/300`,
+    imageUrl: getFoodImage(title, category, recipeIndex++),
     isPublished: true,
   };
 }

@@ -47,7 +47,7 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
   };
 
   const displayText = parseMessageSegments(message);
-  const textColor = isUser ? 'text-white' : 'text-gray-800';
+  const textColor = isUser ? 'text-cream' : 'text-warm-dark';
 
   // Render text with basic markdown (bold, headers, bullets)
   const renderFormattedText = (text: string) => {
@@ -60,7 +60,7 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
       const headerMatch = trimmed.match(/^#{1,3}\s+(.+)/);
       if (headerMatch) {
         return (
-          <Text key={i} className={`font-bold ${textColor}`}>
+          <Text key={i} className={`font-sans-bold ${textColor}`}>
             {headerMatch[1]}{i < lines.length - 1 ? '\n' : ''}
           </Text>
         );
@@ -70,7 +70,7 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
       const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/);
       if (bulletMatch) {
         return (
-          <Text key={i} className={textColor}>
+          <Text key={i} className={`font-sans ${textColor}`}>
             {'  •  '}{renderInlineBold(bulletMatch[1], isUser)}{i < lines.length - 1 ? '\n' : ''}
           </Text>
         );
@@ -80,14 +80,14 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
       const numMatch = trimmed.match(/^(\d+)\.\s+(.+)/);
       if (numMatch) {
         return (
-          <Text key={i} className={textColor}>
+          <Text key={i} className={`font-sans ${textColor}`}>
             {`  ${numMatch[1]}.  `}{renderInlineBold(numMatch[2], isUser)}{i < lines.length - 1 ? '\n' : ''}
           </Text>
         );
       }
 
       return (
-        <Text key={i} className={textColor}>
+        <Text key={i} className={`font-sans ${textColor}`}>
           {renderInlineBold(trimmed, isUser)}{i < lines.length - 1 ? '\n' : ''}
         </Text>
       );
@@ -95,25 +95,57 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
   };
 
   return (
-    <View className={`flex-row ${isUser ? 'justify-end' : 'justify-start'} mb-3 px-4`}>
+    <View className={`flex-row ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+      {/* Assistant avatar */}
       {!isUser && (
-        <View className="bg-primary-100 rounded-full w-8 h-8 items-center justify-center mr-2 mt-1">
-          <Ionicons name="leaf" size={16} color="#10b981" />
+        <View
+          className="bg-orange-light rounded-full w-8 h-8 items-center justify-center mr-[10px] self-end"
+          style={{
+            shadowColor: '#D4652E',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.15,
+            shadowRadius: 6,
+            elevation: 2,
+          }}
+        >
+          <Text className="text-[15px]">🍳</Text>
         </View>
       )}
       <View
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+        className={`max-w-[72%] px-4 py-3 ${isUser ? '' : 'bg-white'}`}
+        style={
           isUser
-            ? 'bg-primary-500 rounded-tr-sm'
-            : 'bg-white border border-gray-200 rounded-tl-sm'
-        }`}
+            ? {
+                backgroundColor: '#2D2520',
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                borderBottomLeftRadius: 20,
+                borderBottomRightRadius: 4,
+                shadowColor: '#2D2520',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
+                elevation: 3,
+              }
+            : {
+                borderTopLeftRadius: 4,
+                borderTopRightRadius: 20,
+                borderBottomRightRadius: 20,
+                borderBottomLeftRadius: 20,
+                shadowColor: '#2D2520',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.10,
+                shadowRadius: 20,
+                elevation: 3,
+              }
+        }
       >
         <Text
-          className={`text-[15px] leading-[22px] ${textColor}`}
+          className={`text-sm leading-[22px] font-sans ${textColor}`}
           selectable
         >
           {isUser ? displayText : renderFormattedText(displayText)}
-          {isStreaming && <Text className="text-primary-400">|</Text>}
+          {isStreaming && <Text className="text-orange">|</Text>}
         </Text>
 
         {/* TTS button for assistant messages */}
@@ -126,9 +158,9 @@ export default function MessageBubble({ role, message, isStreaming }: Props) {
             <Ionicons
               name={isSpeaking ? 'stop-circle-outline' : 'volume-medium-outline'}
               size={16}
-              color={isSpeaking ? '#ef4444' : '#9ca3af'}
+              color={isSpeaking ? '#ef4444' : '#B8A68E'}
             />
-            <Text className={`text-xs ml-1 ${isSpeaking ? 'text-red-400' : 'text-gray-400'}`}>
+            <Text className={`text-xs ml-1 font-sans ${isSpeaking ? 'text-red-400' : 'text-brown-light'}`}>
               {isSpeaking ? 'Stop' : 'Listen'}
             </Text>
           </TouchableOpacity>
@@ -146,7 +178,7 @@ function renderInlineBold(text: string, isUser: boolean) {
     const boldMatch = part.match(/^\*\*(.*?)\*\*$/);
     if (boldMatch) {
       return (
-        <Text key={i} style={{ fontWeight: 'bold' }}>
+        <Text key={i} className="font-sans-bold">
           {boldMatch[1]}
         </Text>
       );

@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kitcho AI — Shopping Tab Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream:         #FFFBF5;
+    --cream-dark:    #F5EDE3;
+    --cream-deeper:  #EDE0D0;
+    --warm-dark:     #2D2520;
+    --warm-dark-soft:#3D3530;
+    --brown:         #8B7355;
+    --brown-light:   #B8A68E;
+    --brown-muted:   #C9B89E;
+    --orange:        #D4652E;
+    --orange-mid:    #E07540;
+    --orange-light:  #FFF0E8;
+    --orange-soft:   #FDDCC9;
+    --serif: 'Playfair Display', Georgia, serif;
+    --sans:  'DM Sans', -apple-system, sans-serif;
+    --shadow-sm:   0 1px 3px rgba(45,37,32,0.08);
+    --shadow-md:   0 4px 12px rgba(45,37,32,0.10);
+    --shadow-lg:   0 8px 30px rgba(45,37,32,0.14);
+    --shadow-card: 0 2px 8px rgba(45,37,32,0.06), 0 0 0 1px rgba(45,37,32,0.04);
+    --radius-sm:  10px;
+    --radius-md:  16px;
+    --radius-lg:  22px;
+    --radius-xl:  28px;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background: #1a1612;
+    font-family: var(--sans);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 24px 64px;
+    gap: 64px;
+    color: var(--warm-dark);
+  }
+
+  /* ─── PAGE HEADER ─── */
+  .page-header {
+    text-align: center;
+  }
+  .page-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--orange);
+    margin-bottom: 8px;
+  }
+  .page-title {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--cream);
+    letter-spacing: -0.3px;
+  }
+  .page-subtitle {
+    font-family: var(--sans);
+    font-size: 13px;
+    color: #7a6d65;
+    margin-top: 6px;
+  }
+
+  /* ─── SECTION WRAPPER ─── */
+  .section-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+  }
+  .section-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: #5a4e47;
+  }
+
+  /* ─── PHONE FRAME ─── */
+  .phone {
+    width: 390px;
+    height: 844px;
+    background: var(--cream);
+    border-radius: 48px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05),
+      0 40px 80px rgba(0,0,0,0.55),
+      0 16px 40px rgba(0,0,0,0.30),
+      inset 0 1px 0 rgba(255,255,255,0.08);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  /* ─── STATUS BAR ─── */
+  .status-bar {
+    height: 50px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 28px 10px;
+    flex-shrink: 0;
+    background: var(--warm-dark);
+  }
+  .status-bar.cream { background: var(--cream); }
+  .status-bar.warm  { background: var(--warm-dark); }
+
+  .status-time {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--cream);
+  }
+  .status-time.dark { color: var(--warm-dark); }
+  .status-icons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .status-icons svg { opacity: 0.9; }
+
+  /* ─── DIVIDER ─── */
+  .section-divider {
+    width: 390px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212,101,46,0.25), transparent);
+    margin: 8px 0;
+  }
+
+  /* ════════════════════════════════
+     SECTION 1 — SHOPPING LIST
+  ════════════════════════════════ */
+
+  /* Header */
+  .shop-header {
+    background: var(--warm-dark);
+    padding: 20px 24px 0;
+    flex-shrink: 0;
+  }
+  .shop-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .shop-title {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--cream);
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+  .shop-title-sub {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--brown-light);
+    margin-top: 3px;
+    letter-spacing: 0.2px;
+  }
+  .header-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .btn-icon-header {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.07);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--cream);
+    font-size: 16px;
+  }
+
+  /* List Tabs */
+  .list-tabs-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0;
+    margin: 0 -24px;
+    padding: 0 24px;
+  }
+  .list-tabs-wrap::-webkit-scrollbar { display: none; }
+  .list-tabs {
+    display: flex;
+    gap: 0;
+    width: max-content;
+  }
+  .list-tab {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--brown-light);
+    padding: 10px 18px;
+    border-bottom: 2.5px solid transparent;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .list-tab.active {
+    color: var(--cream);
+    border-bottom-color: var(--orange);
+    font-weight: 600;
+  }
+
+  /* Stats bar */
+  .list-stats {
+    background: var(--cream-dark);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .stats-text {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--brown);
+    font-weight: 500;
+  }
+  .stats-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .progress-bar {
+    width: 72px;
+    height: 4px;
+    background: var(--cream-deeper);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 33%;
+    background: var(--orange);
+    border-radius: 99px;
+  }
+  .stats-pct {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--orange);
+  }
+
+  /* Scrollable items area */
+  .items-scroll {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 0 0 100px;
+  }
+  .items-scroll::-webkit-scrollbar { display: none; }
+
+  /* Category group */
+  .category-group {
+    padding: 0 20px;
+  }
+  .category-header {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--warm-dark);
+    padding: 16px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    border-bottom: 1px solid var(--cream-dark);
+    margin-bottom: 2px;
+  }
+  .category-emoji { font-size: 16px; }
+
+  /* Item row */
+  .item-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 4px;
+    border-bottom: 1px solid rgba(245,237,227,0.7);
+    position: relative;
+  }
+  .item-row:last-child { border-bottom: none; }
+
+  .item-check {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 2px solid var(--cream-deeper);
+    background: var(--cream);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .item-check.checked {
+    background: var(--orange);
+    border-color: var(--orange);
+  }
+  .check-mark {
+    font-size: 12px;
+    color: white;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .item-info { flex: 1; min-width: 0; }
+  .item-name {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--warm-dark);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .item-name.done {
+    text-decoration: line-through;
+    color: var(--brown-muted);
+    font-weight: 400;
+  }
+  .item-note {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--brown-light);
+    margin-top: 1px;
+  }
+  .item-note.done { color: var(--brown-muted); opacity: 0.7; }
+
+  .qty-badge {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--brown);
+    background: var(--cream-dark);
+    padding: 3px 8px;
+    border-radius: 99px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .qty-badge.done {
+    color: var(--brown-muted);
+    background: rgba(245,237,227,0.5);
+  }
+
+  .item-actions-hint {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    opacity: 0.35;
+  }
+  .action-hint-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--cream-deeper);
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--brown);
+    cursor: pointer;
+  }
+
+  /* Bottom bar */
+  .shop-bottom {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 20px 28px;
+    background: linear-gradient(to top, var(--cream) 70%, transparent);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .btn-add-items {
+    flex: 1;
+    height: 48px;
+    background: var(--warm-dark);
+    color: var(--cream);
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    letter-spacing: 0.1px;
+  }
+  .btn-add-items .plus-icon {
+    font-size: 18px;
+    font-weight: 300;
+    line-height: 1;
+  }
+  .btn-ai-gen {
+    height: 48px;
+    padding: 0 14px;
+    background: var(--orange-light);
+    color: var(--orange);
+    border: 1.5px solid var(--orange-soft);
+    border-radius: var(--radius-md);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    letter-spacing: 0.1px;
+  }
+  .sparkle { font-size: 14px; }
+
+  /* ════════════════════════════════
+     SECTION 2 — PRICE COMPARISON
+  ════════════════════════════════ */
+
+  .compare-header {
+    background: var(--warm-dark);
+    padding: 20px 24px 16px;
+    flex-shrink: 0;
+  }
+  .compare-title {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--cream);
+    letter-spacing: -0.3px;
+  }
+  .compare-subtitle {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--brown-light);
+    margin-top: 4px;
+  }
+  .compare-list-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 10px;
+    background: rgba(255,255,255,0.09);
+    border-radius: 99px;
+    padding: 4px 12px;
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--brown-light);
+  }
+  .compare-list-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--orange);
+  }
+
+  .compare-scroll {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 16px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .compare-scroll::-webkit-scrollbar { display: none; }
+
+  /* Store cards */
+  .store-card {
+    border-radius: var(--radius-lg);
+    background: white;
+    padding: 16px;
+    box-shadow: var(--shadow-card);
+    border: 1.5px solid rgba(45,37,32,0.06);
+    position: relative;
+  }
+  .store-card.best {
+    background: var(--orange-light);
+    border-color: var(--orange);
+    border-width: 2px;
+  }
+
+  .store-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .store-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--cream-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    border: 1px solid rgba(45,37,32,0.07);
+  }
+  .store-card.best .store-logo {
+    background: white;
+  }
+  .store-info { flex: 1; }
+  .store-name {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--warm-dark);
+  }
+  .store-dist {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--brown);
+    margin-top: 1px;
+  }
+
+  .store-price-col {
+    text-align: right;
+  }
+  .store-price {
+    font-family: var(--serif);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--warm-dark);
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+  .store-per-item {
+    font-family: var(--sans);
+    font-size: 10px;
+    color: var(--brown);
+    margin-top: 2px;
+  }
+
+  .cheapest-badge {
+    position: absolute;
+    top: -1px;
+    right: 14px;
+    background: var(--orange);
+    color: white;
+    font-family: var(--sans);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 0 0 8px 8px;
+  }
+
+  .savings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: rgba(212,101,46,0.08);
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .savings-label {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--orange);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .savings-amount {
+    font-family: var(--serif);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--orange);
+  }
+
+  .add-to-cart-btn {
+    width: 100%;
+    height: 38px;
+    background: var(--warm-dark);
+    color: var(--cream);
+    border: none;
+    border-radius: 10px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .store-card:not(.best) .add-to-cart-btn {
+    background: transparent;
+    color: var(--warm-dark);
+    border: 1.5px solid var(--cream-darker, var(--cream-deeper));
+  }
+
+  /* Item breakdown table */
+  .breakdown-section {
+    margin-top: 6px;
+  }
+  .breakdown-title {
+    font-family: var(--serif);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--warm-dark);
+    margin-bottom: 10px;
+    padding: 0 2px;
+  }
+  .breakdown-table {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--cream-dark);
+  }
+  .breakdown-row {
+    display: grid;
+    grid-template-columns: 1fr 60px 60px 60px;
+    gap: 0;
+  }
+  .breakdown-row.head {
+    background: var(--warm-dark);
+  }
+  .breakdown-row.alt { background: white; }
+  .breakdown-row.norm { background: var(--cream); }
+
+  .breakdown-cell {
+    padding: 9px 10px;
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--brown);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+  }
+  .breakdown-cell:not(:first-child) { justify-content: center; text-align: center; }
+  .breakdown-cell.head-cell {
+    color: var(--cream);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .breakdown-cell.item-cell {
+    color: var(--warm-dark);
+    font-weight: 500;
+    font-size: 12px;
+  }
+  .cell-best {
+    background: var(--orange-light);
+    color: var(--orange) !important;
+    font-weight: 700 !important;
+    border-radius: 4px;
+  }
+
+  /* ════════════════════════════════
+     SECTION 3 — ADD ITEMS MODAL
+  ════════════════════════════════ */
+
+  .modal-phone {
+    /* slightly lower — represents a bottom-sheet modal over a dimmed screen */
+    position: relative;
+  }
+  .modal-phone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(45,37,32,0.45);
+    border-radius: 48px;
+    z-index: 0;
+  }
+  .modal-sheet {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--cream);
+    border-radius: 28px 28px 0 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 640px;
+  }
+
+  .modal-drag-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--cream-deeper);
+    border-radius: 99px;
+    margin: 10px auto 0;
+    flex-shrink: 0;
+  }
+
+  .modal-header {
+    background: var(--warm-dark);
+    padding: 16px 20px 18px;
+    flex-shrink: 0;
+  }
+  .modal-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-title {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--cream);
+    letter-spacing: -0.2px;
+  }
+  .modal-close {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.12);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--cream);
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .modal-list-tag {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--brown-light);
+    margin-top: 4px;
+  }
+  .modal-list-tag span { color: var(--orange); font-weight: 600; }
+
+  /* Mode tabs */
+  .mode-tabs {
+    display: flex;
+    background: var(--cream-dark);
+    margin: 14px 16px 0;
+    border-radius: 12px;
+    padding: 3px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .mode-tab {
+    flex: 1;
+    height: 34px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--brown);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: all 0.15s;
+  }
+  .mode-tab.active {
+    background: var(--warm-dark);
+    color: var(--cream);
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(45,37,32,0.2);
+  }
+  .mode-tab-icon { font-size: 13px; }
+
+  /* Search field */
+  .search-wrap {
+    padding: 14px 16px 0;
+    flex-shrink: 0;
+  }
+  .search-field {
+    width: 100%;
+    height: 44px;
+    background: white;
+    border-radius: 12px;
+    border: 1.5px solid var(--cream-dark);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    box-shadow: var(--shadow-sm);
+  }
+  .search-icon { font-size: 16px; opacity: 0.5; }
+  .search-placeholder {
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--brown-light);
+    flex: 1;
+  }
+  .search-mic {
+    font-size: 16px;
+    color: var(--brown-light);
+    opacity: 0.6;
+  }
+
+  /* Smart suggestions */
+  .suggestions-section {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 14px 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .suggestions-section::-webkit-scrollbar { display: none; }
+
+  .suggest-group-label {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--brown);
+    margin-bottom: 6px;
+  }
+
+  .suggest-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-bottom: 4px;
+  }
+  .suggest-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: white;
+    border: 1.5px solid var(--cream-dark);
+    border-radius: 99px;
+    padding: 5px 12px;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--warm-dark);
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+  }
+  .chip-add { font-size: 14px; color: var(--orange); font-weight: 700; line-height: 1; }
+  .chip-emoji { font-size: 13px; }
+
+  .suggest-rows { display: flex; flex-direction: column; gap: 2px; }
+
+  .suggest-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: white;
+    border: 1px solid var(--cream-dark);
+    cursor: pointer;
+  }
+  .suggest-row-icon {
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cream-dark);
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .suggest-row-info { flex: 1; }
+  .suggest-row-name {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--warm-dark);
+  }
+  .suggest-row-sub {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--brown-light);
+    margin-top: 1px;
+  }
+  .suggest-row-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .aisle-tag {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--brown);
+    background: var(--cream-dark);
+    padding: 2px 7px;
+    border-radius: 99px;
+  }
+  .suggest-plus {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--orange);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 300;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  /* Add to List button */
+  .modal-footer {
+    padding: 10px 16px 24px;
+    flex-shrink: 0;
+    background: var(--cream);
+    border-top: 1px solid var(--cream-dark);
+  }
+  .btn-add-to-list {
+    width: 100%;
+    height: 50px;
+    background: var(--warm-dark);
+    color: var(--cream);
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    letter-spacing: 0.1px;
+  }
+  .btn-add-to-list .count-pill {
+    background: var(--orange);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Dimmed background behind modal for context */
+  .modal-bg-peek {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(844px - 640px);
+    background: rgba(45,37,32,0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 24px;
+    z-index: 0;
+  }
+  .peek-hint {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+  }
+
+  /* ─── BOTTOM NAV (shared) ─── */
+  .bottom-nav {
+    height: 82px;
+    background: var(--cream);
+    border-top: 1px solid var(--cream-dark);
+    display: flex;
+    align-items: flex-start;
+    padding-top: 10px;
+    flex-shrink: 0;
+  }
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  .nav-icon { font-size: 22px; opacity: 0.4; }
+  .nav-icon.active { opacity: 1; }
+  .nav-label {
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--brown);
+  }
+  .nav-label.active {
+    color: var(--orange);
+    font-weight: 700;
+  }
+  .nav-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--orange);
+    margin-top: 1px;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     PAGE HEADER
+════════════════════════════════════════ -->
+<div class="page-header">
+  <div class="page-label">Kitcho AI · Design Mockup</div>
+  <div class="page-title">Shopping Tab</div>
+  <div class="page-subtitle">390 × 844 · Three screens · Warm editorial palette</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     SECTION 1 — SHOPPING LISTS OVERVIEW
+════════════════════════════════════════ -->
+<div class="section-block">
+  <div class="section-label">Section 1 &nbsp;·&nbsp; Shopping Lists</div>
+
+  <div class="phone">
+
+    <!-- Status Bar -->
+    <div class="status-bar warm">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+          <rect x="0" y="3" width="3" height="9" rx="1" fill="#FFFBF5"/>
+          <rect x="4.5" y="2" width="3" height="10" rx="1" fill="#FFFBF5"/>
+          <rect x="9" y="0" width="3" height="12" rx="1" fill="#FFFBF5"/>
+          <rect x="13.5" y="0" width="2.5" height="12" rx="1" fill="#FFFBF5" opacity="0.35"/>
+        </svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+          <path d="M8 3C9.9 3 11.6 3.8 12.8 5.1L14 3.8C12.4 2.1 10.3 1 8 1C5.7 1 3.6 2.1 2 3.8L3.2 5.1C4.4 3.8 6.1 3 8 3Z" fill="#FFFBF5"/>
+          <path d="M8 6C9.1 6 10.1 6.5 10.8 7.2L12 5.9C10.9 4.7 9.5 4 8 4C6.5 4 5.1 4.7 4 5.9L5.2 7.2C5.9 6.5 6.9 6 8 6Z" fill="#FFFBF5"/>
+          <circle cx="8" cy="10" r="1.5" fill="#FFFBF5"/>
+        </svg>
+        <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+          <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="#FFFBF5" stroke-opacity="0.4"/>
+          <rect x="2" y="2" width="16" height="8" rx="2" fill="#FFFBF5"/>
+          <path d="M23 4.5V7.5C23.8 7.2 24.5 6.7 24.5 6C24.5 5.3 23.8 4.8 23 4.5Z" fill="#FFFBF5" opacity="0.5"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <div class="shop-header">
+      <div class="shop-header-row">
+        <div>
+          <div class="shop-title">Shopping</div>
+          <div class="shop-title-sub">3 lists · Updated today</div>
+        </div>
+        <div class="header-actions">
+          <div class="btn-icon-header">⋯</div>
+          <div class="btn-icon-header">＋</div>
+        </div>
+      </div>
+
+      <!-- List tabs -->
+      <div class="list-tabs-wrap">
+        <div class="list-tabs">
+          <div class="list-tab active">Weekly Groceries</div>
+          <div class="list-tab">Pantry Restock</div>
+          <div class="list-tab">Dinner Party</div>
+          <div class="list-tab">Quick Run</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="list-stats">
+      <div class="stats-text">12 items &nbsp;·&nbsp; <strong style="color:var(--warm-dark)">4 checked</strong></div>
+      <div class="stats-progress">
+        <div class="progress-bar"><div class="progress-fill"></div></div>
+        <span class="stats-pct">33%</span>
+      </div>
+    </div>
+
+    <!-- Items -->
+    <div class="items-scroll">
+
+      <!-- Produce -->
+      <div class="category-group">
+        <div class="category-header">
+          <span class="category-emoji">🥦</span> Produce
+        </div>
+
+        <div class="item-row">
+          <div class="item-check checked"><span class="check-mark">✓</span></div>
+          <div class="item-info">
+            <div class="item-name done">Broccoli</div>
+            <div class="item-note done">Fresh, organic if available</div>
+          </div>
+          <div class="qty-badge done">1 head</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+
+        <div class="item-row">
+          <div class="item-check checked"><span class="check-mark">✓</span></div>
+          <div class="item-info">
+            <div class="item-name done">Cherry Tomatoes</div>
+            <div class="item-note done">Campari or grape</div>
+          </div>
+          <div class="qty-badge done">1 pint</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+
+        <div class="item-row">
+          <div class="item-check"></div>
+          <div class="item-info">
+            <div class="item-name">Garlic</div>
+            <div class="item-note">Whole bulb</div>
+          </div>
+          <div class="qty-badge">2 bulbs</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+
+        <div class="item-row">
+          <div class="item-check"></div>
+          <div class="item-info">
+            <div class="item-name">Baby Spinach</div>
+            <div class="item-note">For smoothies + salads</div>
+          </div>
+          <div class="qty-badge">5 oz bag</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dairy -->
+      <div class="category-group">
+        <div class="category-header">
+          <span class="category-emoji">🧀</span> Dairy
+        </div>
+
+        <div class="item-row">
+          <div class="item-check checked"><span class="check-mark">✓</span></div>
+          <div class="item-info">
+            <div class="item-name done">Greek Yogurt</div>
+            <div class="item-note done">Plain, full-fat</div>
+          </div>
+          <div class="qty-badge done">2 × 16oz</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+
+        <div class="item-row">
+          <div class="item-check"></div>
+          <div class="item-info">
+            <div class="item-name">Parmesan</div>
+            <div class="item-note">Wedge, not pre-grated</div>
+          </div>
+          <div class="qty-badge">4 oz</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Meat -->
+      <div class="category-group">
+        <div class="category-header">
+          <span class="category-emoji">🥩</span> Meat &amp; Seafood
+        </div>
+
+        <div class="item-row">
+          <div class="item-check checked"><span class="check-mark">✓</span></div>
+          <div class="item-info">
+            <div class="item-name done">Salmon Fillets</div>
+            <div class="item-note done">Wild-caught, skinless</div>
+          </div>
+          <div class="qty-badge done">1.5 lb</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+
+        <div class="item-row">
+          <div class="item-check"></div>
+          <div class="item-info">
+            <div class="item-name">Chicken Thighs</div>
+            <div class="item-note">Bone-in, skin-on</div>
+          </div>
+          <div class="qty-badge">2 lb</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pantry -->
+      <div class="category-group">
+        <div class="category-header">
+          <span class="category-emoji">🫙</span> Pantry
+        </div>
+
+        <div class="item-row">
+          <div class="item-check"></div>
+          <div class="item-info">
+            <div class="item-name">Arborio Rice</div>
+            <div class="item-note">For risotto — any brand</div>
+          </div>
+          <div class="qty-badge">1 lb bag</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+
+        <div class="item-row">
+          <div class="item-check"></div>
+          <div class="item-info">
+            <div class="item-name">San Marzano Tomatoes</div>
+            <div class="item-note">Canned, whole peeled</div>
+          </div>
+          <div class="qty-badge">2 cans</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+
+        <div class="item-row">
+          <div class="item-check"></div>
+          <div class="item-info">
+            <div class="item-name">Extra-Virgin Olive Oil</div>
+            <div class="item-note">Cold-pressed, Italian</div>
+          </div>
+          <div class="qty-badge">500 ml</div>
+          <div class="item-actions-hint">
+            <div class="action-hint-btn">✏</div>
+            <div class="action-hint-btn">🗑</div>
+          </div>
+        </div>
+
+      </div><!-- /category -->
+    </div><!-- /items-scroll -->
+
+    <!-- Bottom action bar -->
+    <div class="shop-bottom">
+      <button class="btn-add-items">
+        <span class="plus-icon">＋</span>
+        Add Items
+      </button>
+      <button class="btn-ai-gen">
+        <span class="sparkle">✦</span>
+        AI Generate
+      </button>
+    </div>
+
+    <!-- Bottom Nav -->
+    <div class="bottom-nav">
+      <div class="nav-item">
+        <div class="nav-icon">🏠</div>
+        <div class="nav-label">Home</div>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">📖</div>
+        <div class="nav-label">Recipes</div>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">📅</div>
+        <div class="nav-label">Meal Plan</div>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon active" style="color:var(--orange)">🛒</div>
+        <div class="nav-label active">Shopping</div>
+        <div class="nav-dot"></div>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">👤</div>
+        <div class="nav-label">Profile</div>
+      </div>
+    </div>
+
+  </div><!-- /phone -->
+</div><!-- /section-block -->
+
+
+<!-- ═══════════════════════════════════════
+     SECTION 2 — PRICE COMPARISON
+════════════════════════════════════════ -->
+<div class="section-block">
+  <div class="section-label">Section 2 &nbsp;·&nbsp; Price Comparison</div>
+
+  <div class="phone">
+
+    <!-- Status Bar -->
+    <div class="status-bar warm">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+          <rect x="0" y="3" width="3" height="9" rx="1" fill="#FFFBF5"/>
+          <rect x="4.5" y="2" width="3" height="10" rx="1" fill="#FFFBF5"/>
+          <rect x="9" y="0" width="3" height="12" rx="1" fill="#FFFBF5"/>
+          <rect x="13.5" y="0" width="2.5" height="12" rx="1" fill="#FFFBF5" opacity="0.35"/>
+        </svg>
+        <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+          <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="#FFFBF5" stroke-opacity="0.4"/>
+          <rect x="2" y="2" width="16" height="8" rx="2" fill="#FFFBF5"/>
+          <path d="M23 4.5V7.5C23.8 7.2 24.5 6.7 24.5 6C24.5 5.3 23.8 4.8 23 4.5Z" fill="#FFFBF5" opacity="0.5"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <div class="compare-header">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div class="compare-title">Compare Prices</div>
+          <div class="compare-subtitle">Checking 4 stores near you</div>
+        </div>
+        <div class="btn-icon-header" style="margin-top:4px">↺</div>
+      </div>
+      <div class="compare-list-name">
+        <div class="compare-list-dot"></div>
+        Weekly Groceries &nbsp;·&nbsp; 12 items
+      </div>
+    </div>
+
+    <!-- Comparison scroll -->
+    <div class="compare-scroll">
+
+      <!-- BEST DEAL CARD -->
+      <div class="store-card best">
+        <div class="cheapest-badge">Cheapest</div>
+        <div class="store-card-header">
+          <div class="store-logo">🏪</div>
+          <div class="store-info">
+            <div class="store-name">Kroger</div>
+            <div class="store-dist">0.8 mi away · Pickup available</div>
+          </div>
+          <div class="store-price-col">
+            <div class="store-price">$38.47</div>
+            <div class="store-per-item">for all 12 items</div>
+          </div>
+        </div>
+        <div class="savings-row">
+          <div class="savings-label">
+            <span>🏷</span> You save vs. avg
+          </div>
+          <div class="savings-amount">$4.23</div>
+        </div>
+        <button class="add-to-cart-btn">
+          🛒 Add All to Kroger Cart
+        </button>
+      </div>
+
+      <!-- OTHER STORES -->
+      <div class="store-card">
+        <div class="store-card-header">
+          <div class="store-logo">🏬</div>
+          <div class="store-info">
+            <div class="store-name">Whole Foods</div>
+            <div class="store-dist">1.4 mi away · Delivery: $9.95</div>
+          </div>
+          <div class="store-price-col">
+            <div class="store-price" style="font-size:22px;color:var(--brown)">$41.20</div>
+            <div class="store-per-item">+$2.73 vs Kroger</div>
+          </div>
+        </div>
+        <button class="add-to-cart-btn">View at Whole Foods</button>
+      </div>
+
+      <div class="store-card">
+        <div class="store-card-header">
+          <div class="store-logo">🏢</div>
+          <div class="store-info">
+            <div class="store-name">Trader Joe's</div>
+            <div class="store-dist">2.1 mi away · In-store only</div>
+          </div>
+          <div class="store-price-col">
+            <div class="store-price" style="font-size:22px;color:var(--brown)">$42.85</div>
+            <div class="store-per-item">+$4.38 vs Kroger</div>
+          </div>
+        </div>
+        <button class="add-to-cart-btn">View at Trader Joe's</button>
+      </div>
+
+      <!-- Item breakdown table -->
+      <div class="breakdown-section">
+        <div class="breakdown-title">Item-by-Item Breakdown</div>
+        <div class="breakdown-table">
+
+          <div class="breakdown-row head">
+            <div class="breakdown-cell head-cell">Item</div>
+            <div class="breakdown-cell head-cell">Kroger</div>
+            <div class="breakdown-cell head-cell">W. Foods</div>
+            <div class="breakdown-cell head-cell">TJ's</div>
+          </div>
+
+          <div class="breakdown-row norm">
+            <div class="breakdown-cell item-cell">Broccoli</div>
+            <div class="breakdown-cell" style="background:var(--orange-light);border-radius:4px;color:var(--orange);font-weight:700">$1.29</div>
+            <div class="breakdown-cell">$1.99</div>
+            <div class="breakdown-cell">$1.49</div>
+          </div>
+
+          <div class="breakdown-row alt">
+            <div class="breakdown-cell item-cell">Salmon</div>
+            <div class="breakdown-cell">$11.99</div>
+            <div class="breakdown-cell">$13.49</div>
+            <div class="breakdown-cell" style="background:var(--orange-light);border-radius:4px;color:var(--orange);font-weight:700">$10.99</div>
+          </div>
+
+          <div class="breakdown-row norm">
+            <div class="breakdown-cell item-cell">Greek Yogurt</div>
+            <div class="breakdown-cell" style="background:var(--orange-light);border-radius:4px;color:var(--orange);font-weight:700">$3.49</div>
+            <div class="breakdown-cell">$4.29</div>
+            <div class="breakdown-cell">$3.99</div>
+          </div>
+
+          <div class="breakdown-row alt">
+            <div class="breakdown-cell item-cell">Olive Oil</div>
+            <div class="breakdown-cell" style="background:var(--orange-light);border-radius:4px;color:var(--orange);font-weight:700">$6.79</div>
+            <div class="breakdown-cell">$9.99</div>
+            <div class="breakdown-cell">$7.49</div>
+          </div>
+
+          <div class="breakdown-row norm">
+            <div class="breakdown-cell item-cell">Parmesan</div>
+            <div class="breakdown-cell">$4.99</div>
+            <div class="breakdown-cell">$5.49</div>
+            <div class="breakdown-cell" style="background:var(--orange-light);border-radius:4px;color:var(--orange);font-weight:700">$4.69</div>
+          </div>
+
+          <div class="breakdown-row alt" style="border-top:1px solid var(--cream-dark)">
+            <div class="breakdown-cell" style="font-size:11px;font-weight:700;color:var(--warm-dark)">Total</div>
+            <div class="breakdown-cell" style="font-weight:700;color:var(--orange)">$38.47</div>
+            <div class="breakdown-cell" style="font-weight:600;color:var(--brown)">$41.20</div>
+            <div class="breakdown-cell" style="font-weight:600;color:var(--brown)">$42.85</div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /compare-scroll -->
+
+    <!-- Bottom Nav -->
+    <div class="bottom-nav">
+      <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">Home</div></div>
+      <div class="nav-item"><div class="nav-icon">📖</div><div class="nav-label">Recipes</div></div>
+      <div class="nav-item"><div class="nav-icon">📅</div><div class="nav-label">Meal Plan</div></div>
+      <div class="nav-item">
+        <div class="nav-icon active" style="color:var(--orange)">🛒</div>
+        <div class="nav-label active">Shopping</div>
+        <div class="nav-dot"></div>
+      </div>
+      <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">Profile</div></div>
+    </div>
+
+  </div><!-- /phone -->
+</div><!-- /section-block -->
+
+
+<!-- ═══════════════════════════════════════
+     SECTION 3 — ADD ITEMS MODAL
+════════════════════════════════════════ -->
+<div class="section-block">
+  <div class="section-label">Section 3 &nbsp;·&nbsp; Add Items Modal</div>
+
+  <div class="phone modal-phone">
+
+    <!-- Status Bar (visible behind dim) -->
+    <div class="status-bar warm" style="position:relative;z-index:2">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+          <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="#FFFBF5" stroke-opacity="0.4"/>
+          <rect x="2" y="2" width="16" height="8" rx="2" fill="#FFFBF5"/>
+          <path d="M23 4.5V7.5C23.8 7.2 24.5 6.7 24.5 6C24.5 5.3 23.8 4.8 23 4.5Z" fill="#FFFBF5" opacity="0.5"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Dimmed background peek -->
+    <div class="modal-bg-peek">
+      <div class="peek-hint">Weekly Groceries — 12 items</div>
+    </div>
+
+    <!-- Bottom sheet modal -->
+    <div class="modal-sheet">
+      <div class="modal-drag-handle"></div>
+
+      <!-- Modal header -->
+      <div class="modal-header">
+        <div class="modal-header-row">
+          <div class="modal-title">Add Items</div>
+          <button class="modal-close">✕</button>
+        </div>
+        <div class="modal-list-tag">Adding to <span>Weekly Groceries</span></div>
+      </div>
+
+      <!-- Mode tabs -->
+      <div class="mode-tabs">
+        <button class="mode-tab active">
+          <span class="mode-tab-icon">✦</span> Smart Add
+        </button>
+        <button class="mode-tab">
+          <span class="mode-tab-icon">✏</span> Manual
+        </button>
+        <button class="mode-tab">
+          <span class="mode-tab-icon">≡</span> Bulk
+        </button>
+      </div>
+
+      <!-- Search -->
+      <div class="search-wrap">
+        <div class="search-field">
+          <span class="search-icon">🔍</span>
+          <span class="search-placeholder">Search or describe what you need…</span>
+          <span class="search-mic">🎤</span>
+        </div>
+      </div>
+
+      <!-- Suggestions -->
+      <div class="suggestions-section">
+
+        <!-- Running low -->
+        <div>
+          <div class="suggest-group-label">Running low in your pantry</div>
+          <div class="suggest-chips">
+            <div class="suggest-chip">
+              <span class="chip-emoji">🧄</span> Garlic
+              <span class="chip-add">＋</span>
+            </div>
+            <div class="suggest-chip">
+              <span class="chip-emoji">🫒</span> Olive Oil
+              <span class="chip-add">＋</span>
+            </div>
+            <div class="suggest-chip">
+              <span class="chip-emoji">🥚</span> Eggs
+              <span class="chip-add">＋</span>
+            </div>
+            <div class="suggest-chip">
+              <span class="chip-emoji">🧅</span> Onions
+              <span class="chip-add">＋</span>
+            </div>
+            <div class="suggest-chip">
+              <span class="chip-emoji">🥛</span> Whole Milk
+              <span class="chip-add">＋</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- From your meal plan -->
+        <div>
+          <div class="suggest-group-label">Needed for this week's meals</div>
+          <div class="suggest-rows">
+
+            <div class="suggest-row">
+              <div class="suggest-row-icon">🍋</div>
+              <div class="suggest-row-info">
+                <div class="suggest-row-name">Lemons</div>
+                <div class="suggest-row-sub">For Lemon Herb Salmon · Tuesday</div>
+              </div>
+              <div class="suggest-row-meta">
+                <div class="aisle-tag">Produce</div>
+              </div>
+              <div class="suggest-plus">＋</div>
+            </div>
+
+            <div class="suggest-row">
+              <div class="suggest-row-icon">🫚</div>
+              <div class="suggest-row-info">
+                <div class="suggest-row-name">Sesame Oil</div>
+                <div class="suggest-row-sub">For Stir-Fry Noodles · Thursday</div>
+              </div>
+              <div class="suggest-row-meta">
+                <div class="aisle-tag">Pantry</div>
+              </div>
+              <div class="suggest-plus">＋</div>
+            </div>
+
+            <div class="suggest-row">
+              <div class="suggest-row-icon">🥬</div>
+              <div class="suggest-row-info">
+                <div class="suggest-row-name">Napa Cabbage</div>
+                <div class="suggest-row-sub">For Stir-Fry Noodles · Thursday</div>
+              </div>
+              <div class="suggest-row-meta">
+                <div class="aisle-tag">Produce</div>
+              </div>
+              <div class="suggest-plus">＋</div>
+            </div>
+
+            <div class="suggest-row">
+              <div class="suggest-row-icon">🧈</div>
+              <div class="suggest-row-info">
+                <div class="suggest-row-name">Unsalted Butter</div>
+                <div class="suggest-row-sub">For Risotto · Friday</div>
+              </div>
+              <div class="suggest-row-meta">
+                <div class="aisle-tag">Dairy</div>
+              </div>
+              <div class="suggest-plus">＋</div>
+            </div>
+
+          </div>
+        </div>
+
+      </div><!-- /suggestions-section -->
+
+      <!-- Footer -->
+      <div class="modal-footer">
+        <button class="btn-add-to-list">
+          Add to List
+          <div class="count-pill">3</div>
+        </button>
+      </div>
+
+    </div><!-- /modal-sheet -->
+
+  </div><!-- /phone -->
+</div><!-- /section-block -->
+
+
+</body>
+</html>

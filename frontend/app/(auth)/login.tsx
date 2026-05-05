@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Link } from 'expo-router';
 import { useAuthStore } from '../../src/store/authStore';
 
@@ -50,7 +51,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <View className="flex-1 bg-gradient-to-br from-primary-500 to-primary-600">
+    <View className="flex-1 bg-cream">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
@@ -59,46 +60,62 @@ export default function LoginScreen() {
           contentContainerStyle={{ flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="flex-1 justify-center px-8 py-12">
-            {/* Logo Section */}
-            <View className="items-center mb-12 mt-10">
-              <View className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 rounded-3xl items-center justify-center mb-5 shadow-lg">
-                <Text className="text-5xl">🍳</Text>
+          <View className="flex-1 justify-center px-7 py-12">
+            {/* Logo Block */}
+            <View className="items-center mb-9 mt-6">
+              <View
+                className="w-[72px] h-[72px] bg-warm-dark rounded-[22px] items-center justify-center mb-[18px]"
+                style={{
+                  shadowColor: '#2D2520',
+                  shadowOffset: { width: 0, height: 6 },
+                  shadowOpacity: 0.10,
+                  shadowRadius: 20,
+                  elevation: 8,
+                }}
+              >
+                <Image
+                  source={require('../../assets/icon.png')}
+                  style={{ width: 48, height: 48, borderRadius: 12 }}
+                  cachePolicy="memory-disk"
+                />
               </View>
-              <Text className="text-4xl font-bold text-gray-900 tracking-tight">Kitcho AI</Text>
-              <Text className="text-gray-600 mt-2 text-lg font-medium">Your Smart Cooking Companion</Text>
-            </View>
-
-            {/* Feature Badges */}
-            <View className="flex-row flex-wrap justify-center mb-6 gap-2">
-              <View className="bg-primary-50 px-4 py-2 rounded-2xl flex-row items-center gap-1.5">
-                <Text className="text-sm">✨</Text>
-                <Text className="text-primary-700 font-medium text-sm">AI Chef Assistant</Text>
-              </View>
-              <View className="bg-primary-50 px-4 py-2 rounded-2xl flex-row items-center gap-1.5">
-                <Text className="text-sm">🥗</Text>
-                <Text className="text-primary-700 font-medium text-sm">Meal Planning</Text>
-              </View>
-              <View className="bg-primary-50 px-4 py-2 rounded-2xl flex-row items-center gap-1.5">
-                <Text className="text-sm">🛒</Text>
-                <Text className="text-primary-700 font-medium text-sm">Smart Shopping</Text>
-              </View>
+              <Text className="text-[26px] font-serif-bold text-warm-dark" style={{ letterSpacing: -0.5 }}>
+                Kitcho AI
+              </Text>
+              <Text className="text-brown mt-1.5 text-[13px] font-sans" style={{ letterSpacing: 0.1 }}>
+                Your personal kitchen companion
+              </Text>
             </View>
 
             {/* Error Banner */}
             {error ? (
-              <View className="bg-red-50 border border-red-200 rounded-2xl p-3 mb-4">
-                <Text className="text-red-600 text-center">{error}</Text>
+              <View className="bg-orange-light border border-orange-soft rounded-[14px] p-3.5 mb-[18px] flex-row items-start gap-2.5">
+                <Text className="text-[16px] mt-px">⚠</Text>
+                <Text className="text-orange-dark text-[13.5px] font-sans-medium flex-1" style={{ lineHeight: 20 }}>
+                  {error}
+                </Text>
               </View>
             ) : null}
 
             {/* Email Input */}
-            <View className="mb-5">
-              <Text className="text-gray-700 font-semibold mb-2 text-base">Email</Text>
+            <View className="mb-3.5">
+              <Text
+                className="text-brown font-sans-semibold mb-[7px] text-xs"
+                style={{ letterSpacing: 0.5, textTransform: 'uppercase' }}
+              >
+                Email
+              </Text>
               <TextInput
-                className="border-2 border-gray-200 rounded-2xl px-4 py-4 text-lg bg-gray-50"
+                className="border-[1.5px] border-cream-deeper rounded-[14px] px-4 h-[50px] text-[15px] bg-white font-sans text-warm-dark"
+                style={{
+                  shadowColor: '#2D2520',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.08,
+                  shadowRadius: 8,
+                  elevation: 2,
+                }}
                 placeholder="you@example.com"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor="#C4AD95"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -109,13 +126,25 @@ export default function LoginScreen() {
             </View>
 
             {/* Password Input */}
-            <View className="mb-3">
-              <Text className="text-gray-700 font-semibold mb-2 text-base">Password</Text>
+            <View className="mb-3.5">
+              <Text
+                className="text-brown font-sans-semibold mb-[7px] text-xs"
+                style={{ letterSpacing: 0.5, textTransform: 'uppercase' }}
+              >
+                Password
+              </Text>
               <View className="relative">
                 <TextInput
-                  className="border-2 border-gray-200 rounded-2xl px-4 py-4 text-lg bg-gray-50 pr-16"
+                  className="border-[1.5px] border-cream-deeper rounded-[14px] px-4 pr-[60px] h-[50px] text-[15px] bg-white font-sans text-warm-dark"
+                  style={{
+                    shadowColor: '#2D2520',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 8,
+                    elevation: 2,
+                  }}
                   placeholder="••••••••"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor="#C4AD95"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
@@ -123,10 +152,10 @@ export default function LoginScreen() {
                   editable={!isLoading}
                 />
                 <TouchableOpacity
-                  className="absolute right-4 top-4"
+                  className="absolute right-3.5 top-0 bottom-0 justify-center"
                   onPress={() => setShowPassword(!showPassword)}
                 >
-                  <Text className="text-primary-600 font-semibold text-base">
+                  <Text className="text-orange font-sans-semibold text-[13px]" style={{ letterSpacing: 0.2 }}>
                     {showPassword ? 'Hide' : 'Show'}
                   </Text>
                 </TouchableOpacity>
@@ -134,45 +163,47 @@ export default function LoginScreen() {
             </View>
 
             {/* Forgot Password Link */}
-            <View className="items-end mb-6">
-              <Link href="/(auth)/reset-password" asChild>
+            <View className="items-end -mt-1.5 mb-5">
+              <Link href="/(auth)/forgot-password" asChild>
                 <TouchableOpacity>
-                  <Text className="text-primary-600 text-base font-semibold">
-                    Forgot password?
+                  <Text className="text-orange text-[13px] font-sans-medium">
+                    Forgot Password?
                   </Text>
                 </TouchableOpacity>
               </Link>
             </View>
 
-            {/* Login Button */}
+            {/* Sign In Button */}
             <TouchableOpacity
-              className={`rounded-2xl py-4 items-center shadow-lg ${
-                isLoading ? 'bg-primary-300' : 'bg-gradient-to-br from-primary-500 to-primary-600'
+              className={`rounded-[20px] h-[54px] items-center justify-center mt-2 ${
+                isLoading ? 'bg-brown-light' : 'bg-warm-dark'
               }`}
+              style={{
+                shadowColor: '#2D2520',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.10,
+                shadowRadius: 20,
+                elevation: 6,
+              }}
               onPress={handleLogin}
               disabled={isLoading}
             >
               {isLoading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="#FFFBF5" />
               ) : (
-                <Text className="text-white font-semibold text-lg">Sign In</Text>
+                <Text className="text-cream font-sans-semibold text-[16px]" style={{ letterSpacing: 0.1 }}>
+                  Sign In
+                </Text>
               )}
             </TouchableOpacity>
 
-            {/* Divider */}
-            <View className="flex-row items-center my-8">
-              <View className="flex-1 h-px bg-gray-300" />
-              <Text className="mx-4 text-gray-400 text-sm">OR</Text>
-              <View className="flex-1 h-px bg-gray-300" />
-            </View>
-
-            {/* Register Link */}
-            <View className="items-center">
+            {/* Bottom Link */}
+            <View className="items-center mt-6">
               <View className="flex-row">
-                <Text className="text-gray-600 text-base">Don't have an account? </Text>
+                <Text className="text-brown text-sm font-sans">Don't have an account? </Text>
                 <Link href="/(auth)/register" asChild>
                   <TouchableOpacity>
-                    <Text className="text-primary-600 font-semibold text-base">Sign Up</Text>
+                    <Text className="text-orange font-sans-semibold text-sm">Sign Up</Text>
                   </TouchableOpacity>
                 </Link>
               </View>

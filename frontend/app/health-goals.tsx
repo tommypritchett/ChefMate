@@ -4,8 +4,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  TextInput,
-  Modal,
   ActivityIndicator,
   Alert,
   Platform,
@@ -15,74 +13,22 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { healthGoalsApi, nutritionApi } from '../src/services/api';
+import { ScreenHeader } from '../src/components/ui/ScreenHeader';
 import { LineChart } from 'react-native-chart-kit';
 import { getTodayLocal, formatLocalDate } from '../src/utils/dateUtils';
 
-// ─── Goal Definitions ─────────────────────────────────────────────────────
+import {
+  PRIMARY_GOALS, TRACKING_GOALS, ALL_GOAL_DEFS, MAX_PRIMARY_GOALS,
+  DAY_NAMES, CARD_SHADOW,
+  getWeekDates, getMonthGrid, getMotivation,
+  validateTargetValue, validateWeight, validateMacro,
+} from '../src/components/health/nutritionHelpers';
+import GoalFormModal from '../src/components/health/GoalFormModal';
+import { resetFoodLogReminder } from '../src/services/notifications';
+import MealLogModal from '../src/components/health/MealLogModal';
+import ConfirmDialogs from '../src/components/health/ConfirmDialogs';
 
-const PRIMARY_GOALS = [
-  { key: 'high-protein', label: 'High Protein', icon: 'barbell', color: '#3b82f6', description: 'Prioritize protein-rich foods & recipes' },
-  { key: 'low-carb', label: 'Low Carb', icon: 'trending-down-outline', color: '#f97316', description: 'Reduce carbohydrates, favor low-carb options' },
-  { key: 'keto', label: 'Keto', icon: 'flash-outline', color: '#8b5cf6', description: 'High fat, very low carb ketogenic diet' },
-  { key: 'vegetarian', label: 'Vegetarian', icon: 'leaf', color: '#10b981', description: 'No meat, plant-based with dairy & eggs' },
-  { key: 'vegan', label: 'Vegan', icon: 'leaf', color: '#059669', description: 'Fully plant-based, no animal products' },
-  { key: 'gluten-free', label: 'Gluten Free', icon: 'ban-outline', color: '#ec4899', description: 'Avoid wheat, barley, rye' },
-  { key: 'dairy-free', label: 'Dairy Free', icon: 'ban-outline', color: '#06b6d4', description: 'No milk, cheese, butter, cream' },
-];
-
-const TRACKING_GOALS = [
-  { key: 'calories', label: 'Daily Calories', unit: 'kcal', icon: 'flame-outline', color: '#f59e0b', placeholder: 'e.g. 2000' },
-  { key: 'protein', label: 'Daily Protein', unit: 'g', icon: 'barbell-outline', color: '#3b82f6', placeholder: 'e.g. 150' },
-  { key: 'carbs', label: 'Daily Carbs', unit: 'g', icon: 'leaf-outline', color: '#f97316', placeholder: 'e.g. 200' },
-  { key: 'fat', label: 'Daily Fat', unit: 'g', icon: 'water-outline', color: '#ef4444', placeholder: 'e.g. 65' },
-  { key: 'weight', label: 'Target Weight', unit: 'lbs', icon: 'scale-outline', color: '#8b5cf6', placeholder: 'e.g. 160' },
-];
-
-const ALL_GOAL_DEFS = [...PRIMARY_GOALS.map(g => ({ ...g, hasTarget: false, unit: '' })), ...TRACKING_GOALS.map(g => ({ ...g, hasTarget: true }))];
-const MAX_PRIMARY_GOALS = 2;
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const DAY_NAMES = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
-function getWeekDates(dateStr: string): string[] {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  const dayOfWeek = dt.getDay(); // 0=Sun
-  const start = new Date(dt);
-  start.setDate(start.getDate() - dayOfWeek);
-  const dates: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const dd = new Date(start);
-    dd.setDate(dd.getDate() + i);
-    dates.push(formatLocalDate(dd));
-  }
-  return dates;
-}
-
-function getMonthGrid(year: number, month: number): (string | null)[][] {
-  const firstDay = new Date(year, month - 1, 1).getDay();
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const rows: (string | null)[][] = [];
-  let row: (string | null)[] = [];
-  for (let i = 0; i < firstDay; i++) row.push(null);
-  for (let d = 1; d <= daysInMonth; d++) {
-    const str = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    row.push(str);
-    if (row.length === 7) { rows.push(row); row = []; }
-  }
-  if (row.length > 0) { while (row.length < 7) row.push(null); rows.push(row); }
-  return rows;
-}
-
-function getMotivation(percent: number, goalReached: boolean) {
-  if (goalReached) return { text: 'Goal reached! Amazing work!', color: '#10b981', icon: 'trophy' as const };
-  if (percent >= 90) return { text: "Almost there! You're so close!", color: '#10b981', icon: 'checkmark-circle' as const };
-  if (percent >= 75) return { text: 'Incredible progress! The finish line is near!', color: '#3b82f6', icon: 'rocket' as const };
-  if (percent >= 50) return { text: 'Over halfway! Keep the momentum going!', color: '#3b82f6', icon: 'trending-up' as const };
-  if (percent >= 25) return { text: "Great start — you're building real momentum!", color: '#f59e0b', icon: 'flash' as const };
-  return { text: 'Every step counts. Stay consistent!', color: '#6b7280', icon: 'footsteps' as const };
-}
 
 export default function HealthGoalsScreen() {
   const [goals, setGoals] = useState<any[]>([]);
@@ -131,6 +77,7 @@ export default function HealthGoalsScreen() {
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [deleteMealConfirm, setDeleteMealConfirm] = useState<{ id: string; name: string } | null>(null);
   const [deleteWeightConfirm, setDeleteWeightConfirm] = useState<{ id: string; date: string } | null>(null);
 
@@ -169,41 +116,6 @@ export default function HealthGoalsScreen() {
     const iso = formatLocalDate(dt);
     if (iso > todayStr) return;
     setSelectedDate(iso);
-  };
-
-  // ─── Validation helpers ────────────────────────────────────────────────
-
-  const validateTargetValue = (value: string, goalType: string): string => {
-    if (!value.trim()) return '';
-    const num = parseFloat(value);
-    if (isNaN(num)) return 'Please enter a valid number';
-    if (num <= 0) return 'Value must be greater than 0';
-
-    if (goalType === 'calories' && (num < 500 || num > 10000)) {
-      return 'Calories should be between 500-10000';
-    }
-    if ((goalType === 'protein' || goalType === 'carbs' || goalType === 'fat') && (num < 10 || num > 1000)) {
-      return 'Macros should be between 10-1000g';
-    }
-    return '';
-  };
-
-  const validateWeight = (value: string): string => {
-    if (!value.trim()) return '';
-    const num = parseFloat(value);
-    if (isNaN(num)) return 'Please enter a valid number';
-    if (num < 50 || num > 500) return 'Weight should be between 50-500 lbs';
-    return '';
-  };
-
-  const validateMacro = (value: string, macroName: string): string => {
-    if (!value.trim()) return '';
-    const num = parseFloat(value);
-    if (isNaN(num)) return 'Please enter a valid number';
-    if (num < 0) return `${macroName} cannot be negative`;
-    if (macroName === 'Calories' && num > 5000) return 'Calories seem too high (max 5000)';
-    if (macroName !== 'Calories' && num > 500) return `${macroName} seems too high (max 500g)`;
-    return '';
   };
 
   // ─── Data fetching ─────────────────────────────────────────────────────
@@ -399,6 +311,7 @@ export default function HealthGoalsScreen() {
   const openLogMeal = (meal?: any) => {
     if (meal) {
       setEditingMealId(meal.id);
+      setEditingNotes(meal.notes || null);
       setLogMealType(meal.mealType || 'lunch');
       setLogMealName(meal.mealName || '');
       setLogCalories(meal.calories ? String(meal.calories) : '');
@@ -407,6 +320,7 @@ export default function HealthGoalsScreen() {
       setLogFat(meal.fatGrams ? String(meal.fatGrams) : '');
     } else {
       setEditingMealId(null);
+      setEditingNotes(null);
       setLogMealType('lunch');
       setLogMealName('');
       setLogCalories('');
@@ -469,7 +383,7 @@ export default function HealthGoalsScreen() {
     }
   };
 
-  const handleLogMeal = async () => {
+  const handleLogMeal = async (_ingredients?: string[], notes?: string) => {
     if (!logMealName.trim()) return;
 
     // Check for validation errors
@@ -499,8 +413,10 @@ export default function HealthGoalsScreen() {
           protein: logProtein ? parseFloat(logProtein) : undefined,
           carbs: logCarbs ? parseFloat(logCarbs) : undefined,
           fat: logFat ? parseFloat(logFat) : undefined,
+          notes,
         });
       }
+      resetFoodLogReminder().catch(() => {});
       setShowLogMealModal(false);
       fetchData();
     } catch (err: any) {
@@ -637,7 +553,7 @@ export default function HealthGoalsScreen() {
     if (carbGoal) macroGoals.push({ type: 'carbs', target: carbGoal.targetValue, actual: d.carbs });
     if (fatGoal) macroGoals.push({ type: 'fat', target: fatGoal.targetValue, actual: d.fat });
 
-    if (macroGoals.length === 0) return '#10b981'; // has data, no goals to compare — green
+    if (macroGoals.length === 0) return '#D4652E'; // has data, no goals to compare — orange
 
     // For each goal, compute how close actual is to target (% of target achieved)
     // For "limit" goals (calories, carbs, fat): being under/at target is good, over is bad
@@ -658,7 +574,7 @@ export default function HealthGoalsScreen() {
     // Green: within 15% of goals (avgScore >= 0.85)
     // Yellow: within 30% (avgScore >= 0.70)
     // Red: below 30% (avgScore < 0.70)
-    if (avgScore >= 0.85) return '#10b981'; // green
+    if (avgScore >= 0.85) return '#D4652E'; // orange
     if (avgScore >= 0.70) return '#f59e0b'; // yellow
     return '#ef4444'; // red
   };
@@ -677,7 +593,7 @@ export default function HealthGoalsScreen() {
     const displayLabels = labels.map((l: string, i: number) => i % step === 0 || i === labels.length - 1 ? l : '');
     return {
       labels: displayLabels,
-      datasets: [{ data: last30.map((l: any) => l.weight), color: () => '#10b981', strokeWidth: 2 }],
+      datasets: [{ data: last30.map((l: any) => l.weight), color: () => '#D4652E', strokeWidth: 2 }],
     };
   }, [weightLogs]);
 
@@ -685,8 +601,8 @@ export default function HealthGoalsScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-gray-50">
-        <ActivityIndicator size="large" color="#10b981" />
+      <View className="flex-1 items-center justify-center bg-cream">
+        <ActivityIndicator size="large" color="#D4652E" />
       </View>
     );
   }
@@ -710,377 +626,385 @@ export default function HealthGoalsScreen() {
   const [cmYear, cmMonth] = calendarMonth.split('-').map(Number);
   const calMonthLabel = new Date(cmYear, cmMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  return (
-    <View className="flex-1 bg-gray-50">
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-        <Pressable onPress={() => router.back()} style={{ padding: 6, marginLeft: -6 }} hitSlop={12}>
-          <Ionicons name="arrow-back" size={22} color="#374151" />
-        </Pressable>
-        <Text className="text-lg font-semibold text-gray-800">My Nutrition</Text>
-        <View style={{ width: 34 }} />
-      </View>
+  const MEAL_EMOJIS: Record<string, string> = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍪' };
 
-      {/* Date Navigation Bar */}
-      <View className="flex-row items-center justify-center px-4 py-2.5 bg-white border-b border-gray-100">
-        <TouchableOpacity onPress={() => shiftDate(-1)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} className="p-1">
-          <Ionicons name="chevron-back" size={22} color="#374151" />
-        </TouchableOpacity>
-        <Text className="text-sm font-semibold text-gray-800 mx-4 min-w-[120px] text-center">
-          {formatDateLabel(selectedDate)}
-        </Text>
-        <TouchableOpacity onPress={() => shiftDate(1)} disabled={isToday} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} className="p-1">
-          <Ionicons name="chevron-forward" size={22} color={isToday ? '#d1d5db' : '#374151'} />
-        </TouchableOpacity>
-        {!isToday && (
-          <TouchableOpacity onPress={() => setSelectedDate(todayStr)} className="ml-3 bg-primary-50 px-3 py-1 rounded-full">
-            <Text className="text-xs font-medium text-primary-600">Today</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+  // Calorie goal for ring
+  const calorieGoal = goals.find(g => g.goalType === 'calories' && g.isActive);
+  const calorieTarget = calorieGoal?.targetValue || 2000;
+  const caloriePercent = calorieTarget > 0 ? Math.min((todayTotals.calories / calorieTarget) * 100, 100) : 0;
+  const calorieRemaining = Math.max(0, calorieTarget - todayTotals.calories);
+
+  // Macro goals for bars
+  const proteinGoal = goals.find(g => g.goalType === 'protein' && g.isActive);
+  const carbsGoal = goals.find(g => g.goalType === 'carbs' && g.isActive);
+  const fatGoal = goals.find(g => g.goalType === 'fat' && g.isActive);
+
+  return (
+    <View className="flex-1 bg-cream">
+      {/* Header — warm dark */}
+      <ScreenHeader title="My Nutrition" onBack={() => router.push('/(tabs)/profile')} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
 
-        {/* ─── Calendar View ─────────────────────────────────────────── */}
-        <View className="mx-4 mt-3 bg-white rounded-xl p-3">
-          {/* Calendar header: mode toggle + navigation */}
-          <View className="flex-row items-center justify-between mb-2">
-            {calendarMode === 'week' ? (
-              <>
-                <TouchableOpacity onPress={() => shiftWeek(-1)} className="p-1">
-                  <Ionicons name="chevron-back" size={18} color="#374151" />
-                </TouchableOpacity>
-                <Text className="text-xs font-medium text-gray-600">
-                  {(() => {
-                    const s = weekDates[0], e = weekDates[6];
-                    const sd = new Date(s + 'T12:00:00'), ed = new Date(e + 'T12:00:00');
-                    return `${sd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${ed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-                  })()}
+        {/* ─── Calendar Strip ─────────────────────────────────────────── */}
+        <View className="flex-row justify-between px-4 pt-3 pb-1">
+          {weekDates.map((dateStr) => {
+            const d = new Date(dateStr + 'T12:00:00');
+            const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+            const dayNum = parseInt(dateStr.split('-')[2]);
+            const isSelected = dateStr === selectedDate;
+            const isTodayCell = dateStr === todayStr;
+            const isFuture = dateStr > todayStr;
+            const dotColor = getCalendarDotColor(dateStr);
+            return (
+              <TouchableOpacity
+                key={dateStr}
+                className="items-center py-2 px-1.5 rounded-xl"
+                style={[
+                  isSelected ? { backgroundColor: '#D4652E' } : {},
+                  isTodayCell && !isSelected ? { backgroundColor: '#FFF0E8' } : {},
+                ]}
+                onPress={() => !isFuture && setSelectedDate(dateStr)}
+                disabled={isFuture}
+              >
+                <Text
+                  className="text-[11px] font-sans-medium mb-1"
+                  style={{ color: isSelected ? 'rgba(255,251,245,0.75)' : isTodayCell ? '#D4652E' : '#8B7355', letterSpacing: 0.4 }}
+                >
+                  {dayLabel}
                 </Text>
-                <TouchableOpacity onPress={() => shiftWeek(1)} className="p-1">
-                  <Ionicons name="chevron-forward" size={18} color="#374151" />
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity onPress={() => shiftMonth(-1)} className="p-1">
-                  <Ionicons name="chevron-back" size={18} color="#374151" />
-                </TouchableOpacity>
-                <Text className="text-xs font-medium text-gray-600">{calMonthLabel}</Text>
-                <TouchableOpacity onPress={() => shiftMonth(1)} className="p-1">
-                  <Ionicons name="chevron-forward" size={18} color="#374151" />
-                </TouchableOpacity>
-              </>
-            )}
-            <TouchableOpacity
-              onPress={() => setCalendarMode(calendarMode === 'week' ? 'month' : 'week')}
-              className="bg-gray-100 px-2 py-1 rounded-md"
-            >
-              <Text className="text-[10px] font-medium text-gray-500">
-                {calendarMode === 'week' ? 'Month' : 'Week'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <Text
+                  className="text-base font-sans-semibold"
+                  style={{ color: isSelected ? '#FFFBF5' : isTodayCell ? '#D4652E' : isFuture ? '#B8A68E' : '#2D2520' }}
+                >
+                  {dayNum}
+                </Text>
+                <View className="flex-row mt-0.5 gap-0.5" style={{ height: 5, alignItems: 'center' }}>
+                  {dotColor && <View className="w-1 h-1 rounded-full" style={{ backgroundColor: isSelected ? 'rgba(255,251,245,0.7)' : dotColor }} />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-          {/* Day name headers */}
-          <View className="flex-row mb-1">
-            {DAY_NAMES.map((name, i) => (
-              <View key={i} className="flex-1 items-center">
-                <Text className="text-[10px] font-medium text-gray-400">{name}</Text>
-              </View>
-            ))}
-          </View>
+        {/* Week navigation + month toggle */}
+        <View className="flex-row items-center justify-between px-4 pb-2">
+          <TouchableOpacity onPress={() => shiftWeek(-1)} className="p-1">
+            <Ionicons name="chevron-back" size={16} color="#8B7355" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setCalendarMode(calendarMode === 'week' ? 'month' : 'week')}
+            className="px-2 py-0.5"
+          >
+            <Text className="text-[10px] font-sans-semibold text-brown">
+              {calendarMode === 'week' ? 'View Month' : 'View Week'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => shiftWeek(1)} className="p-1">
+            <Ionicons name="chevron-forward" size={16} color="#8B7355" />
+          </TouchableOpacity>
+        </View>
 
-          {/* Week view */}
-          {calendarMode === 'week' && (
-            <View className="flex-row">
-              {weekDates.map((dateStr) => {
-                const day = parseInt(dateStr.split('-')[2]);
-                const isSelected = dateStr === selectedDate;
-                const isTodayCell = dateStr === todayStr;
-                const isFuture = dateStr > todayStr;
-                const dotColor = getCalendarDotColor(dateStr);
-                const hasWeight = calendarData[dateStr]?.hasWeightLog;
-                return (
-                  <TouchableOpacity
-                    key={dateStr}
-                    className="flex-1 items-center py-1.5"
-                    onPress={() => !isFuture && setSelectedDate(dateStr)}
-                    disabled={isFuture}
-                  >
-                    <View
-                      className="w-8 h-8 rounded-full items-center justify-center"
-                      style={[
-                        isTodayCell && !isSelected ? { backgroundColor: '#ecfdf5' } : {},
-                        isSelected ? { backgroundColor: '#10b981' } : {},
-                      ]}
-                    >
-                      <Text
-                        className={`text-xs font-medium ${isSelected ? 'text-white' : isFuture ? 'text-gray-300' : 'text-gray-700'}`}
-                      >
-                        {day}
-                      </Text>
-                    </View>
-                    <View className="flex-row mt-0.5 gap-0.5">
-                      {dotColor && <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dotColor }} />}
-                      {hasWeight && <View className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+        {/* Month view (hidden by default) */}
+        {calendarMode === 'month' && (
+          <View className="mx-4 bg-white rounded-xl p-3 mb-2" style={CARD_SHADOW}>
+            <View className="flex-row items-center justify-between mb-2">
+              <TouchableOpacity onPress={() => shiftMonth(-1)} className="p-1">
+                <Ionicons name="chevron-back" size={18} color="#2D2520" />
+              </TouchableOpacity>
+              <Text className="text-xs font-sans-semibold text-brown">{calMonthLabel}</Text>
+              <TouchableOpacity onPress={() => shiftMonth(1)} className="p-1">
+                <Ionicons name="chevron-forward" size={18} color="#2D2520" />
+              </TouchableOpacity>
             </View>
-          )}
-
-          {/* Month view */}
-          {calendarMode === 'month' && (
-            <View>
-              {monthGrid.map((row, ri) => (
-                <View key={ri} className="flex-row">
-                  {row.map((dateStr, ci) => {
-                    if (!dateStr) return <View key={ci} className="flex-1 py-1" />;
-                    const day = parseInt(dateStr.split('-')[2]);
-                    const isSelected = dateStr === selectedDate;
-                    const isTodayCell = dateStr === todayStr;
-                    const isFuture = dateStr > todayStr;
-                    const dotColor = getCalendarDotColor(dateStr);
-                    const hasWeight = calendarData[dateStr]?.hasWeightLog;
-                    return (
-                      <TouchableOpacity
-                        key={ci}
-                        className="flex-1 items-center py-1"
-                        onPress={() => !isFuture && setSelectedDate(dateStr)}
-                        disabled={isFuture}
-                      >
-                        <View
-                          className="w-7 h-7 rounded-full items-center justify-center"
-                          style={[
-                            isTodayCell && !isSelected ? { backgroundColor: '#ecfdf5' } : {},
-                            isSelected ? { backgroundColor: '#10b981' } : {},
-                          ]}
-                        >
-                          <Text className={`text-[10px] font-medium ${isSelected ? 'text-white' : isFuture ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {day}
-                          </Text>
-                        </View>
-                        <View className="flex-row mt-0.5 gap-0.5">
-                          {dotColor && <View className="w-1 h-1 rounded-full" style={{ backgroundColor: dotColor }} />}
-                          {hasWeight && <View className="w-1 h-1 rounded-full bg-purple-400" />}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
+            <View className="flex-row mb-1">
+              {DAY_NAMES.map((name, i) => (
+                <View key={i} className="flex-1 items-center">
+                  <Text className="text-[10px] font-sans-semibold text-brown-light">{name}</Text>
                 </View>
               ))}
             </View>
-          )}
-        </View>
-
-        {/* Today's Summary */}
-        <View className="mx-4 mt-3 bg-white rounded-xl p-4">
-          <Text className="text-base font-semibold text-gray-800 mb-3">{isToday ? "Today's Nutrition" : `Nutrition — ${formatDateLabel(selectedDate)}`}</Text>
-          <View className="flex-row justify-between">
-            {[
-              { label: 'Calories', value: todayTotals.calories, unit: 'kcal', color: '#f59e0b' },
-              { label: 'Protein', value: Math.round(todayTotals.protein), unit: 'g', color: '#3b82f6' },
-              { label: 'Carbs', value: Math.round(todayTotals.carbs), unit: 'g', color: '#f97316' },
-              { label: 'Fat', value: Math.round(todayTotals.fat), unit: 'g', color: '#ef4444' },
-            ].map(item => (
-              <View key={item.label} className="items-center flex-1">
-                <Text className="text-lg font-bold" style={{ color: item.color }}>{item.value}</Text>
-                <Text className="text-xs text-gray-400">{item.unit}</Text>
-                <Text className="text-xs text-gray-500 mt-0.5">{item.label}</Text>
+            {monthGrid.map((row, ri) => (
+              <View key={ri} className="flex-row">
+                {row.map((dateStr, ci) => {
+                  if (!dateStr) return <View key={ci} className="flex-1 py-1" />;
+                  const day = parseInt(dateStr.split('-')[2]);
+                  const isSel = dateStr === selectedDate;
+                  const isTodayC = dateStr === todayStr;
+                  const isFut = dateStr > todayStr;
+                  const dColor = getCalendarDotColor(dateStr);
+                  return (
+                    <TouchableOpacity
+                      key={ci}
+                      className="flex-1 items-center py-1"
+                      onPress={() => !isFut && setSelectedDate(dateStr)}
+                      disabled={isFut}
+                    >
+                      <View
+                        className="w-7 h-7 rounded-full items-center justify-center"
+                        style={[
+                          isTodayC && !isSel ? { backgroundColor: '#FFF7F0' } : {},
+                          isSel ? { backgroundColor: '#D4652E' } : {},
+                        ]}
+                      >
+                        <Text className={`text-[10px] font-sans-semibold ${isSel ? 'text-white' : isFut ? 'text-brown-light' : 'text-warm-dark'}`}>
+                          {day}
+                        </Text>
+                      </View>
+                      <View className="flex-row mt-0.5 gap-0.5">
+                        {dColor && <View className="w-1 h-1 rounded-full" style={{ backgroundColor: dColor }} />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             ))}
           </View>
+        )}
+
+        {/* ─── Daily Nutrition Summary Card ─────────────────────────── */}
+        <View className="mx-4 mt-3 bg-white rounded-2xl p-5" style={CARD_SHADOW}>
+          <View className="flex-row items-center justify-between mb-4">
+            <Text className="text-base font-serif-bold text-warm-dark">Daily Summary</Text>
+            <Text className="text-xs font-sans text-brown">{formatDateLabel(selectedDate)}</Text>
+          </View>
+
+          <View className="flex-row items-center">
+            {/* Calorie Ring */}
+            <View style={{ width: 90, height: 90, marginRight: 20, position: 'relative' }}>
+              <View style={{ transform: [{ rotate: '-90deg' }] }}>
+                {/* Background circle */}
+                <View style={{
+                  width: 90, height: 90, borderRadius: 45,
+                  borderWidth: 9, borderColor: '#EDE5DA',
+                  position: 'absolute',
+                }} />
+                {/* Progress arc — approximated with border */}
+                <View style={{
+                  width: 90, height: 90, borderRadius: 45,
+                  borderWidth: 9, borderColor: 'transparent',
+                  borderTopColor: '#D4652E',
+                  borderRightColor: caloriePercent > 25 ? '#D4652E' : 'transparent',
+                  borderBottomColor: caloriePercent > 50 ? '#D4652E' : 'transparent',
+                  borderLeftColor: caloriePercent > 75 ? '#D4652E' : 'transparent',
+                }} />
+              </View>
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+                <Text className="font-sans-bold text-warm-dark" style={{ fontSize: 19, lineHeight: 22 }}>
+                  {todayTotals.calories.toLocaleString()}
+                </Text>
+                <Text className="font-sans-medium text-brown" style={{ fontSize: 9, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                  kcal
+                </Text>
+              </View>
+            </View>
+
+            {/* Macro Bars */}
+            <View className="flex-1" style={{ gap: 10 }}>
+              {[
+                { name: 'Protein', current: Math.round(todayTotals.protein), target: proteinGoal?.targetValue },
+                { name: 'Carbs', current: Math.round(todayTotals.carbs), target: carbsGoal?.targetValue },
+                { name: 'Fat', current: Math.round(todayTotals.fat), target: fatGoal?.targetValue },
+              ].map(macro => {
+                const hasGoal = macro.target != null && macro.target > 0;
+                const pct = hasGoal ? Math.min((macro.current / macro.target!) * 100, 100) : 0;
+                return (
+                  <View key={macro.name}>
+                    <View className="flex-row justify-between items-baseline mb-1">
+                      <Text className="text-xs font-sans-medium text-warm-dark">{macro.name}</Text>
+                      <Text className="text-[11px] font-sans text-brown">
+                        {macro.current}g{hasGoal ? ` / ${macro.target}g` : ''}
+                      </Text>
+                    </View>
+                    {hasGoal && (
+                      <View className="h-1.5 bg-cream-dark rounded-full overflow-hidden">
+                        <View
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, backgroundColor: '#D4652E' }}
+                        />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+              {calorieTarget > 0 && (
+                <Text className="text-[11px] font-sans text-brown mt-1">
+                  Goal: {calorieTarget.toLocaleString()} kcal · <Text style={{ color: '#D4652E', fontWeight: '600' }}>{calorieRemaining.toLocaleString()} remaining</Text>
+                </Text>
+              )}
+            </View>
+          </View>
         </View>
 
-        {/* Weekly Average */}
-        <View className="mx-4 mt-3 bg-white rounded-xl p-4">
-          <Text className="text-base font-semibold text-gray-800 mb-3">Weekly Average</Text>
-          <View className="flex-row justify-between">
-            {[
-              { label: 'Calories', value: weeklyAvg.calories, color: '#f59e0b' },
-              { label: 'Protein', value: `${weeklyAvg.protein}g`, color: '#3b82f6' },
-              { label: 'Carbs', value: `${weeklyAvg.carbs}g`, color: '#f97316' },
-              { label: 'Fat', value: `${weeklyAvg.fat}g`, color: '#ef4444' },
-            ].map(item => (
-              <View key={item.label} className="items-center flex-1">
-                <Text className="text-sm font-semibold" style={{ color: item.color }}>{item.value}</Text>
-                <Text className="text-xs text-gray-400">{item.label}</Text>
-              </View>
-            ))}
-          </View>
+        {/* Disclaimer */}
+        <View className="mx-4 mt-2 bg-orange-light rounded-xl px-3 py-2">
+          <Text className="text-[10px] text-brown font-sans leading-[14px]">
+            ⓘ These are estimates — validate and enter your own for the most accurate numbers.
+          </Text>
         </View>
 
         {/* ─── Today's Meals ──────────────────────────────────────────── */}
-        <View className="mx-4 mt-3 bg-white rounded-xl p-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-base font-semibold text-gray-800">{isToday ? "Today's Meals" : `Meals — ${formatDateLabel(selectedDate)}`}</Text>
-            <TouchableOpacity onPress={() => openLogMeal()} className="flex-row items-center bg-primary-50 px-3 py-1.5 rounded-lg">
-              <Ionicons name="add" size={16} color="#10b981" />
-              <Text className="text-xs font-medium text-primary-600 ml-1">Log a Meal</Text>
-            </TouchableOpacity>
-          </View>
-
-          {todayMeals.length === 0 ? (
-            <View className="items-center py-3">
-              <Ionicons name="restaurant-outline" size={28} color="#d1d5db" />
-              <Text className="text-gray-400 text-sm mt-1">No meals logged yet</Text>
-            </View>
-          ) : (
-            todayMeals.map((meal: any, idx: number) => {
-              const typeIcons: Record<string, string> = { breakfast: 'sunny-outline', lunch: 'restaurant-outline', dinner: 'moon-outline', snack: 'cafe-outline' };
-              const typeColors: Record<string, string> = { breakfast: '#f59e0b', lunch: '#10b981', dinner: '#6366f1', snack: '#ec4899' };
-              return (
-                <View key={meal.id || idx} className="flex-row items-center py-2 border-t border-gray-100">
-                  <TouchableOpacity className="flex-row items-center flex-1" onPress={() => openLogMeal(meal)} activeOpacity={0.6}>
-                    <Ionicons name={(typeIcons[meal.mealType] || 'restaurant-outline') as any} size={18} color={typeColors[meal.mealType] || '#6b7280'} />
-                    <View className="flex-1 ml-3">
-                      <Text className="text-sm text-gray-800">{meal.mealName || 'Meal'}</Text>
-                      <Text className="text-xs text-gray-400 capitalize">
-                        {meal.mealType}
-                        {meal.mealTime ? ` · ${new Date(meal.mealTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}
-                      </Text>
-                    </View>
-                    {meal.calories ? (
-                      <View className="bg-gray-100 px-2 py-0.5 rounded">
-                        <Text className="text-xs text-gray-600">{meal.calories} cal</Text>
-                      </View>
-                    ) : null}
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteMeal(meal.id, meal.mealName || 'Meal')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} className="ml-2 p-1">
-                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
-              );
-            })
-          )}
+        <View className="flex-row items-center justify-between mx-4 mt-4 mb-2">
+          <Text className="text-base font-serif-bold text-warm-dark">{isToday ? "Today's Meals" : `Meals — ${formatDateLabel(selectedDate)}`}</Text>
+          <TouchableOpacity
+            onPress={() => openLogMeal()}
+            className="flex-row items-center bg-orange-light px-3 py-1.5 rounded-xl"
+            style={{ borderWidth: 1.5, borderColor: '#D4652E' }}
+          >
+            <Ionicons name="add" size={14} color="#D4652E" />
+            <Text className="text-xs font-sans-semibold ml-1" style={{ color: '#D4652E' }}>Log a Meal</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* ─── Primary Goals (Diet Preferences) ──────────────────────── */}
-        <View className="flex-row items-center justify-between mx-4 mt-5 mb-2">
-          <View>
-            <Text className="text-base font-semibold text-gray-800">Primary Goals</Text>
-            <Text className="text-xs text-gray-400">Max {MAX_PRIMARY_GOALS} — shapes your search & recipe suggestions</Text>
+        {todayMeals.length === 0 ? (
+          <View className="mx-4 bg-white rounded-2xl p-5 items-center" style={CARD_SHADOW}>
+            <Ionicons name="restaurant-outline" size={28} color="#B8A68E" />
+            <Text className="text-brown-light text-sm mt-1 font-sans">No meals logged yet</Text>
           </View>
+        ) : (
+          todayMeals.map((meal: any, idx: number) => (
+            <TouchableOpacity
+              key={meal.id || idx}
+              className="mx-4 mb-2 bg-white rounded-2xl p-3.5 flex-row items-center"
+              style={CARD_SHADOW}
+              onPress={() => openLogMeal(meal)}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 22 }} className="mr-3">
+                {MEAL_EMOJIS[meal.mealType] || '🍽️'}
+              </Text>
+              <View className="flex-1">
+                <Text className="text-[11px] font-sans-medium text-brown uppercase" style={{ letterSpacing: 0.5 }}>
+                  {meal.mealType}
+                </Text>
+                <Text className="text-sm font-sans-semibold text-warm-dark" numberOfLines={1}>
+                  {meal.mealName || 'Meal'}
+                </Text>
+                <View className="flex-row mt-1" style={{ gap: 10 }}>
+                  {meal.proteinGrams ? <Text className="text-xs font-sans text-brown">P: {Math.round(meal.proteinGrams)}g</Text> : null}
+                  {meal.carbsGrams ? <Text className="text-xs font-sans text-brown">C: {Math.round(meal.carbsGrams)}g</Text> : null}
+                  {meal.fatGrams ? <Text className="text-xs font-sans text-brown">F: {Math.round(meal.fatGrams)}g</Text> : null}
+                </View>
+              </View>
+              <View className="flex-row items-center">
+                {meal.calories ? (
+                  <Text className="text-sm font-sans-semibold mr-2" style={{ color: '#D4652E' }}>{meal.calories}</Text>
+                ) : null}
+                <TouchableOpacity
+                  onPress={(e) => { e.stopPropagation(); handleDeleteMeal(meal.id, meal.mealName || 'Meal'); }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  className="p-1"
+                >
+                  <Ionicons name="trash-outline" size={15} color="#B8A68E" />
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
+
+        {/* ─── Primary Goals (Diet Preferences) ──────────────────────── */}
+        <View className="flex-row items-center justify-between mx-4 mt-5 mb-1">
+          <Text className="text-base font-serif-bold text-warm-dark">Primary Goals</Text>
           <TouchableOpacity onPress={openAddPrimary}>
-            <Ionicons name="add-circle" size={26} color="#10b981" />
+            <Ionicons name="add-circle" size={24} color="#D4652E" />
           </TouchableOpacity>
         </View>
 
         {primaryGoals.length === 0 ? (
-          <TouchableOpacity onPress={openAddPrimary} className="mx-4 bg-white rounded-xl p-5 items-center border border-dashed border-gray-300">
-            <Ionicons name="nutrition-outline" size={32} color="#d1d5db" />
-            <Text className="text-gray-400 mt-2 text-sm">Tap to set a primary goal (e.g. High Protein)</Text>
+          <TouchableOpacity onPress={openAddPrimary} className="mx-4 bg-white rounded-2xl p-5 items-center border border-dashed border-cream-deeper" style={CARD_SHADOW}>
+            <Ionicons name="nutrition-outline" size={32} color="#B8A68E" />
+            <Text className="text-brown-light mt-2 text-sm font-sans">Tap to set a primary goal (e.g. High Protein)</Text>
           </TouchableOpacity>
         ) : (
-          primaryGoals.map((goal: any) => {
-            const def = PRIMARY_GOALS.find(p => p.key === goal.goalType);
-            return (
-              <View key={goal.id} className="mx-4 mb-2 bg-white rounded-xl p-4 flex-row items-center">
-                <View className="w-10 h-10 rounded-full items-center justify-center mr-3" style={{ backgroundColor: `${def?.color || '#10b981'}20` }}>
-                  <Ionicons name={def?.icon as any || 'flag'} size={20} color={def?.color || '#10b981'} />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-sm font-semibold text-gray-800">{def?.label || goal.goalType}</Text>
-                  <Text className="text-xs text-gray-400">{def?.description}</Text>
-                </View>
-                <TouchableOpacity onPress={() => handleDelete(goal)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
+          <View className="flex-row flex-wrap mx-4 mb-1" style={{ gap: 8 }}>
+            {primaryGoals.map((goal: any) => {
+              const def = PRIMARY_GOALS.find(p => p.key === goal.goalType);
+              const goalEmojis: Record<string, string> = {
+                'high-protein': '🔥', 'low-carb': '⬇️', 'keto': '⚡',
+                'vegetarian': '🥗', 'vegan': '🌱', 'gluten-free': '🚫', 'dairy-free': '🥛',
+              };
+              return (
+                <TouchableOpacity
+                  key={goal.id}
+                  className="flex-row items-center bg-orange-light px-3 py-1.5 rounded-full"
+                  style={{ borderWidth: 1.5, borderColor: '#D4652E' }}
+                  onPress={() => handleDelete(goal)}
+                >
+                  <Text className="text-xs mr-1">{goalEmojis[goal.goalType] || '🎯'}</Text>
+                  <Text className="text-xs font-sans-semibold" style={{ color: '#D4652E' }}>
+                    {def?.label || goal.goalType}
+                  </Text>
                 </TouchableOpacity>
-              </View>
-            );
-          })
+              );
+            })}
+          </View>
         )}
 
         {/* ─── Tracking Goals (Measurable Targets) ───────────────────── */}
-        <View className="flex-row items-center justify-between mx-4 mt-5 mb-2">
-          <View>
-            <Text className="text-base font-semibold text-gray-800">Tracking Goals</Text>
-            <Text className="text-xs text-gray-400">Specific daily/weight targets</Text>
-          </View>
+        <View className="flex-row items-center justify-between mx-4 mt-4 mb-2">
+          <Text className="text-base font-serif-bold text-warm-dark">Tracking Goals</Text>
           <TouchableOpacity onPress={openAddTracking}>
-            <Ionicons name="add-circle" size={26} color="#10b981" />
+            <Ionicons name="add-circle" size={24} color="#D4652E" />
           </TouchableOpacity>
         </View>
 
         {macroTrackingGoals.length === 0 && !weightGoal ? (
-          <TouchableOpacity onPress={openAddTracking} className="mx-4 bg-white rounded-xl p-5 items-center border border-dashed border-gray-300">
-            <Ionicons name="analytics-outline" size={32} color="#d1d5db" />
-            <Text className="text-gray-400 mt-2 text-sm">Tap to add a tracking goal (e.g. 200g protein)</Text>
+          <TouchableOpacity onPress={openAddTracking} className="mx-4 bg-white rounded-2xl p-5 items-center border border-dashed border-cream-deeper" style={CARD_SHADOW}>
+            <Ionicons name="analytics-outline" size={32} color="#B8A68E" />
+            <Text className="text-brown-light mt-2 text-sm font-sans">Tap to add a tracking goal (e.g. 200g protein)</Text>
           </TouchableOpacity>
         ) : null}
 
-        {/* Macro tracking goals with over-100% bars */}
+        {/* Macro tracking goals — clean card style */}
         {macroTrackingGoals.map((goal: any) => {
           const def = TRACKING_GOALS.find(t => t.key === goal.goalType);
           const { current, percent, rawPercent, isOver, overAmount, isMacro } = getProgress(goal.goalType, goal.targetValue);
 
           return (
-            <TouchableOpacity key={goal.id} onPress={() => openEditGoal(goal)} className="mx-4 mb-2 bg-white rounded-xl p-4" activeOpacity={0.7}>
-              <View className="flex-row items-center justify-between mb-2">
-                <View className="flex-row items-center">
-                  <Ionicons name={def?.icon as any || 'flag'} size={20} color={def?.color || '#10b981'} />
-                  <Text className="text-sm font-semibold text-gray-800 ml-2">{def?.label || goal.goalType}</Text>
-                </View>
-                <View className="flex-row items-center gap-3">
-                  <TouchableOpacity onPress={() => openEditGoal(goal)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Ionicons name="pencil-outline" size={16} color="#9ca3af" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(goal)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
+            <TouchableOpacity key={goal.id} onPress={() => openEditGoal(goal)} className="mx-4 mb-2 bg-white rounded-2xl p-4" style={CARD_SHADOW} activeOpacity={0.7}>
+              <View className="flex-row items-baseline justify-between mb-2">
+                <Text className="text-sm font-sans-semibold text-warm-dark">{def?.label || goal.goalType}</Text>
+                <Text className="text-xs font-sans text-brown">
+                  {isMacro ? `${current} / ${goal.targetValue}${goal.unit}` : `Target: ${goal.targetValue} ${goal.unit}`}
+                </Text>
               </View>
 
-              {isMacro ? (
+              {isMacro && (
                 <>
-                  <View className="flex-row justify-between mb-1">
-                    <Text className="text-xs text-gray-400">
-                      {current} / {goal.targetValue} {goal.unit}
-                    </Text>
-                    <Text className="text-xs font-medium" style={{ color: isOver ? '#ef4444' : (def?.color || '#10b981') }}>
-                      {Math.round(rawPercent)}%
-                    </Text>
-                  </View>
-                  <View className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <View className="h-1.5 bg-cream-dark rounded-full overflow-hidden">
                     <View
                       className="h-full rounded-full"
-                      style={{
-                        width: `${percent}%`,
-                        backgroundColor: isOver ? '#ef4444' : (def?.color || '#10b981'),
-                      }}
+                      style={{ width: `${percent}%`, backgroundColor: isOver ? '#ef4444' : '#D4652E' }}
                     />
                   </View>
                   {isOver && (
-                    <Text className="text-xs text-red-500 mt-1">
+                    <Text className="text-xs mt-1 font-sans" style={{ color: '#ef4444' }}>
                       Over by {overAmount} {goal.unit}
                     </Text>
                   )}
                 </>
-              ) : (
-                <Text className="text-sm text-gray-500">
-                  Target: {goal.targetValue} {goal.unit}
-                </Text>
               )}
-
-              <Text className="text-[10px] text-gray-300 mt-1.5">Tap to edit</Text>
             </TouchableOpacity>
           );
         })}
 
-        {/* ─── Weight Goal Card — Rich Section ───────────────────────── */}
+        {/* ─── Weight Section ─────────────────────────────────────────── */}
         {weightGoal && (
-          <View className="mx-4 mt-2 mb-2 bg-white rounded-xl p-4">
+          <>
+          <View className="flex-row items-center justify-between mx-4 mt-4 mb-2">
+            <Text className="text-base font-serif-bold text-warm-dark">Weight</Text>
+            <TouchableOpacity onPress={openLogWeight}>
+              <Text className="text-xs font-sans-semibold" style={{ color: '#D4652E' }}>+ Log</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View className="mx-4 mb-2 bg-white rounded-2xl p-4" style={CARD_SHADOW}>
             {/* Header */}
             <View className="flex-row items-center justify-between mb-3">
-              <View className="flex-row items-center">
-                <Ionicons name="scale-outline" size={20} color="#8b5cf6" />
-                <Text className="text-sm font-semibold text-gray-800 ml-2">Weight Goal</Text>
-              </View>
+              <Text className="text-sm font-sans-semibold text-warm-dark">Weight Goal</Text>
               <View className="flex-row items-center gap-3">
                 <TouchableOpacity onPress={() => openEditGoal(weightGoal)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Ionicons name="pencil-outline" size={16} color="#9ca3af" />
+                  <Ionicons name="pencil-outline" size={16} color="#B8A68E" />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleDelete(weightGoal)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Ionicons name="trash-outline" size={16} color="#ef4444" />
@@ -1092,14 +1016,14 @@ export default function HealthGoalsScreen() {
             {wStart != null && wCurrent != null && wTarget != null && (
               <>
                 <View className="flex-row justify-between mb-1">
-                  <Text className="text-xs text-gray-400">Starting: {wStart} lbs</Text>
-                  <Text className="text-xs font-medium text-purple-600">Current: {wCurrent} lbs</Text>
-                  <Text className="text-xs text-gray-400">Goal: {wTarget} lbs</Text>
+                  <Text className="text-xs text-brown-light font-sans">Starting: {wStart} lbs</Text>
+                  <Text className="text-xs font-sans-semibold text-purple-600">Current: {wCurrent} lbs</Text>
+                  <Text className="text-xs text-brown-light font-sans">Goal: {wTarget} lbs</Text>
                 </View>
-                <View className="h-3 bg-gray-100 rounded-full overflow-hidden mb-1">
-                  <View className="h-full rounded-full bg-purple-500" style={{ width: `${wPercent}%` }} />
+                <View className="h-2 bg-cream-dark rounded-full overflow-hidden mb-1">
+                  <View className="h-full rounded-full" style={{ width: `${wPercent}%`, backgroundColor: '#D4652E' }} />
                 </View>
-                <Text className="text-xs text-gray-500 mb-2">
+                <Text className="text-xs text-brown font-sans mb-2">
                   {wLost.toFixed(1)} lbs {wStart > wTarget ? 'lost' : 'gained'} of {wTotalGoal.toFixed(1)} lbs goal — {Math.round(wPercent)}%
                 </Text>
               </>
@@ -1109,7 +1033,7 @@ export default function HealthGoalsScreen() {
             {motivation && (
               <View className="flex-row items-center mb-3 px-3 py-2 rounded-lg" style={{ backgroundColor: `${motivation.color}10` }}>
                 <Ionicons name={motivation.icon as any} size={16} color={motivation.color} />
-                <Text className="text-xs font-medium ml-2" style={{ color: motivation.color }}>{motivation.text}</Text>
+                <Text className="text-xs font-sans-semibold ml-2" style={{ color: motivation.color }}>{motivation.text}</Text>
               </View>
             )}
 
@@ -1126,10 +1050,10 @@ export default function HealthGoalsScreen() {
                     backgroundGradientFrom: '#ffffff',
                     backgroundGradientTo: '#ffffff',
                     decimalPlaces: 1,
-                    color: (opacity = 1) => `rgba(16, 185, 129, ${opacity})`,
-                    labelColor: () => '#9ca3af',
-                    propsForDots: { r: '3', strokeWidth: '1', stroke: '#10b981' },
-                    propsForBackgroundLines: { stroke: '#f3f4f6' },
+                    color: (opacity = 1) => `rgba(212, 101, 46, ${opacity})`,
+                    labelColor: () => '#B8A68E',
+                    propsForDots: { r: '3', strokeWidth: '1', stroke: '#D4652E' },
+                    propsForBackgroundLines: { stroke: '#F5EFE8' },
                   }}
                   bezier
                   style={{ borderRadius: 8 }}
@@ -1138,23 +1062,15 @@ export default function HealthGoalsScreen() {
                   fromZero={false}
                 />
                 {wTarget != null && (
-                  <Text className="text-[10px] text-gray-400 text-center mt-1">Goal: {wTarget} lbs (dashed line)</Text>
+                  <Text className="text-[10px] text-brown-light font-sans text-center mt-1">Goal: {wTarget} lbs (dashed line)</Text>
                 )}
               </View>
             )}
 
-            {/* Log Weight button */}
-            <TouchableOpacity onPress={openLogWeight} className="bg-purple-50 border border-purple-200 rounded-xl py-3 items-center mb-3">
-              <View className="flex-row items-center">
-                <Ionicons name="add-circle" size={18} color="#8b5cf6" />
-                <Text className="text-sm font-medium text-purple-600 ml-2">Log Weight</Text>
-              </View>
-            </TouchableOpacity>
-
             {/* Recent weigh-ins */}
             {weightLogs.length > 0 && (
               <>
-                <Text className="text-xs font-medium text-gray-500 mb-2">Recent Weigh-ins</Text>
+                <Text className="text-xs font-sans-semibold text-brown mb-2">Recent Weigh-ins</Text>
                 {weightLogs.slice(-5).reverse().map((log: any, idx: number) => {
                   const d = new Date(log.logDate);
                   const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -1165,19 +1081,19 @@ export default function HealthGoalsScreen() {
                   const delta = prev ? log.weight - prev.weight : 0;
                   const isLoss = delta < 0;
                   return (
-                    <View key={log.id} className="flex-row items-center py-1.5 border-t border-gray-50">
-                      <Text className="text-xs text-gray-500 w-16">{dateLabel}</Text>
-                      <Text className="text-xs font-medium text-gray-800 flex-1">{log.weight} lbs</Text>
+                    <View key={log.id} className="flex-row items-center py-1.5 border-t border-cream-deeper">
+                      <Text className="text-xs font-sans text-brown w-16">{dateLabel}</Text>
+                      <Text className="text-xs font-sans-semibold text-warm-dark flex-1">{log.weight} lbs</Text>
                       {delta !== 0 && (
                         <View className="flex-row items-center mr-2">
-                          <Ionicons name={isLoss ? 'caret-down' : 'caret-up'} size={10} color={isLoss ? '#10b981' : '#ef4444'} />
-                          <Text className="text-[10px] font-medium ml-0.5" style={{ color: isLoss ? '#10b981' : '#ef4444' }}>
+                          <Ionicons name={isLoss ? 'caret-down' : 'caret-up'} size={10} color={isLoss ? '#D4652E' : '#ef4444'} />
+                          <Text className="text-[10px] font-sans-semibold ml-0.5" style={{ color: isLoss ? '#D4652E' : '#ef4444' }}>
                             {Math.abs(delta).toFixed(1)}
                           </Text>
                         </View>
                       )}
                       <TouchableOpacity onPress={() => handleDeleteWeightLog(log.id, dateLabel)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Ionicons name="trash-outline" size={14} color="#d1d5db" />
+                        <Ionicons name="trash-outline" size={14} color="#B8A68E" />
                       </TouchableOpacity>
                     </View>
                   );
@@ -1187,539 +1103,98 @@ export default function HealthGoalsScreen() {
 
             {/* Stats summary */}
             {weightStats && weightStats.streak > 0 && (
-              <View className="flex-row items-center mt-2 px-3 py-1.5 bg-purple-50 rounded-lg">
-                <Ionicons name="flame" size={14} color="#8b5cf6" />
-                <Text className="text-[10px] text-purple-600 ml-1">{weightStats.streak}-day logging streak!</Text>
+              <View className="flex-row items-center mt-2 px-3 py-1.5 bg-orange-light rounded-lg">
+                <Ionicons name="flame" size={14} color="#D4652E" />
+                <Text className="text-[10px] font-sans ml-1" style={{ color: '#D4652E' }}>{weightStats.streak}-day logging streak!</Text>
               </View>
             )}
           </View>
+          </>
         )}
       </ScrollView>
 
-      {/* ─── Add/Edit Modal ──────────────────────────────────────────────── */}
-      <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowModal(false)}>
-        <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => setShowModal(false)}>
-              <Text className="text-gray-500">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">
-              {modalMode === 'edit' ? 'Edit Goal' : modalMode === 'add-primary' ? 'Add Primary Goal' : 'Add Tracking Goal'}
-            </Text>
-            <TouchableOpacity
-              onPress={handleSave}
-              disabled={saving || (modalMode !== 'edit' && !selectedGoalType) || (modalMode === 'add-tracking' && !targetValue.trim()) || (modalMode === 'edit' && TRACKING_GOALS.some(t => t.key === editGoal?.goalType) && !targetValue.trim())}
-            >
-              <Text className={`font-medium ${saving ? 'text-gray-300' : 'text-primary-500'}`}>
-                {saving ? 'Saving...' : 'Save'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+      {/* ═══ Extracted Modals ═══ */}
+      <GoalFormModal
+        visible={showModal}
+        onClose={() => setShowModal(false)}
+        modalMode={modalMode}
+        editGoal={editGoal}
+        selectedGoalType={selectedGoalType}
+        setSelectedGoalType={setSelectedGoalType}
+        targetValue={targetValue}
+        setTargetValue={setTargetValue}
+        targetValueError={targetValueError}
+        setTargetValueError={setTargetValueError}
+        startingWeightInput={startingWeightInput}
+        setStartingWeightInput={setStartingWeightInput}
+        startingWeightError={startingWeightError}
+        setStartingWeightError={setStartingWeightError}
+        targetDateInput={targetDateInput}
+        setTargetDateInput={setTargetDateInput}
+        saving={saving}
+        onSave={handleSave}
+        activePrimaryKeys={activePrimaryKeys}
+        activeTrackingKeys={activeTrackingKeys}
+        primaryGoalCount={primaryGoals.length}
+      />
 
-          <ScrollView className="px-4 pt-4" contentContainerStyle={{ paddingBottom: 30 }}>
-            {modalMode === 'edit' && editGoal ? (
-              <View>
-                {(() => {
-                  const def = ALL_GOAL_DEFS.find(d => d.key === editGoal.goalType);
-                  const trackingDef = TRACKING_GOALS.find(t => t.key === editGoal.goalType);
-                  return (
-                    <>
-                      <View className="flex-row items-center mb-4">
-                        <Ionicons name={def?.icon as any || 'flag'} size={24} color={def?.color || '#10b981'} />
-                        <Text className="text-base font-semibold text-gray-800 ml-2">{def?.label || editGoal.goalType}</Text>
-                      </View>
-                      {trackingDef ? (
-                        <View>
-                          <Text className="text-sm font-medium text-gray-700 mb-1">
-                            {editGoal.goalType === 'weight' ? 'Goal Weight' : 'Daily Target'} ({trackingDef.unit})
-                          </Text>
-                          <TextInput
-                            className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                            placeholder={trackingDef.placeholder}
-                            placeholderTextColor="#9ca3af"
-                            value={targetValue}
-                            onChangeText={(text) => {
-                              setTargetValue(text);
-                              const error = editGoal.goalType === 'weight'
-                                ? validateWeight(text)
-                                : validateTargetValue(text, editGoal.goalType);
-                              setTargetValueError(error);
-                            }}
-                            keyboardType="numeric"
-                            autoFocus
-                          />
-                          {targetValueError ? (
-                            <Text className="text-xs text-red-500 mt-1">{targetValueError}</Text>
-                          ) : null}
-                        </View>
-                      ) : (
-                        <Text className="text-sm text-gray-500">This is a primary goal — no target to edit. You can remove and re-add it.</Text>
-                      )}
-                    </>
-                  );
-                })()}
-              </View>
-            ) : modalMode === 'add-primary' ? (
-              <View>
-                <Text className="text-sm text-gray-500 mb-3">
-                  Choose a diet preference ({primaryGoals.length}/{MAX_PRIMARY_GOALS} used)
-                </Text>
-                <View className="gap-2">
-                  {PRIMARY_GOALS.map(pg => {
-                    const isActive = activePrimaryKeys.has(pg.key);
-                    const isSelected = selectedGoalType === pg.key;
-                    return (
-                      <TouchableOpacity
-                        key={pg.key}
-                        className={`flex-row items-center p-3 rounded-xl ${
-                          isActive ? 'bg-gray-100 opacity-50' :
-                          isSelected ? 'bg-primary-50 border-2 border-primary-300' : 'bg-white border border-gray-200'
-                        }`}
-                        onPress={() => !isActive && setSelectedGoalType(pg.key)}
-                        disabled={isActive}
-                      >
-                        <Ionicons name={pg.icon as any} size={20} color={pg.color} />
-                        <View className="flex-1 ml-3">
-                          <Text className="text-sm text-gray-800">{pg.label}</Text>
-                          <Text className="text-xs text-gray-400">{pg.description}</Text>
-                        </View>
-                        {isActive ? (
-                          <Text className="text-xs text-gray-400">Active</Text>
-                        ) : isSelected ? (
-                          <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                        ) : null}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            ) : (
-              <View>
-                <Text className="text-sm text-gray-500 mb-3">Choose a metric to track</Text>
-                <View className="gap-2 mb-4">
-                  {TRACKING_GOALS.map(tg => {
-                    const isActive = activeTrackingKeys.has(tg.key);
-                    const isSelected = selectedGoalType === tg.key;
-                    return (
-                      <TouchableOpacity
-                        key={tg.key}
-                        className={`flex-row items-center p-3 rounded-xl ${
-                          isActive ? 'bg-gray-100 opacity-50' :
-                          isSelected ? 'bg-primary-50 border-2 border-primary-300' : 'bg-white border border-gray-200'
-                        }`}
-                        onPress={() => !isActive && setSelectedGoalType(tg.key)}
-                        disabled={isActive}
-                      >
-                        <Ionicons name={tg.icon as any} size={20} color={tg.color} />
-                        <Text className="text-sm text-gray-800 ml-3 flex-1">{tg.label}</Text>
-                        <Text className="text-xs text-gray-400">{tg.unit}</Text>
-                        {isActive ? (
-                          <Text className="text-xs text-gray-400 ml-2">Active</Text>
-                        ) : isSelected ? (
-                          <Ionicons name="checkmark-circle" size={20} color="#10b981" style={{ marginLeft: 8 }} />
-                        ) : null}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+      <MealLogModal
+        visible={showLogMealModal}
+        onClose={() => setShowLogMealModal(false)}
+        editingMealId={editingMealId}
+        editingNotes={editingNotes}
+        logMealType={logMealType}
+        setLogMealType={setLogMealType}
+        logMealName={logMealName}
+        onMealNameChange={handleMealNameChange}
+        logCalories={logCalories}
+        setLogCalories={setLogCalories}
+        logCaloriesError={logCaloriesError}
+        setLogCaloriesError={setLogCaloriesError}
+        logProtein={logProtein}
+        setLogProtein={setLogProtein}
+        logProteinError={logProteinError}
+        setLogProteinError={setLogProteinError}
+        logCarbs={logCarbs}
+        setLogCarbs={setLogCarbs}
+        logCarbsError={logCarbsError}
+        setLogCarbsError={setLogCarbsError}
+        logFat={logFat}
+        setLogFat={setLogFat}
+        logFatError={logFatError}
+        setLogFatError={setLogFatError}
+        savingMeal={savingMeal}
+        onSave={handleLogMeal}
+        searchResults={searchResults}
+        selectedRecipe={selectedRecipe}
+        onSelectRecipe={selectRecipeResult}
+        estimating={estimating}
+        onEstimateWithAI={handleEstimateWithAI}
+      />
 
-                {selectedGoalType && selectedGoalType !== 'weight' && (
-                  <View>
-                    <Text className="text-sm font-medium text-gray-700 mb-1">
-                      Daily Target ({TRACKING_GOALS.find(t => t.key === selectedGoalType)?.unit})
-                    </Text>
-                    <TextInput
-                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                      placeholder={TRACKING_GOALS.find(t => t.key === selectedGoalType)?.placeholder}
-                      placeholderTextColor="#9ca3af"
-                      value={targetValue}
-                      onChangeText={(text) => {
-                        setTargetValue(text);
-                        const error = validateTargetValue(text, selectedGoalType);
-                        setTargetValueError(error);
-                      }}
-                      keyboardType="numeric"
-                      autoFocus
-                    />
-                    {targetValueError ? (
-                      <Text className="text-xs text-red-500 mt-1">{targetValueError}</Text>
-                    ) : null}
-                  </View>
-                )}
-
-                {/* Weight goal — special inputs */}
-                {selectedGoalType === 'weight' && (
-                  <View>
-                    <Text className="text-sm font-medium text-gray-700 mb-1">Starting Weight (lbs) *</Text>
-                    <TextInput
-                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                      placeholder="e.g. 210"
-                      placeholderTextColor="#9ca3af"
-                      value={startingWeightInput}
-                      onChangeText={(text) => {
-                        setStartingWeightInput(text);
-                        const error = validateWeight(text);
-                        setStartingWeightError(error);
-                      }}
-                      keyboardType="numeric"
-                      autoFocus
-                    />
-                    {startingWeightError ? (
-                      <Text className="text-xs text-red-500 mt-1 mb-2">{startingWeightError}</Text>
-                    ) : <View className="mb-3" />}
-
-                    <Text className="text-sm font-medium text-gray-700 mb-1">Goal Weight (lbs) *</Text>
-                    <TextInput
-                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                      placeholder="e.g. 185"
-                      placeholderTextColor="#9ca3af"
-                      value={targetValue}
-                      onChangeText={(text) => {
-                        setTargetValue(text);
-                        const error = validateWeight(text);
-                        setTargetValueError(error);
-                      }}
-                      keyboardType="numeric"
-                    />
-                    {targetValueError ? (
-                      <Text className="text-xs text-red-500 mt-1 mb-2">{targetValueError}</Text>
-                    ) : <View className="mb-3" />}
-
-                    <Text className="text-sm font-medium text-gray-700 mb-1">Target Date (optional)</Text>
-                    <TextInput
-                      className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor="#9ca3af"
-                      value={targetDateInput}
-                      onChangeText={setTargetDateInput}
-                    />
-                  </View>
-                )}
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* ─── Log Meal Modal ──────────────────────────────────────────── */}
-      <Modal visible={showLogMealModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLogMealModal(false)}>
-        <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => setShowLogMealModal(false)}>
-              <Text className="text-gray-500">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">{editingMealId ? 'Edit Meal' : 'Log a Meal'}</Text>
-            <TouchableOpacity onPress={handleLogMeal} disabled={savingMeal || !logMealName.trim()}>
-              <Text className={`font-medium ${savingMeal || !logMealName.trim() ? 'text-gray-300' : 'text-primary-500'}`}>
-                {savingMeal ? 'Saving...' : 'Save'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView className="px-4 pt-4" contentContainerStyle={{ paddingBottom: 30 }}>
-            <Text className="text-sm font-medium text-gray-700 mb-2">Meal Type</Text>
-            <View className="flex-row gap-2 mb-4">
-              {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map(type => {
-                const icons: Record<string, string> = { breakfast: 'sunny-outline', lunch: 'restaurant-outline', dinner: 'moon-outline', snack: 'cafe-outline' };
-                const selected = logMealType === type;
-                return (
-                  <TouchableOpacity
-                    key={type}
-                    className={`flex-1 py-2.5 rounded-lg border items-center ${selected ? 'bg-primary-50 border-primary-400' : 'bg-white border-gray-200'}`}
-                    onPress={() => setLogMealType(type)}
-                  >
-                    <Ionicons name={icons[type] as any} size={18} color={selected ? '#10b981' : '#9ca3af'} />
-                    <Text className={`text-xs mt-1 capitalize ${selected ? 'text-primary-700 font-medium' : 'text-gray-500'}`}>{type}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text className="text-sm font-medium text-gray-700 mb-1">Meal Name *</Text>
-            <TextInput
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-              placeholder="e.g. McChicken, Grilled Salmon..."
-              placeholderTextColor="#9ca3af"
-              value={logMealName}
-              onChangeText={handleMealNameChange}
-              autoFocus
-            />
-
-            {searchResults.length > 0 && !selectedRecipe && (
-              <View className="bg-white border border-gray-200 rounded-xl mt-1 overflow-hidden">
-                {searchResults.map((r: any, idx: number) => {
-                  const n = r.nutrition;
-                  return (
-                    <TouchableOpacity
-                      key={r.id || idx}
-                      className={`px-4 py-3 flex-row items-center ${idx > 0 ? 'border-t border-gray-100' : ''}`}
-                      onPress={() => selectRecipeResult(r)}
-                    >
-                      <Ionicons name="restaurant-outline" size={16} color="#10b981" />
-                      <View className="flex-1 ml-2">
-                        <Text className="text-sm text-gray-800" numberOfLines={1}>{r.title}</Text>
-                        {r.brand && <Text className="text-xs text-gray-400">{r.brand}</Text>}
-                      </View>
-                      {n && (
-                        <Text className="text-xs text-gray-400">{n.calories} cal • {n.protein}g P</Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-
-            {logMealName.trim().length >= 3 && !selectedRecipe && (
-              <TouchableOpacity
-                className="flex-row items-center justify-center bg-primary-50 border border-primary-200 rounded-xl px-4 py-2.5 mt-2"
-                onPress={handleEstimateWithAI}
-                disabled={estimating}
-              >
-                {estimating ? (
-                  <ActivityIndicator size="small" color="#10b981" />
-                ) : (
-                  <Ionicons name="sparkles" size={16} color="#10b981" />
-                )}
-                <Text className="text-sm font-medium text-primary-600 ml-2">
-                  {estimating ? 'Estimating...' : 'Estimate with AI'}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <Text className="text-xs text-gray-400 mt-2 mb-4">
-              {selectedRecipe?._estimated
-                ? 'Nutrition estimated by AI — feel free to adjust'
-                : selectedRecipe
-                ? 'Nutrition auto-filled from recipe database'
-                : 'Search above, estimate with AI, or enter manually'}
-            </Text>
-
-            <Text className="text-sm font-medium text-gray-700 mb-1">Nutrition (optional)</Text>
-            <View className="flex-row gap-2 mb-2">
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Calories</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800"
-                  placeholder="kcal"
-                  placeholderTextColor="#d1d5db"
-                  value={logCalories}
-                  onChangeText={(text) => {
-                    setLogCalories(text);
-                    const error = validateMacro(text, 'Calories');
-                    setLogCaloriesError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {logCaloriesError ? (
-                  <Text className="text-xs text-red-500 mt-0.5">{logCaloriesError}</Text>
-                ) : null}
-              </View>
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Protein</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800"
-                  placeholder="g"
-                  placeholderTextColor="#d1d5db"
-                  value={logProtein}
-                  onChangeText={(text) => {
-                    setLogProtein(text);
-                    const error = validateMacro(text, 'Protein');
-                    setLogProteinError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {logProteinError ? (
-                  <Text className="text-xs text-red-500 mt-0.5">{logProteinError}</Text>
-                ) : null}
-              </View>
-            </View>
-            <View className="flex-row gap-2">
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Carbs</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800"
-                  placeholder="g"
-                  placeholderTextColor="#d1d5db"
-                  value={logCarbs}
-                  onChangeText={(text) => {
-                    setLogCarbs(text);
-                    const error = validateMacro(text, 'Carbs');
-                    setLogCarbsError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {logCarbsError ? (
-                  <Text className="text-xs text-red-500 mt-0.5">{logCarbsError}</Text>
-                ) : null}
-              </View>
-              <View className="flex-1">
-                <Text className="text-xs text-gray-500 mb-1">Fat</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800"
-                  placeholder="g"
-                  placeholderTextColor="#d1d5db"
-                  value={logFat}
-                  onChangeText={(text) => {
-                    setLogFat(text);
-                    const error = validateMacro(text, 'Fat');
-                    setLogFatError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {logFatError ? (
-                  <Text className="text-xs text-red-500 mt-0.5">{logFatError}</Text>
-                ) : null}
-              </View>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* ─── Log Weight Modal ────────────────────────────────────────── */}
-      <Modal visible={showLogWeightModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLogWeightModal(false)}>
-        <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => setShowLogWeightModal(false)}>
-              <Text className="text-gray-500">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">Log Weight</Text>
-            <TouchableOpacity onPress={handleLogWeight} disabled={savingWeight || !logWeightValue.trim()}>
-              <Text className={`font-medium ${savingWeight || !logWeightValue.trim() ? 'text-gray-300' : 'text-primary-500'}`}>
-                {savingWeight ? 'Saving...' : 'Save'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView className="px-4 pt-4" contentContainerStyle={{ paddingBottom: 30 }}>
-            <Text className="text-sm font-medium text-gray-700 mb-1">Weight (lbs) *</Text>
-            <TextInput
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-              placeholder="e.g. 195.5"
-              placeholderTextColor="#9ca3af"
-              value={logWeightValue}
-              onChangeText={(text) => {
-                setLogWeightValue(text);
-                const error = validateWeight(text);
-                setLogWeightValueError(error);
-              }}
-              keyboardType="numeric"
-              autoFocus
-            />
-            {logWeightValueError ? (
-              <Text className="text-xs text-red-500 mt-1 mb-3">{logWeightValueError}</Text>
-            ) : <View className="mb-4" />}
-
-            <Text className="text-sm font-medium text-gray-700 mb-1">Date</Text>
-            <TextInput
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 mb-4"
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9ca3af"
-              value={logWeightDate}
-              onChangeText={setLogWeightDate}
-            />
-
-            <Text className="text-sm font-medium text-gray-700 mb-1">Notes (optional)</Text>
-            <TextInput
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-              placeholder="e.g. morning weigh-in"
-              placeholderTextColor="#9ca3af"
-              value={logWeightNotes}
-              onChangeText={setLogWeightNotes}
-              multiline
-            />
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* ─── Delete Meal Confirmation Modal (web) ──────────────────── */}
-      <Modal visible={!!deleteMealConfirm} transparent animationType="fade" onRequestClose={() => setDeleteMealConfirm(null)}>
-        <TouchableOpacity
-          className="flex-1 bg-black/40 items-center justify-center"
-          activeOpacity={1}
-          onPress={() => setDeleteMealConfirm(null)}
-        >
-          <View className="bg-white rounded-2xl mx-8 p-5 w-72" onStartShouldSetResponder={() => true}>
-            <Text className="text-base font-semibold text-gray-800 text-center mb-1">Delete Meal</Text>
-            <Text className="text-sm text-gray-500 text-center mb-4">
-              Remove "{deleteMealConfirm?.name}"?
-            </Text>
-            <View className="flex-row gap-3">
-              <TouchableOpacity
-                className="flex-1 py-2.5 rounded-lg bg-gray-100 items-center"
-                onPress={() => setDeleteMealConfirm(null)}
-              >
-                <Text className="text-sm font-medium text-gray-600">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="flex-1 py-2.5 rounded-lg bg-red-500 items-center"
-                onPress={() => deleteMealConfirm && confirmDeleteMeal(deleteMealConfirm.id)}
-              >
-                <Text className="text-sm font-medium text-white">Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* ─── Delete Weight Confirmation Modal (web) ────────────────── */}
-      <Modal visible={!!deleteWeightConfirm} transparent animationType="fade" onRequestClose={() => setDeleteWeightConfirm(null)}>
-        <TouchableOpacity
-          className="flex-1 bg-black/40 items-center justify-center"
-          activeOpacity={1}
-          onPress={() => setDeleteWeightConfirm(null)}
-        >
-          <View className="bg-white rounded-2xl mx-8 p-5 w-72" onStartShouldSetResponder={() => true}>
-            <Text className="text-base font-semibold text-gray-800 text-center mb-1">Delete Weight Entry</Text>
-            <Text className="text-sm text-gray-500 text-center mb-4">
-              Remove weight entry from {deleteWeightConfirm?.date}?
-            </Text>
-            <View className="flex-row gap-3">
-              <TouchableOpacity
-                className="flex-1 py-2.5 rounded-lg bg-gray-100 items-center"
-                onPress={() => setDeleteWeightConfirm(null)}
-              >
-                <Text className="text-sm font-medium text-gray-600">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="flex-1 py-2.5 rounded-lg bg-red-500 items-center"
-                onPress={() => deleteWeightConfirm && confirmDeleteWeight(deleteWeightConfirm.id)}
-              >
-                <Text className="text-sm font-medium text-white">Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* ─── Delete Goal Confirmation Modal ───────────────────────────────── */}
-      <Modal visible={!!confirmDeleteGoal} transparent animationType="fade" onRequestClose={() => setConfirmDeleteGoal(null)}>
-        <TouchableOpacity
-          className="flex-1 bg-black/40 items-center justify-center"
-          activeOpacity={1}
-          onPress={() => setConfirmDeleteGoal(null)}
-        >
-          <View className="bg-white rounded-2xl mx-8 p-5 w-72" onStartShouldSetResponder={() => true}>
-            <Text className="text-base font-semibold text-gray-800 text-center mb-1">Remove Goal</Text>
-            <Text className="text-sm text-gray-500 text-center mb-4">
-              Remove "{ALL_GOAL_DEFS.find(d => d.key === confirmDeleteGoal?.goalType)?.label || confirmDeleteGoal?.goalType}"?
-            </Text>
-            <View className="flex-row gap-3">
-              <TouchableOpacity
-                className="flex-1 py-2.5 rounded-lg bg-gray-100 items-center"
-                onPress={() => setConfirmDeleteGoal(null)}
-              >
-                <Text className="text-sm font-medium text-gray-600">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="flex-1 py-2.5 rounded-lg bg-red-500 items-center"
-                onPress={confirmDelete}
-              >
-                <Text className="text-sm font-medium text-white">Remove</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <ConfirmDialogs
+        showLogWeightModal={showLogWeightModal}
+        onCloseLogWeight={() => setShowLogWeightModal(false)}
+        logWeightValue={logWeightValue}
+        setLogWeightValue={setLogWeightValue}
+        logWeightValueError={logWeightValueError}
+        setLogWeightValueError={setLogWeightValueError}
+        logWeightDate={logWeightDate}
+        setLogWeightDate={setLogWeightDate}
+        logWeightNotes={logWeightNotes}
+        setLogWeightNotes={setLogWeightNotes}
+        savingWeight={savingWeight}
+        onLogWeight={handleLogWeight}
+        deleteMealConfirm={deleteMealConfirm}
+        onCancelDeleteMeal={() => setDeleteMealConfirm(null)}
+        onConfirmDeleteMeal={confirmDeleteMeal}
+        deleteWeightConfirm={deleteWeightConfirm}
+        onCancelDeleteWeight={() => setDeleteWeightConfirm(null)}
+        onConfirmDeleteWeight={confirmDeleteWeight}
+        confirmDeleteGoal={confirmDeleteGoal}
+        onCancelDeleteGoal={() => setConfirmDeleteGoal(null)}
+        onConfirmDeleteGoal={confirmDelete}
+      />
     </View>
   );
 }

@@ -125,7 +125,6 @@ function createChatStore(contextType: string) {
       }));
 
       try {
-        // Pass client's local date to ensure correct timezone handling
         const clientDate = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
         const response = await conversationsApi.sendMessage(threadId, message, { clientDate });
 
@@ -143,7 +142,6 @@ function createChatStore(contextType: string) {
           };
         });
 
-        // Update thread title in the list
         get().loadThreads();
       } catch (error: any) {
         console.error('Failed to send message:', error);

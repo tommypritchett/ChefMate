@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Link, router } from 'expo-router';
 import api from '../../src/services/api';
 
@@ -43,7 +44,6 @@ export default function ForgotPasswordScreen() {
       setSuccess(response.data.message || 'Password reset link sent! Check your email.');
       setEmail('');
     } catch (err: any) {
-      console.error('Forgot password error:', err);
       const message =
         err?.response?.data?.error ||
         err?.response?.data?.details?.[0]?.msg ||
@@ -57,7 +57,7 @@ export default function ForgotPasswordScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
+      className="flex-1 bg-cream"
     >
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
@@ -66,25 +66,29 @@ export default function ForgotPasswordScreen() {
         <View className="flex-1 justify-center px-6 py-12">
           {/* Logo/Header */}
           <View className="items-center mb-10">
-            <View className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-3xl items-center justify-center mb-4">
-              <Text className="text-4xl">🍳</Text>
+            <View className="w-16 h-16 bg-warm-dark rounded-3xl items-center justify-center mb-4">
+              <Image
+                source={require('../../assets/icon.png')}
+                style={{ width: 48, height: 48, borderRadius: 12 }}
+                cachePolicy="memory-disk"
+              />
             </View>
-            <Text className="text-4xl font-bold text-gray-900">Kitcho AI</Text>
-            <Text className="text-gray-500 mt-2 text-base">Reset Your Password</Text>
+            <Text className="text-4xl font-serif-bold text-warm-dark">Kitcho AI</Text>
+            <Text className="text-brown-light font-sans mt-2 text-base">Reset Your Password</Text>
           </View>
 
           {/* Instructions */}
           <View className="mb-6">
-            <Text className="text-gray-600 text-center">
+            <Text className="text-brown font-sans text-center">
               Enter your email address and we'll send you a link to reset your password.
             </Text>
           </View>
 
           {/* Success Message */}
           {success ? (
-            <View className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-              <Text className="text-green-700 text-center font-medium">{success}</Text>
-              <Text className="text-green-600 text-center text-sm mt-2">
+            <View className="bg-orange-light border border-orange-soft rounded-lg p-4 mb-4">
+              <Text className="text-orange font-sans text-center font-medium">{success}</Text>
+              <Text className="text-orange font-sans text-center text-sm mt-2">
                 Check your email for the reset link. It will expire in 1 hour.
               </Text>
             </View>
@@ -92,18 +96,18 @@ export default function ForgotPasswordScreen() {
 
           {/* Error Banner */}
           {error ? (
-            <View className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-              <Text className="text-red-600 text-center">{error}</Text>
+            <View className="bg-orange-light border border-orange-soft rounded-lg p-3 mb-4">
+              <Text className="text-orange font-sans text-center">{error}</Text>
             </View>
           ) : null}
 
           {/* Email Input */}
           <View className="mb-6">
-            <Text className="text-gray-700 font-medium mb-1.5">Email</Text>
+            <Text className="text-warm-dark font-sans-semibold mb-1.5">Email</Text>
             <TextInput
-              className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50"
+              className="border border-cream-deeper rounded-lg px-4 py-3 text-base bg-cream-dark text-warm-dark"
               placeholder="you@example.com"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#b5a99a"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -116,7 +120,7 @@ export default function ForgotPasswordScreen() {
           {/* Submit Button */}
           <TouchableOpacity
             className={`rounded-lg py-3.5 items-center mb-4 ${
-              isLoading ? 'bg-primary-300' : 'bg-primary-500'
+              isLoading ? 'bg-brown-light' : 'bg-warm-dark'
             }`}
             onPress={handleSubmit}
             disabled={isLoading}
@@ -124,16 +128,16 @@ export default function ForgotPasswordScreen() {
             {isLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text className="text-white font-semibold text-base">Send Reset Link</Text>
+              <Text className="text-cream font-sans-semibold text-base">Send Reset Link</Text>
             )}
           </TouchableOpacity>
 
           {/* Back to Login Link */}
           <View className="flex-row justify-center mt-4">
-            <Text className="text-gray-500">Remember your password? </Text>
+            <Text className="text-brown-light font-sans">Remember your password? </Text>
             <Link href="/(auth)/login" asChild>
               <TouchableOpacity>
-                <Text className="text-primary-600 font-semibold">Sign In</Text>
+                <Text className="text-orange font-sans-semibold">Sign In</Text>
               </TouchableOpacity>
             </Link>
           </View>

@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 import dotenv from 'dotenv';
 // @ts-ignore - no types available
 import timeout from 'express-timeout-handler';
@@ -18,7 +19,10 @@ import mealPlanRoutes from './routes/mealplans';
 import healthGoalRoutes from './routes/health-goals';
 import groceryRoutes from './routes/grocery';
 import krogerRoutes from './routes/kroger';
+import conceptRoutes from './routes/concepts';
+import adminConceptRoutes from './routes/admin-concepts';
 import { generalLimiter } from './middleware/rateLimiter';
+import { initScheduler } from './services/concepts/scheduler';
 
 // Load environment variables
 dotenv.config();
@@ -113,6 +117,17 @@ app.use('/api/meal-plans', mealPlanRoutes);
 app.use('/api/health-goals', healthGoalRoutes);
 app.use('/api/grocery', groceryRoutes);
 app.use('/api/kroger', krogerRoutes);
+app.use('/api/concepts', conceptRoutes);
+app.use('/api/admin/concepts', adminConceptRoutes);
+
+// Admin dashboard (localhost only, served as static HTML)
+// Relax CSP for inline scripts/styles and Google Fonts
+app.get('/admin', (req, res) => {
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:"
+  );
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
 // Health check
 app.get('/health', (req, res) => {
@@ -151,4 +166,5 @@ process.on('SIGINT', async () => {
 
 app.listen(port, () => {
   console.log(`🚀 ChefMate API server running on http://localhost:${port}`);
+  initScheduler();
 });

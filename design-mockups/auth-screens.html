@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kitcho AI — Auth Screens Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300;1,9..40,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design tokens ─────────────────────────────────────────── */
+    :root {
+      --cream:        #FFFBF5;
+      --cream-deep:   #F5EDE0;
+      --cream-border: #E8D9C5;
+      --orange-light: #FFF0E8;
+      --orange-mid:   #FDDEC8;
+      --accent:       #D4652E;
+      --accent-dark:  #B8501F;
+      --dark:         #2D2520;
+      --dark-soft:    #3D322C;
+      --brown:        #8B7355;
+      --brown-light:  #A89070;
+      --brown-faint:  #C4AD95;
+      --white:        #FFFFFF;
+
+      --radius-sm:    8px;
+      --radius-md:    14px;
+      --radius-lg:    20px;
+      --radius-xl:    28px;
+      --radius-full:  9999px;
+
+      --shadow-warm-sm: 0 2px 8px rgba(45, 37, 32, 0.08);
+      --shadow-warm-md: 0 6px 20px rgba(45, 37, 32, 0.10);
+      --shadow-warm-lg: 0 12px 40px rgba(45, 37, 32, 0.13);
+      --shadow-accent:  0 4px 20px rgba(212, 101, 46, 0.25);
+    }
+
+    /* ── Reset ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #EDE4D8;
+      background-image:
+        radial-gradient(ellipse at 20% 0%, #E8D5C0 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 100%, #D9C8B0 0%, transparent 50%);
+      min-height: 100vh;
+      padding: 60px 24px;
+    }
+
+    /* ── Page layout ───────────────────────────────────────────── */
+    .page-header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+    .page-header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--dark);
+      letter-spacing: -0.3px;
+    }
+    .page-header p {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--brown);
+      font-weight: 400;
+      letter-spacing: 0.3px;
+    }
+    .page-header .badge {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 4px 14px;
+      background: var(--orange-light);
+      border: 1px solid var(--orange-mid);
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+
+    /* ── Screen wrapper ────────────────────────────────────────── */
+    .screens-grid {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 72px;
+    }
+
+    .screen-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .screen-label {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--brown);
+      align-self: flex-start;
+      padding-left: 4px;
+    }
+
+    .screen-label span {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      background: var(--dark);
+      color: var(--cream);
+      border-radius: 50%;
+      font-size: 9px;
+      font-weight: 700;
+      text-align: center;
+      line-height: 18px;
+      margin-right: 8px;
+      letter-spacing: 0;
+    }
+
+    /* ── Phone frame ───────────────────────────────────────────── */
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: var(--cream);
+      border-radius: 48px;
+      overflow: hidden;
+      position: relative;
+      box-shadow:
+        var(--shadow-warm-lg),
+        0 0 0 1px rgba(45,37,32,0.06),
+        inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+
+    /* Subtle paper-like texture overlay */
+    .phone::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* Status bar */
+    .status-bar {
+      height: 50px;
+      padding: 16px 24px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .status-time {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--dark);
+      font-family: 'DM Sans', sans-serif;
+      letter-spacing: -0.2px;
+    }
+    .status-icons {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .status-icons svg {
+      color: var(--dark);
+    }
+
+    /* ── Phone inner scroll area ───────────────────────────────── */
+    .phone-inner {
+      height: calc(844px - 50px);
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    .phone-inner::-webkit-scrollbar { display: none; }
+
+    .screen-content {
+      padding: 24px 28px 48px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+
+    /* ── Logo block ────────────────────────────────────────────── */
+    .logo-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 36px;
+    }
+
+    .logo-container {
+      width: 72px;
+      height: 72px;
+      background: var(--dark);
+      border-radius: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      box-shadow:
+        var(--shadow-warm-md),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+      margin-bottom: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Subtle gloss on logo */
+    .logo-container::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 40%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%);
+      border-radius: 22px 22px 0 0;
+    }
+
+    .logo-wordmark {
+      font-family: 'Playfair Display', serif;
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--dark);
+      letter-spacing: -0.5px;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .logo-tagline {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--brown);
+      letter-spacing: 0.1px;
+    }
+
+    /* ── Section heading ───────────────────────────────────────── */
+    .screen-heading {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--dark);
+      line-height: 1.2;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    .screen-subheading {
+      font-size: 14px;
+      color: var(--brown);
+      line-height: 1.5;
+      font-weight: 400;
+      margin-bottom: 28px;
+    }
+
+    /* ── Form elements ─────────────────────────────────────────── */
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--brown);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .form-input {
+      width: 100%;
+      height: 50px;
+      padding: 0 16px;
+      background: var(--white);
+      border: 1.5px solid var(--cream-border);
+      border-radius: var(--radius-md);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      color: var(--dark);
+      outline: none;
+      box-shadow: var(--shadow-warm-sm);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+    }
+
+    .form-input::placeholder {
+      color: var(--brown-faint);
+    }
+
+    /* Focus state (simulated) */
+    .form-input.focused {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(212, 101, 46, 0.10), var(--shadow-warm-sm);
+    }
+
+    /* Password toggle */
+    .input-action {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      font-family: 'DM Sans', sans-serif;
+      letter-spacing: 0.2px;
+      padding: 4px 0;
+    }
+
+    .form-input.has-action {
+      padding-right: 60px;
+    }
+
+    /* Forgot password link */
+    .forgot-link {
+      text-align: right;
+      margin-top: -6px;
+      margin-bottom: 20px;
+    }
+
+    .forgot-link a {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* ── Buttons ───────────────────────────────────────────────── */
+    .btn-primary {
+      width: 100%;
+      height: 54px;
+      background: var(--dark);
+      color: var(--cream);
+      border: none;
+      border-radius: var(--radius-lg);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.1px;
+      cursor: pointer;
+      box-shadow:
+        var(--shadow-warm-md),
+        inset 0 1px 0 rgba(255,255,255,0.07);
+      position: relative;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 50%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+    }
+
+    /* ── Bottom link ───────────────────────────────────────────── */
+    .bottom-link {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--brown);
+      font-weight: 400;
+    }
+
+    .bottom-link a {
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    /* ── Error / success banners ───────────────────────────────── */
+    .banner {
+      padding: 13px 16px;
+      border-radius: var(--radius-md);
+      font-size: 13.5px;
+      font-weight: 500;
+      line-height: 1.45;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .banner-error {
+      background: var(--orange-light);
+      border: 1px solid var(--orange-mid);
+      color: var(--accent-dark);
+    }
+
+    .banner-success {
+      background: var(--orange-light);
+      border: 1px solid var(--orange-mid);
+      color: var(--accent);
+    }
+
+    .banner-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+      margin-top: 0px;
+    }
+
+    /* ── Decorative divider ────────────────────────────────────── */
+    .or-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 22px 0;
+    }
+    .or-divider-line {
+      flex: 1;
+      height: 1px;
+      background: var(--cream-border);
+    }
+    .or-divider-text {
+      font-size: 12px;
+      color: var(--brown-faint);
+      font-weight: 500;
+      letter-spacing: 0.4px;
+    }
+
+    /* ── Password strength ─────────────────────────────────────── */
+    .strength-wrap {
+      margin-top: 10px;
+    }
+    .strength-label {
+      font-size: 11px;
+      color: var(--brown-light);
+      font-weight: 500;
+      margin-bottom: 7px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .strength-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .strength-dot {
+      width: 36px;
+      height: 4px;
+      border-radius: var(--radius-full);
+      background: var(--cream-border);
+      transition: background 0.3s;
+    }
+    .strength-dot.active {
+      background: var(--accent);
+    }
+    .strength-dot.active-weak {
+      background: var(--brown-faint);
+    }
+
+    /* ── Terms text ────────────────────────────────────────────── */
+    .terms-text {
+      font-size: 12px;
+      color: var(--brown-light);
+      text-align: center;
+      line-height: 1.6;
+      margin-top: 18px;
+    }
+    .terms-text a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-decoration-color: rgba(212, 101, 46, 0.35);
+    }
+
+    /* ── Screen 3 (Forgot) specific ────────────────────────────── */
+    .top-back {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 32px;
+      color: var(--brown);
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .back-arrow {
+      width: 32px;
+      height: 32px;
+      background: var(--white);
+      border-radius: var(--radius-sm);
+      border: 1.5px solid var(--cream-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      box-shadow: var(--shadow-warm-sm);
+    }
+
+    .logo-block-sm {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      margin-bottom: 28px;
+    }
+    .logo-container-sm {
+      width: 58px;
+      height: 58px;
+      background: var(--dark);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      box-shadow: var(--shadow-warm-md);
+      margin-bottom: 20px;
+    }
+
+    /* ── Screen 4 (Success) specific ───────────────────────────── */
+    .success-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: calc(844px - 50px - 72px);
+      padding: 0 8px;
+    }
+
+    .success-circle {
+      width: 100px;
+      height: 100px;
+      background: var(--orange-light);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 28px;
+      position: relative;
+      box-shadow: 0 0 0 12px rgba(212, 101, 46, 0.07);
+    }
+
+    .success-check {
+      font-size: 42px;
+      color: var(--accent);
+    }
+
+    .success-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--dark);
+      letter-spacing: -0.5px;
+      line-height: 1.15;
+      margin-bottom: 14px;
+    }
+
+    .success-body {
+      font-size: 15px;
+      color: var(--brown);
+      line-height: 1.6;
+      max-width: 260px;
+      margin-bottom: 40px;
+    }
+
+    .success-note {
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--brown-faint);
+      line-height: 1.5;
+    }
+
+    /* ── Decorative sprig behind logo ──────────────────────────── */
+    .logo-bg-wrap {
+      position: relative;
+      margin-bottom: 18px;
+    }
+    .logo-bg-wrap::before {
+      content: '';
+      position: absolute;
+      inset: -8px;
+      background: radial-gradient(ellipse, rgba(212, 101, 46, 0.06) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+
+    /* ── Section screen divider ────────────────────────────────── */
+    .section-divider {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 4px;
+    }
+    .section-divider-line {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(45,37,32,0.12), transparent);
+    }
+    .section-divider-icon {
+      font-size: 18px;
+      opacity: 0.4;
+    }
+
+    /* ── Responsive note ───────────────────────────────────────── */
+    @media (max-width: 430px) {
+      .phone {
+        width: 100%;
+        border-radius: 0;
+        height: auto;
+      }
+      .phone-inner {
+        height: auto;
+        overflow: visible;
+      }
+      body { padding: 20px 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>Kitcho AI</h1>
+    <p>Auth screens — mobile mockup · 390 × 844</p>
+    <span class="badge">Design Spec v1.0</span>
+  </div>
+
+  <div class="screens-grid">
+
+    <!-- ══════════════════════════════════════════════════════════
+         SCREEN 1 — LOGIN
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="screen-block">
+      <div class="screen-label"><span>1</span>Login</div>
+
+      <div class="phone">
+        <!-- Status bar -->
+        <div class="status-bar">
+          <span class="status-time">9:41</span>
+          <div class="status-icons">
+            <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
+              <rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity="0.4"/>
+              <rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity="0.6"/>
+              <rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+              <rect x="14" y="1" width="3" height="9" rx="1" fill="currentColor"/>
+            </svg>
+            <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+              <path d="M8 2.5C10.2 2.5 12.2 3.4 13.7 4.9L15 3.6C13.1 1.7 10.7 0.5 8 0.5C5.3 0.5 2.9 1.7 1 3.6L2.3 4.9C3.8 3.4 5.8 2.5 8 2.5Z" fill="currentColor"/>
+              <path d="M8 5.5C9.5 5.5 10.8 6.1 11.8 7.1L13.1 5.8C11.7 4.4 9.95 3.5 8 3.5C6.05 3.5 4.3 4.4 2.9 5.8L4.2 7.1C5.2 6.1 6.5 5.5 8 5.5Z" fill="currentColor" opacity="0.7"/>
+              <circle cx="8" cy="10" r="1.5" fill="currentColor"/>
+            </svg>
+            <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+              <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" stroke-opacity="0.35"/>
+              <rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor"/>
+              <path d="M23 4.5V7.5C23.8 7.2 24.5 6.5 24.5 6C24.5 5.5 23.8 4.8 23 4.5Z" fill="currentColor" opacity="0.4"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="phone-inner">
+          <div class="screen-content">
+
+            <!-- Logo -->
+            <div class="logo-block">
+              <div class="logo-bg-wrap">
+                <div class="logo-container">🍳</div>
+              </div>
+              <div class="logo-wordmark">Kitcho AI</div>
+              <div class="logo-tagline">Your personal kitchen companion</div>
+            </div>
+
+            <!-- Error banner -->
+            <div class="banner banner-error">
+              <span class="banner-icon">⚠</span>
+              <div>
+                <strong>Incorrect credentials.</strong> Please check your email and password and try again.
+              </div>
+            </div>
+
+            <!-- Email field -->
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <div class="input-wrap">
+                <input class="form-input focused" type="email" placeholder="you@example.com" value="" />
+              </div>
+            </div>
+
+            <!-- Password field -->
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <div class="input-wrap">
+                <input class="form-input has-action" type="password" placeholder="Your password" value="••••••••" />
+                <button class="input-action">Show</button>
+              </div>
+            </div>
+
+            <!-- Forgot link -->
+            <div class="forgot-link">
+              <a href="#">Forgot Password?</a>
+            </div>
+
+            <!-- CTA -->
+            <button class="btn-primary">Sign In</button>
+
+            <!-- Bottom switch -->
+            <div class="bottom-link">
+              Don't have an account? <a href="#">Sign Up</a>
+            </div>
+
+          </div>
+        </div>
+      </div><!-- /phone -->
+    </div><!-- /screen-block -->
+
+
+    <!-- Divider -->
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-icon">✦</span>
+      <div class="section-divider-line"></div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         SCREEN 2 — REGISTER
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="screen-block">
+      <div class="screen-label"><span>2</span>Register</div>
+
+      <div class="phone">
+        <div class="status-bar">
+          <span class="status-time">9:41</span>
+          <div class="status-icons">
+            <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
+              <rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity="0.4"/>
+              <rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity="0.6"/>
+              <rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+              <rect x="14" y="1" width="3" height="9" rx="1" fill="currentColor"/>
+            </svg>
+            <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+              <path d="M8 2.5C10.2 2.5 12.2 3.4 13.7 4.9L15 3.6C13.1 1.7 10.7 0.5 8 0.5C5.3 0.5 2.9 1.7 1 3.6L2.3 4.9C3.8 3.4 5.8 2.5 8 2.5Z" fill="currentColor"/>
+              <path d="M8 5.5C9.5 5.5 10.8 6.1 11.8 7.1L13.1 5.8C11.7 4.4 9.95 3.5 8 3.5C6.05 3.5 4.3 4.4 2.9 5.8L4.2 7.1C5.2 6.1 6.5 5.5 8 5.5Z" fill="currentColor" opacity="0.7"/>
+              <circle cx="8" cy="10" r="1.5" fill="currentColor"/>
+            </svg>
+            <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+              <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" stroke-opacity="0.35"/>
+              <rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor"/>
+              <path d="M23 4.5V7.5C23.8 7.2 24.5 6.5 24.5 6C24.5 5.5 23.8 4.8 23 4.5Z" fill="currentColor" opacity="0.4"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="phone-inner">
+          <div class="screen-content">
+
+            <!-- Logo compact -->
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:28px;">
+              <div style="width:46px;height:46px;background:var(--dark);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:var(--shadow-warm-md);flex-shrink:0;">🍳</div>
+              <div>
+                <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--dark);letter-spacing:-0.3px;line-height:1.1;">Kitcho AI</div>
+                <div style="font-size:12px;color:var(--brown);font-weight:400;margin-top:2px;">Kitchen companion</div>
+              </div>
+            </div>
+
+            <div class="screen-heading">Create Account</div>
+            <div class="screen-subheading">Join to start planning meals with AI-powered precision.</div>
+
+            <!-- Name row -->
+            <div class="form-row" style="margin-bottom:14px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">First Name</label>
+                <input class="form-input" type="text" placeholder="Jamie" />
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Last Name</label>
+                <input class="form-input" type="text" placeholder="Oliver" />
+              </div>
+            </div>
+
+            <!-- Email -->
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input class="form-input focused" type="email" placeholder="you@example.com" />
+            </div>
+
+            <!-- Password -->
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <div class="input-wrap">
+                <input class="form-input has-action" type="password" placeholder="At least 8 characters" value="••••••••••" />
+                <button class="input-action">Show</button>
+              </div>
+              <!-- Strength dots -->
+              <div class="strength-wrap">
+                <div class="strength-label">Strength</div>
+                <div class="strength-dots">
+                  <div class="strength-dot active"></div>
+                  <div class="strength-dot active"></div>
+                  <div class="strength-dot active"></div>
+                  <div class="strength-dot"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Confirm Password -->
+            <div class="form-group">
+              <label class="form-label">Confirm Password</label>
+              <div class="input-wrap">
+                <input class="form-input has-action" type="password" placeholder="Repeat password" value="••••••••••" />
+                <button class="input-action" style="color:var(--brown-light);">Show</button>
+              </div>
+            </div>
+
+            <!-- CTA -->
+            <button class="btn-primary" style="margin-top:4px;">Create Account</button>
+
+            <!-- Terms -->
+            <div class="terms-text">
+              By creating an account, you agree to our <a href="#">Terms of Service</a> &amp; <a href="#">Privacy Policy</a>
+            </div>
+
+            <!-- Bottom switch -->
+            <div class="bottom-link">
+              Already have an account? <a href="#">Sign In</a>
+            </div>
+
+          </div>
+        </div>
+      </div><!-- /phone -->
+    </div><!-- /screen-block -->
+
+
+    <!-- Divider -->
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-icon">✦</span>
+      <div class="section-divider-line"></div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         SCREEN 3 — FORGOT PASSWORD
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="screen-block">
+      <div class="screen-label"><span>3</span>Forgot Password</div>
+
+      <div class="phone">
+        <div class="status-bar">
+          <span class="status-time">9:41</span>
+          <div class="status-icons">
+            <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
+              <rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity="0.4"/>
+              <rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity="0.6"/>
+              <rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+              <rect x="14" y="1" width="3" height="9" rx="1" fill="currentColor"/>
+            </svg>
+            <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+              <path d="M8 2.5C10.2 2.5 12.2 3.4 13.7 4.9L15 3.6C13.1 1.7 10.7 0.5 8 0.5C5.3 0.5 2.9 1.7 1 3.6L2.3 4.9C3.8 3.4 5.8 2.5 8 2.5Z" fill="currentColor"/>
+              <path d="M8 5.5C9.5 5.5 10.8 6.1 11.8 7.1L13.1 5.8C11.7 4.4 9.95 3.5 8 3.5C6.05 3.5 4.3 4.4 2.9 5.8L4.2 7.1C5.2 6.1 6.5 5.5 8 5.5Z" fill="currentColor" opacity="0.7"/>
+              <circle cx="8" cy="10" r="1.5" fill="currentColor"/>
+            </svg>
+            <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+              <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" stroke-opacity="0.35"/>
+              <rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor"/>
+              <path d="M23 4.5V7.5C23.8 7.2 24.5 6.5 24.5 6C24.5 5.5 23.8 4.8 23 4.5Z" fill="currentColor" opacity="0.4"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="phone-inner">
+          <div class="screen-content">
+
+            <!-- Back nav -->
+            <div class="top-back">
+              <div class="back-arrow">←</div>
+              <span>Back to Sign In</span>
+            </div>
+
+            <!-- Logo block left-aligned -->
+            <div class="logo-block-sm">
+              <div class="logo-container-sm">🔒</div>
+              <div class="screen-heading">Reset Password</div>
+              <div class="screen-subheading" style="margin-bottom:0;">
+                Enter your email and we'll send you a link to reset your password.
+              </div>
+            </div>
+
+            <!-- Email input -->
+            <div class="form-group" style="margin-top:8px;">
+              <label class="form-label">Email Address</label>
+              <input class="form-input" type="email" placeholder="you@example.com" />
+            </div>
+
+            <!-- CTA -->
+            <button class="btn-primary" style="margin-top:8px;">Send Reset Link</button>
+
+            <!-- Success state card -->
+            <div style="margin-top:28px;">
+              <div style="font-size:11px;font-weight:600;color:var(--brown-faint);letter-spacing:0.8px;text-transform:uppercase;margin-bottom:12px;">
+                ↓ After sending
+              </div>
+              <div class="banner banner-success" style="flex-direction:column;gap:10px;padding:18px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span style="font-size:22px;">📬</span>
+                  <div>
+                    <div style="font-weight:700;font-size:14px;color:var(--accent);margin-bottom:2px;">Check your email</div>
+                    <div style="font-size:13px;color:var(--accent-dark);font-weight:400;">We sent a reset link to <strong>you@example.com</strong></div>
+                  </div>
+                </div>
+                <div style="border-top:1px solid var(--orange-mid);padding-top:12px;font-size:12.5px;color:var(--brown);line-height:1.5;">
+                  Didn't receive it? Check your spam folder, or
+                  <a href="#" style="color:var(--accent);font-weight:600;text-decoration:none;">resend the link</a>.
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom link -->
+            <div class="bottom-link" style="margin-top:16px;">
+              <a href="#" style="color:var(--accent);font-weight:600;">← Back to Sign In</a>
+            </div>
+
+          </div>
+        </div>
+      </div><!-- /phone -->
+    </div><!-- /screen-block -->
+
+
+    <!-- Divider -->
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-icon">✦</span>
+      <div class="section-divider-line"></div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+         SCREEN 4 — RESET SUCCESS
+    ══════════════════════════════════════════════════════════════ -->
+    <div class="screen-block">
+      <div class="screen-label"><span>4</span>Password Reset Success</div>
+
+      <div class="phone">
+        <div class="status-bar">
+          <span class="status-time">9:41</span>
+          <div class="status-icons">
+            <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
+              <rect x="0" y="3" width="3" height="9" rx="1" fill="currentColor" opacity="0.4"/>
+              <rect x="4.5" y="2" width="3" height="10" rx="1" fill="currentColor" opacity="0.6"/>
+              <rect x="9" y="0" width="3" height="12" rx="1" fill="currentColor"/>
+              <rect x="14" y="1" width="3" height="9" rx="1" fill="currentColor"/>
+            </svg>
+            <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+              <path d="M8 2.5C10.2 2.5 12.2 3.4 13.7 4.9L15 3.6C13.1 1.7 10.7 0.5 8 0.5C5.3 0.5 2.9 1.7 1 3.6L2.3 4.9C3.8 3.4 5.8 2.5 8 2.5Z" fill="currentColor"/>
+              <path d="M8 5.5C9.5 5.5 10.8 6.1 11.8 7.1L13.1 5.8C11.7 4.4 9.95 3.5 8 3.5C6.05 3.5 4.3 4.4 2.9 5.8L4.2 7.1C5.2 6.1 6.5 5.5 8 5.5Z" fill="currentColor" opacity="0.7"/>
+              <circle cx="8" cy="10" r="1.5" fill="currentColor"/>
+            </svg>
+            <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+              <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor" stroke-opacity="0.35"/>
+              <rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor"/>
+              <path d="M23 4.5V7.5C23.8 7.2 24.5 6.5 24.5 6C24.5 5.5 23.8 4.8 23 4.5Z" fill="currentColor" opacity="0.4"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="phone-inner">
+          <div class="screen-content" style="padding-top:0;justify-content:center;">
+
+            <div class="success-screen">
+
+              <!-- Decorative warm gradient halo -->
+              <div style="position:relative;margin-bottom:36px;">
+                <div style="
+                  position:absolute;
+                  inset:-40px;
+                  background:radial-gradient(ellipse, rgba(212,101,46,0.08) 0%, transparent 70%);
+                  border-radius:50%;
+                "></div>
+                <div class="success-circle">
+                  <!-- Custom checkmark SVG -->
+                  <svg width="46" height="46" viewBox="0 0 46 46" fill="none">
+                    <circle cx="23" cy="23" r="22" stroke="#D4652E" stroke-width="2" stroke-opacity="0.2"/>
+                    <path d="M13 23.5L19.5 30L33 16" stroke="#D4652E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+
+              <div class="success-title">Password Reset!</div>
+              <div class="success-body">
+                Your password has been successfully reset. You're ready to get cooking.
+              </div>
+
+              <!-- Logo mini -->
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:28px;opacity:0.6;">
+                <div style="width:28px;height:28px;background:var(--dark);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;">🍳</div>
+                <span style="font-family:'Playfair Display',serif;font-size:14px;font-weight:600;color:var(--dark);">Kitcho AI</span>
+              </div>
+
+              <button class="btn-primary" style="width:100%;max-width:280px;">Sign In</button>
+
+              <div class="success-note">
+                Welcome back — your kitchen awaits.
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      </div><!-- /phone -->
+    </div><!-- /screen-block -->
+
+
+    <!-- Footer -->
+    <div style="text-align:center;padding:24px 0 16px;opacity:0.5;">
+      <div style="font-size:11px;color:var(--dark);font-weight:500;letter-spacing:0.4px;">
+        Kitcho AI · Auth Screens · Design Mockup
+      </div>
+    </div>
+
+  </div><!-- /screens-grid -->
+
+</body>
+</html>

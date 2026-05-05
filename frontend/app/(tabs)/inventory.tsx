@@ -5,51 +5,28 @@ import {
   SectionList,
   TouchableOpacity,
   TextInput,
-  Modal,
   Alert,
   ActivityIndicator,
   ScrollView,
   Platform,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { inventoryApi, conversationsApi } from '../../src/services/api';
 import useSpeechRecognition from '../../src/hooks/useSpeechRecognition';
+import { router } from 'expo-router';
 
-const STORAGE_LOCATIONS = ['fridge', 'freezer', 'pantry'] as const;
-const CATEGORIES = ['produce', 'dairy', 'meat/protein', 'grains', 'condiments', 'beverages', 'other'];
-const SORT_OPTIONS = ['location', 'category', 'expiry'] as const;
-type SortMode = typeof SORT_OPTIONS[number];
-
-interface InventoryItem {
-  id: string;
-  name: string;
-  category: string | null;
-  storageLocation: string;
-  quantity: number | null;
-  unit: string | null;
-  expiresAt: string | null;
-  createdAt: string;
-}
-
-interface PhotoItem {
-  name: string;
-  quantity: number;
-  unit: string;
-  category: string;
-  storageLocation: string;
-  confidence: number;
-  selected: boolean;
-}
-
-type PhotoState = 'idle' | 'analyzing' | 'results' | 'error' | 'added';
-
-interface ConvoMessage {
-  role: 'user' | 'assistant';
-  text: string;
-}
+import {
+  InventoryItem, PhotoItem, PhotoState, ConvoMessage, SortMode,
+  STORAGE_LOCATIONS, CATEGORIES, SORT_OPTIONS, FILTER_PILLS,
+  LOCATION_EMOJI, CATEGORY_EMOJI,
+  validateQuantity, isExpiringSoon, isExpired,
+  formatExpiry, getTimeSinceAdded, getItemEmoji, getIconBgClass,
+} from '../../src/components/inventory/inventoryHelpers';
+import PhotoScanModal from '../../src/components/inventory/PhotoScanModal';
+import ConversationalAddModal from '../../src/components/inventory/ConversationalAddModal';
+import ItemFormModal from '../../src/components/inventory/ItemFormModal';
 
 export default function InventoryScreen() {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -60,6 +37,8 @@ export default function InventoryScreen() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [expiringItems, setExpiringItems] = useState<InventoryItem[]>([]);
   const [showExpiryBanner, setShowExpiryBanner] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Edit form state
   const [editName, setEditName] = useState('');
@@ -113,24 +92,12 @@ export default function InventoryScreen() {
     }
   }, [transcript, showConvoModal, convoMode]);
 
-  // ─── Validation helpers ────────────────────────────────────────────────
-
-  const validateQuantity = (value: string): string => {
-    if (!value.trim()) return '';
-    const num = parseFloat(value);
-    if (isNaN(num)) return 'Please enter a valid number';
-    if (num <= 0) return 'Quantity must be greater than 0';
-    if (num > 10000) return 'Quantity seems too high (max 10000)';
-    return '';
-  };
-
   const fetchItems = useCallback(async (isInitial = false) => {
     try {
       if (isInitial) setLoading(true);
       const data = await inventoryApi.getInventory();
       const allItems = data.items || [];
       setItems(allItems);
-      // Compute expiring items for notification banner (fridge/pantry within 3 days, freezer within 4 months)
       const expiring = allItems.filter((i: InventoryItem) => {
         if (!i.expiresAt) return false;
         const loc = i.storageLocation;
@@ -152,13 +119,10 @@ export default function InventoryScreen() {
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
-
-    // Check for validation errors
     if (newQuantityError) {
       Alert.alert('Invalid Input', 'Please fix the quantity error before saving.');
       return;
     }
-
     setAdding(true);
     try {
       await inventoryApi.addItem({
@@ -183,7 +147,6 @@ export default function InventoryScreen() {
 
   const handleDelete = (id: string, name: string) => {
     if (Platform.OS === 'web') {
-      // Web: use custom modal (Alert.alert doesn't work on web)
       setDeleteConfirm({ id, name });
     } else {
       Alert.alert('Delete Item', `Remove "${name}" from inventory?`, [
@@ -198,11 +161,11 @@ export default function InventoryScreen() {
   };
 
   const confirmDelete = async (id: string) => {
-    const itemId = id; // capture before clearing state
+    const itemId = id;
     try {
       await inventoryApi.deleteItem(itemId);
       setItems(prev => prev.filter(i => i.id !== itemId));
-      await fetchItems(); // re-sync with backend
+      await fetchItems();
     } catch (err) {
       console.error('Failed to delete:', err);
     } finally {
@@ -211,7 +174,6 @@ export default function InventoryScreen() {
     }
   };
 
-  // Track which item is being edited
   const [editingItemId, setEditingItemId] = useState<string>('');
 
   const openEditItem = (item: InventoryItem) => {
@@ -229,13 +191,10 @@ export default function InventoryScreen() {
 
   const handleSaveEdit = async () => {
     if (!editingItemId || !editName.trim()) return;
-
-    // Check for validation errors
     if (editQuantityError) {
       Alert.alert('Invalid Input', 'Please fix the quantity error before saving.');
       return;
     }
-
     setAdding(true);
     try {
       await inventoryApi.updateItem(editingItemId, {
@@ -267,7 +226,6 @@ export default function InventoryScreen() {
 
   // ─── Photo Analysis ────────────────────────────────────────────
 
-  // Preprocess image: resize if too large, compress to JPEG
   const preprocessImage = async (uri: string): Promise<string> => {
     const MAX_DIMENSION = 1500;
     const manipulated = await ImageManipulator.manipulateAsync(
@@ -278,7 +236,6 @@ export default function InventoryScreen() {
     return manipulated.base64 || '';
   };
 
-  // Analyze photo with retry logic
   const analyzeWithRetry = async (base64: string, maxRetries = 1): Promise<any> => {
     let lastError: any;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -288,7 +245,6 @@ export default function InventoryScreen() {
         lastError = err;
         const retryable = err?.response?.data?.retryable;
         const status = err?.response?.status;
-        // Only retry on retryable errors (timeout, rate limit, server error)
         if (attempt < maxRetries && (retryable || status === 504 || status === 500 || status === 429)) {
           await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
           continue;
@@ -311,9 +267,7 @@ export default function InventoryScreen() {
           setShowPhotoModal(true);
           return;
         }
-        result = await ImagePicker.launchCameraAsync({
-          quality: 0.8,
-        });
+        result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -322,20 +276,16 @@ export default function InventoryScreen() {
           setShowPhotoModal(true);
           return;
         }
-        result = await ImagePicker.launchImageLibraryAsync({
-          quality: 0.8,
-        });
+        result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
       }
 
       if (result.canceled || !result.assets?.[0]?.uri) return;
 
-      // Show modal with analyzing state
       setPhotoState('analyzing');
       setPhotoError('');
       setPhotoItems([]);
       setShowPhotoModal(true);
 
-      // Preprocess: resize + compress + convert to base64
       let base64: string;
       try {
         base64 = await preprocessImage(result.assets[0].uri);
@@ -395,7 +345,6 @@ export default function InventoryScreen() {
   const handleAddPhotoItems = async () => {
     const selected = photoItems.filter(i => i.selected);
     if (selected.length === 0) return;
-
     setAdding(true);
     try {
       for (const item of selected) {
@@ -458,7 +407,6 @@ export default function InventoryScreen() {
     }
 
     try {
-      // Create thread if needed
       let threadId = convoThreadId;
       if (!threadId) {
         const res = await conversationsApi.createThread('Inventory Input');
@@ -466,13 +414,10 @@ export default function InventoryScreen() {
         setConvoThreadId(threadId);
       }
 
-      // Send message to AI
       const response = await conversationsApi.sendMessage(threadId!, text);
       const aiMessage = response.assistantMessage?.message || response.assistantMessage?.content || 'Items processed.';
 
       setConvoMessages(prev => [...prev, { role: 'assistant', text: aiMessage }]);
-
-      // Refresh inventory after AI processes items
       fetchItems();
     } catch (err) {
       console.error('Convo error:', err);
@@ -489,7 +434,6 @@ export default function InventoryScreen() {
   const handleVoiceToggle = () => {
     if (isListening) {
       stopListening();
-      // Auto-send after stopping voice
       setTimeout(() => {
         if (convoInput.trim()) {
           handleConvoSend();
@@ -502,27 +446,32 @@ export default function InventoryScreen() {
     }
   };
 
-  // ─── Helpers ──────────────────────────────────────────────────
+  // ─── Filtering & Sections ──────────────────────────────────────
 
-  const isExpiringSoon = (expiresAt: string | null, storageLocation?: string) => {
-    if (!expiresAt) return false;
-    // Warn when close to expiry: freezer 14 days, fridge/pantry 3 days
-    const thresholdDays = storageLocation === 'freezer' ? 14 : 3;
-    const diff = new Date(expiresAt).getTime() - Date.now();
-    return diff > 0 && diff < thresholdDays * 24 * 60 * 60 * 1000;
-  };
-
-  const isExpired = (expiresAt: string | null, storageLocation?: string) => {
-    if (!expiresAt) return false;
-    // Frozen items: don't show expired until 4 months past date
-    if (storageLocation === 'freezer') {
-      const gracePeriod = 120 * 24 * 60 * 60 * 1000;
-      return new Date(expiresAt).getTime() + gracePeriod < Date.now();
+  const filteredItems = items.filter(item => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!item.name.toLowerCase().includes(q)) return false;
     }
-    return new Date(expiresAt).getTime() < Date.now();
-  };
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'fridge' || activeFilter === 'pantry' || activeFilter === 'freezer') {
+      return (item.storageLocation || 'pantry').toLowerCase() === activeFilter;
+    }
+    if (activeFilter === 'spices') {
+      return (item.category || '').toLowerCase() === 'condiments' || (item.category || '').toLowerCase() === 'spices';
+    }
+    if (activeFilter === 'produce') {
+      return (item.category || '').toLowerCase() === 'produce';
+    }
+    if (activeFilter === 'expiring') {
+      return isExpiringSoon(item.expiresAt, item.storageLocation) || isExpired(item.expiresAt, item.storageLocation);
+    }
+    return true;
+  });
 
-  // Group items based on sort mode
+  const expiringSoonCount = items.filter(i => isExpiringSoon(i.expiresAt, i.storageLocation)).length;
+  const expiredCount = items.filter(i => isExpired(i.expiresAt, i.storageLocation)).length;
+
   const sections = (() => {
     if (sortMode === 'category') {
       const CATEGORY_LABELS: Record<string, { label: string; icon: string }> = {
@@ -541,7 +490,7 @@ export default function InventoryScreen() {
       return CATEGORIES.map(cat => ({
         title: CATEGORY_LABELS[cat]?.label || cat,
         icon: CATEGORY_LABELS[cat]?.icon || 'ellipsis-horizontal-outline',
-        data: items.filter(i => normalizeCategory(i.category) === cat),
+        data: filteredItems.filter(i => normalizeCategory(i.category) === cat),
       })).filter(s => s.data.length > 0);
     }
     if (sortMode === 'expiry') {
@@ -549,13 +498,12 @@ export default function InventoryScreen() {
       const expiringSoon: InventoryItem[] = [];
       const hasDate: InventoryItem[] = [];
       const noDate: InventoryItem[] = [];
-      for (const item of items) {
+      for (const item of filteredItems) {
         if (isExpired(item.expiresAt, item.storageLocation)) expired.push(item);
         else if (isExpiringSoon(item.expiresAt, item.storageLocation)) expiringSoon.push(item);
         else if (item.expiresAt) hasDate.push(item);
         else noDate.push(item);
       }
-      // Sort by expiry date ascending
       hasDate.sort((a, b) => new Date(a.expiresAt!).getTime() - new Date(b.expiresAt!).getTime());
       return [
         { title: 'Expired', icon: 'alert-circle-outline', data: expired },
@@ -564,40 +512,23 @@ export default function InventoryScreen() {
         { title: 'No Expiry Set', icon: 'help-circle-outline', data: noDate },
       ].filter(s => s.data.length > 0);
     }
-    // Default: by storage location, sub-sorted by category within each location
+    // Default: by storage location
     const CATEGORY_SORT_ORDER = ['meat/protein', 'produce', 'dairy', 'grains', 'condiments', 'beverages', 'other'];
-    const CATEGORY_LABELS: Record<string, string> = {
-      'meat/protein': 'Meat & Protein', meat: 'Meat & Protein', protein: 'Meat & Protein',
-      produce: 'Produce', dairy: 'Dairy', grains: 'Grains & Pasta',
-      condiments: 'Condiments', beverages: 'Beverages', other: 'Other',
-      frozen: 'Frozen', canned: 'Canned', snacks: 'Snacks',
-    };
     const locationSections: { title: string; icon: string; data: InventoryItem[] }[] = [];
     for (const loc of STORAGE_LOCATIONS) {
-      const locItems = items.filter(i => (i.storageLocation || 'pantry').toLowerCase() === loc);
+      const locItems = filteredItems.filter(i => (i.storageLocation || 'pantry').toLowerCase() === loc);
       if (locItems.length === 0) continue;
-      // Normalize old meat/protein categories
       const normCat = (c: string | null | undefined) => {
         const l = (c || 'other').toLowerCase();
         return l === 'meat' || l === 'protein' ? 'meat/protein' : l;
       };
-      // Sub-sort by category
       locItems.sort((a, b) => {
         const catA = CATEGORY_SORT_ORDER.indexOf(normCat(a.category));
         const catB = CATEGORY_SORT_ORDER.indexOf(normCat(b.category));
         return (catA === -1 ? 99 : catA) - (catB === -1 ? 99 : catB);
       });
-      // Mark first item of each category group for sub-header rendering
-      let lastCat = '';
-      for (const item of locItems) {
-        const cat = normCat(item.category);
-        if (cat !== lastCat) {
-          (item as any)._categoryLabel = CATEGORY_LABELS[cat] || cat.charAt(0).toUpperCase() + cat.slice(1);
-          lastCat = cat;
-        }
-      }
       locationSections.push({
-        title: loc.charAt(0).toUpperCase() + loc.slice(1),
+        title: `${loc.charAt(0).toUpperCase() + loc.slice(1)} ${LOCATION_EMOJI[loc] || ''}`,
         icon: loc === 'fridge' ? 'snow-outline' : loc === 'freezer' ? 'cube-outline' : 'file-tray-stacked-outline',
         data: locItems,
       });
@@ -606,785 +537,612 @@ export default function InventoryScreen() {
   })();
 
   return (
-    <View className="flex-1 bg-gray-50">
-      {/* Header */}
-      <View className="bg-primary-500 pt-3 pb-5 px-5">
+    <View className="flex-1 bg-[#FFFBF5]">
+      {/* ── Header ── */}
+      <View style={{ backgroundColor: '#2D2520' }} className="pt-14 pb-5 px-6">
         <View className="flex-row justify-between items-center">
-          <Text className="text-white text-3xl font-bold tracking-tight">Inventory</Text>
-          <TouchableOpacity
-            testID="profile-icon"
-            onPress={() => router.push('/(tabs)/profile')}
-            className="bg-white/20 w-9 h-9 rounded-xl items-center justify-center"
-          >
-            <Ionicons name="person-circle-outline" size={20} color="white" />
-          </TouchableOpacity>
+          <Text style={{ fontFamily: 'PlayfairDisplay_700Bold', fontSize: 28, color: '#FFFBF5', letterSpacing: -0.5 }}>
+            My Food
+          </Text>
+          <View className="flex-row" style={{ gap: 8 }}>
+            <TouchableOpacity
+              testID="profile-icon"
+              onPress={() => router.push('/(tabs)/profile')}
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)' }}
+              className="w-[38px] h-[38px] rounded-xl items-center justify-center"
+            >
+              <Text style={{ fontSize: 18 }}>⋯</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View className="flex-row items-center mt-2" style={{ gap: 6 }}>
+          <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 12.5, color: '#B09880', letterSpacing: 0.1 }}>
+            {items.length} items total
+          </Text>
+          <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#B09880', opacity: 0.5 }} />
+          {expiringSoonCount > 0 && (
+            <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 12.5, color: '#F0916A' }}>
+              ⚠ {expiringSoonCount} expiring soon
+            </Text>
+          )}
+          {expiredCount > 0 && (
+            <>
+              <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#B09880', opacity: 0.5 }} />
+              <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 12.5, color: '#B09880' }}>
+                {expiredCount} expired
+              </Text>
+            </>
+          )}
         </View>
       </View>
 
-      {/* Expiry notification banner */}
-      {showExpiryBanner && expiringItems.length > 0 && (
-        <View className="mx-4 mt-2 mb-1 bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex-row items-center">
-          <Ionicons name="warning-outline" size={20} color="#f59e0b" />
-          <View className="flex-1 ml-2">
-            <Text className="text-sm font-medium text-yellow-800">
-              {expiringItems.length} item{expiringItems.length !== 1 ? 's' : ''} expiring soon
-            </Text>
-            <Text className="text-xs text-yellow-600 mt-0.5" numberOfLines={1}>
-              {expiringItems.slice(0, 3).map(i => i.name).join(', ')}{expiringItems.length > 3 ? '...' : ''}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => { setSortMode('expiry'); setShowExpiryBanner(false); }}
-            className="bg-yellow-100 px-2 py-1 rounded-lg mr-1"
-          >
-            <Text className="text-xs text-yellow-700 font-medium">View</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowExpiryBanner(false)}>
-            <Ionicons name="close" size={18} color="#9ca3af" />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Summary bar */}
-      <View className="flex-row justify-between items-center px-4 py-3 bg-white border-b border-gray-200">
-        <View className="flex-row items-center gap-2">
-          <Text className="text-sm text-gray-500">{items.length} items</Text>
-          {/* Sort toggle */}
-          <View className="flex-row bg-gray-100 rounded-lg overflow-hidden">
-            {SORT_OPTIONS.map(opt => (
-              <TouchableOpacity
-                key={opt}
-                onPress={() => setSortMode(opt)}
-                className={`px-2.5 py-1 ${sortMode === opt ? 'bg-primary-500' : ''}`}
-              >
-                <Text className={`text-[10px] capitalize ${sortMode === opt ? 'text-white font-medium' : 'text-gray-500'}`}>
-                  {opt}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-        <View className="flex-row items-center gap-2">
-          <TouchableOpacity
-            onPress={() => {
-              if (Platform.OS === 'web') {
-                startPhotoAnalysis('library');
-              } else {
-                Alert.alert('Add by Photo', 'How would you like to add items?', [
-                  { text: 'Take Photo', onPress: () => startPhotoAnalysis('camera') },
-                  { text: 'Choose from Library', onPress: () => startPhotoAnalysis('library') },
-                  { text: 'Cancel', style: 'cancel' },
-                ]);
-              }
-            }}
-            className="flex-row items-center bg-blue-500 px-3 py-2 rounded-lg"
-          >
-            <Ionicons name="camera" size={18} color="white" />
-            <Text className="text-white text-sm font-medium ml-1">Scan</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={openConvoModal}
-            className="flex-row items-center bg-purple-500 px-3 py-2 rounded-lg"
-          >
-            <Ionicons name="chatbubble-ellipses" size={16} color="white" />
-            <Text className="text-white text-sm font-medium ml-1">Quick Add</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setShowAddModal(true)}
-            className="flex-row items-center bg-primary-500 px-3 py-2 rounded-lg"
-          >
-            <Ionicons name="add" size={18} color="white" />
-            <Text className="text-white text-sm font-medium ml-1">Add Item</Text>
-          </TouchableOpacity>
-        </View>
+      {/* Expiration Disclaimer */}
+      <View className="mx-5 mt-2 bg-orange-light rounded-lg px-3 py-2">
+        <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 10, color: '#8B7355', lineHeight: 14 }}>
+          ⓘ Expiration dates are estimate-based — please validate yourself.
+        </Text>
       </View>
 
+      {/* ── Scrollable Body ── */}
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#10b981" />
-        </View>
-      ) : items.length === 0 ? (
-        <View className="flex-1 items-center justify-center px-6">
-          <Ionicons name="cube-outline" size={48} color="#d1d5db" />
-          <Text className="text-gray-400 mt-3 text-center">
-            Your inventory is empty. Add items to track what you have!
-          </Text>
-          <View className="flex-row gap-3 mt-4">
-            <TouchableOpacity
-              onPress={openConvoModal}
-              className="bg-purple-500 px-5 py-3 rounded-lg flex-row items-center"
-            >
-              <Ionicons name="chatbubble-ellipses" size={16} color="white" />
-              <Text className="text-white font-medium ml-2">Quick Add</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setShowAddModal(true)}
-              className="bg-primary-500 px-5 py-3 rounded-lg"
-            >
-              <Text className="text-white font-medium">Manual Add</Text>
-            </TouchableOpacity>
-          </View>
+          <ActivityIndicator size="large" color="#D4652E" />
         </View>
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          stickySectionHeadersEnabled={false}
+          ListHeaderComponent={
+            <View>
+              {/* Search bar */}
+              <View className="px-5 pt-4">
+                <View
+                  style={{
+                    backgroundColor: '#F5EDE0',
+                    borderWidth: 1.5,
+                    borderColor: '#ECD9C6',
+                    borderRadius: 14,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 14,
+                    paddingVertical: 11,
+                    gap: 10,
+                  }}
+                >
+                  <Text style={{ fontSize: 16, opacity: 0.5 }}>🔍</Text>
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      fontFamily: 'DMSans_400Regular',
+                      fontSize: 14.5,
+                      color: '#8B7355',
+                    }}
+                    placeholder="Search your food..."
+                    placeholderTextColor="#8B7355"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                  />
+                  {searchQuery ? (
+                    <TouchableOpacity onPress={() => setSearchQuery('')}>
+                      <Ionicons name="close-circle" size={18} color="#B09880" />
+                    </TouchableOpacity>
+                  ) : (
+                    <View
+                      style={{
+                        width: 28,
+                        height: 28,
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: 8,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        shadowColor: '#2D2520',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.08,
+                        shadowRadius: 12,
+                        elevation: 2,
+                      }}
+                    >
+                      <Ionicons name="options-outline" size={14} color="#8B7355" />
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              {/* Category filter pills */}
+              <View className="pt-3.5 pb-1">
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+                >
+                  {FILTER_PILLS.map(pill => {
+                    const isActive = activeFilter === pill.key;
+                    return (
+                      <TouchableOpacity
+                        key={pill.key}
+                        onPress={() => setActiveFilter(pill.key)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          paddingHorizontal: 14,
+                          paddingVertical: 7,
+                          borderRadius: 20,
+                          borderWidth: 1.5,
+                          backgroundColor: isActive ? '#FFF0E8' : '#FFFFFF',
+                          borderColor: isActive ? '#D4652E' : '#ECD9C6',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13 }}>{pill.emoji}</Text>
+                        <Text
+                          style={{
+                            fontFamily: 'DMSans_500Medium',
+                            fontSize: 13,
+                            color: isActive ? '#D4652E' : '#8B7355',
+                          }}
+                        >
+                          {pill.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {/* Sort toggle pills */}
+                  <View style={{ flexDirection: 'row', marginLeft: 4 }}>
+                    {SORT_OPTIONS.map(opt => (
+                      <TouchableOpacity
+                        key={opt}
+                        onPress={() => setSortMode(opt)}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 7,
+                          borderRadius: opt === 'location' ? 20 : opt === 'expiry' ? 20 : 0,
+                          borderTopLeftRadius: opt === 'location' ? 20 : 0,
+                          borderBottomLeftRadius: opt === 'location' ? 20 : 0,
+                          borderTopRightRadius: opt === 'expiry' ? 20 : 0,
+                          borderBottomRightRadius: opt === 'expiry' ? 20 : 0,
+                          backgroundColor: sortMode === opt ? '#2D2520' : '#F5EDE0',
+                          borderWidth: sortMode === opt ? 0 : 1,
+                          borderColor: '#ECD9C6',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: sortMode === opt ? 'DMSans_600SemiBold' : 'DMSans_400Regular',
+                            fontSize: 11,
+                            color: sortMode === opt ? '#FFFBF5' : '#8B7355',
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {opt}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+
+              {/* Empty state */}
+              {filteredItems.length === 0 && items.length > 0 && (
+                <View className="items-center justify-center px-6 py-8">
+                  <Text style={{ fontSize: 32 }}>🔍</Text>
+                  <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 14, color: '#8B7355', marginTop: 8 }}>
+                    No items match your filter
+                  </Text>
+                </View>
+              )}
+
+              {items.length === 0 && (
+                <View className="items-center justify-center px-6 py-12">
+                  <Text style={{ fontSize: 48 }}>📦</Text>
+                  <Text style={{ fontFamily: 'PlayfairDisplay_600SemiBold', fontSize: 18, color: '#2D2520', marginTop: 12 }}>
+                    Your inventory is empty
+                  </Text>
+                  <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 14, color: '#8B7355', marginTop: 4, textAlign: 'center' }}>
+                    Add items to track what you have!
+                  </Text>
+                  <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 10 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (Platform.OS === 'web') {
+                          startPhotoAnalysis('library');
+                        } else {
+                          Alert.alert('Scan Items', 'Try taking a photo of your shopping haul, receipt, or fridge.', [
+                            { text: 'Take Photo', onPress: () => startPhotoAnalysis('camera') },
+                            { text: 'Choose from Library', onPress: () => startPhotoAnalysis('library') },
+                            { text: 'Cancel', style: 'cancel' },
+                          ]);
+                        }
+                      }}
+                      style={{ backgroundColor: '#FFF0E8', borderWidth: 1.5, borderColor: '#D4652E', borderRadius: 14, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    >
+                      <Ionicons name="camera-outline" size={16} color="#D4652E" />
+                      <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 14, color: '#D4652E' }}>Scan Photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={openConvoModal}
+                      style={{ backgroundColor: '#2D2520', borderRadius: 14, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    >
+                      <Text style={{ fontSize: 16 }}>🎤</Text>
+                      <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 14, color: '#FFFBF5' }}>Voice Add</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setShowAddModal(true)}
+                      style={{ backgroundColor: '#2D2520', borderRadius: 14, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    >
+                      <Text style={{ fontSize: 16 }}>✏️</Text>
+                      <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 14, color: '#FFFBF5' }}>Manual</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          }
           renderSectionHeader={({ section }) => (
-            <View className="flex-row items-center px-4 pt-4 pb-2">
-              <Ionicons name={section.icon as any} size={18} color="#6b7280" />
-              <Text className="text-sm font-semibold text-gray-600 ml-2">
-                {section.title} ({section.data.length})
+            <View className="px-5 pt-3.5 pb-2">
+              <Text
+                style={{
+                  fontFamily: 'DMSans_600SemiBold',
+                  fontSize: 11,
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  color: '#B09880',
+                }}
+              >
+                {section.title} · {section.data.length} items
               </Text>
             </View>
           )}
           renderItem={({ item }) => {
-            const expiring = isExpiringSoon(item.expiresAt, item.storageLocation);
-            const expired = isExpired(item.expiresAt, item.storageLocation);
-            const categoryLabel = (item as any)._categoryLabel;
+            const expiry = formatExpiry(item.expiresAt, item.storageLocation);
+            const emoji = getItemEmoji(item);
+            const iconBg = getIconBgClass(item);
 
             return (
-              <View>
-                {categoryLabel && sortMode === 'location' && (
-                  <Text className="text-xs font-medium text-gray-400 uppercase tracking-wide mx-5 mt-2 mb-1">
-                    {categoryLabel}
-                  </Text>
-                )}
               <TouchableOpacity
-                className={`mx-4 mb-2 p-3 bg-white rounded-xl flex-row items-center ${expired ? 'border border-red-200' : expiring ? 'border border-yellow-200' : ''}`}
                 onPress={() => setActionItem(item)}
                 activeOpacity={0.7}
+                style={{
+                  marginHorizontal: 20,
+                  marginBottom: 8,
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 16,
+                  padding: 14,
+                  paddingHorizontal: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  shadowColor: '#2D2520',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.08,
+                  shadowRadius: 12,
+                  elevation: 2,
+                  borderWidth: 1,
+                  borderColor: 'rgba(45,37,32,0.05)',
+                }}
               >
-                <View className="flex-1">
-                  <View className="flex-row items-center">
-                    <Text className="text-sm font-medium text-gray-800">{item.name}</Text>
-                    {expired && (
-                      <View className="ml-2 bg-red-100 px-2 py-0.5 rounded">
-                        <Text className="text-[10px] text-red-600 font-medium">EXPIRED</Text>
-                      </View>
-                    )}
-                    {expiring && !expired && (
-                      <View className="ml-2 bg-yellow-100 px-2 py-0.5 rounded">
-                        <Text className="text-[10px] text-yellow-600 font-medium">EXPIRING SOON</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View className="flex-row items-center mt-1 gap-3">
+                <View
+                  className={iconBg}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 22 }}>{emoji}</Text>
+                </View>
+
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      fontFamily: 'DMSans_500Medium',
+                      fontSize: 14.5,
+                      color: '#2D2520',
+                      letterSpacing: -0.1,
+                    }}
+                  >
+                    {item.name}
+                  </Text>
+                  <View className="flex-row items-center mt-0.5" style={{ gap: 8 }}>
                     {item.quantity && (
-                      <Text className="text-xs text-gray-400">
+                      <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 12.5, color: '#8B7355' }}>
                         {item.quantity} {item.unit || ''}
                       </Text>
                     )}
-                    {item.category && (
-                      <Text className="text-xs text-gray-400 capitalize">{item.category}</Text>
+                    {item.quantity && item.createdAt && (
+                      <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#B09880' }} />
                     )}
-                    {item.expiresAt && (
-                      <Text className={`text-xs ${expired ? 'text-red-500' : expiring ? 'text-yellow-500' : 'text-gray-400'}`}>
-                        Exp: {new Date(item.expiresAt).toLocaleDateString()}
-                      </Text>
-                    )}
+                    <Text style={{ fontFamily: 'DMSans_400Regular', fontSize: 11.5, color: '#B09880' }}>
+                      {getTimeSinceAdded(item.createdAt)}
+                    </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  onPress={() => openEditItem(item)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  className="mr-2"
-                >
-                  <Ionicons name="pencil-outline" size={16} color="#9ca3af" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleDelete(item.id, item.name)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#d1d5db" />
-                </TouchableOpacity>
+
+                <View style={{ alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                  {expiry.text ? (
+                    expiry.status === 'warn' ? (
+                      <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 11.5, color: '#D4652E' }}>
+                        ⚠ {expiry.text}
+                      </Text>
+                    ) : expiry.status === 'expired' ? (
+                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                        <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 11.5, color: '#ef4444' }}>
+                          {expiry.text}
+                        </Text>
+                        <View
+                          style={{
+                            backgroundColor: '#fef2f2',
+                            borderWidth: 1,
+                            borderColor: '#fecaca',
+                            borderRadius: 6,
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 10, color: '#ef4444', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                            Expired
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={{ fontFamily: 'DMSans_500Medium', fontSize: 11.5, color: '#8B7355' }}>
+                        {expiry.text}
+                      </Text>
+                    )
+                  ) : null}
+                  <Text style={{ fontSize: 13, color: '#B09880' }}>›</Text>
+                </View>
               </TouchableOpacity>
-              </View>
             );
           }}
-        />
-      )}
-
-      {/* ═══ Photo Scan Modal ═══ */}
-      <Modal visible={showPhotoModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={closePhotoModal}>
-        <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={closePhotoModal}>
-              <Text className="text-gray-500">{photoState === 'added' ? 'Done' : 'Cancel'}</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">Photo Scan</Text>
-            {photoState === 'results' ? (
-              <TouchableOpacity
-                onPress={handleAddPhotoItems}
-                disabled={adding || photoItems.filter(i => i.selected).length === 0}
-              >
-                <Text className={`font-medium ${photoItems.some(i => i.selected) && !adding ? 'text-primary-500' : 'text-gray-300'}`}>
-                  {adding ? 'Adding...' : `Add (${photoItems.filter(i => i.selected).length})`}
+          ListFooterComponent={
+            filteredItems.length > 0 ? (
+              <View className="px-5 pt-3.5 pb-5">
+                <Text
+                  style={{
+                    fontFamily: 'DMSans_600SemiBold',
+                    fontSize: 11,
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                    color: '#B09880',
+                    marginBottom: 10,
+                  }}
+                >
+                  Quick Add
                 </Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ width: 60 }} />
-            )}
-          </View>
-
-          {/* Analyzing state */}
-          {photoState === 'analyzing' && (
-            <View className="flex-1 items-center justify-center">
-              <ActivityIndicator size="large" color="#3b82f6" />
-              <Text className="text-gray-600 mt-4 text-base font-medium">Analyzing photo...</Text>
-              <Text className="text-gray-400 text-sm mt-1">AI is identifying food items</Text>
-            </View>
-          )}
-
-          {/* Error state */}
-          {photoState === 'error' && (
-            <View className="flex-1 items-center justify-center px-6">
-              <Ionicons name="alert-circle-outline" size={56} color="#ef4444" />
-              <Text className="text-gray-700 mt-4 text-center text-base font-medium">Analysis Issue</Text>
-              <Text className="text-gray-500 mt-2 text-center text-sm">{photoError}</Text>
-              <View className="flex-row gap-3 mt-6">
-                <TouchableOpacity
-                  onPress={() => {
-                    closePhotoModal();
-                    setTimeout(() => {
+                <View className="flex-row" style={{ gap: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => {
                       if (Platform.OS === 'web') {
                         startPhotoAnalysis('library');
                       } else {
-                        startPhotoAnalysis('camera');
+                        Alert.alert('Scan Items', 'Try taking a photo of your shopping haul, receipt, or fridge.', [
+                          { text: 'Take Photo', onPress: () => startPhotoAnalysis('camera') },
+                          { text: 'Choose from Library', onPress: () => startPhotoAnalysis('library') },
+                          { text: 'Cancel', style: 'cancel' },
+                        ]);
                       }
-                    }, 300);
-                  }}
-                  className="bg-blue-500 px-5 py-3 rounded-lg flex-row items-center"
-                >
-                  <Ionicons name="camera-outline" size={18} color="white" />
-                  <Text className="text-white font-medium ml-2">Retry Photo</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    closePhotoModal();
-                    setShowAddModal(true);
-                  }}
-                  className="bg-gray-200 px-5 py-3 rounded-lg"
-                >
-                  <Text className="text-gray-700 font-medium">Add Manually</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* Results state */}
-          {photoState === 'results' && (
-            <ScrollView className="flex-1 px-4 pt-4">
-              {/* Summary banner */}
-              <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-                <Text className="text-blue-800 font-medium text-sm">
-                  Found {photoItems.length} item{photoItems.length !== 1 ? 's' : ''} in your photo
-                </Text>
-                <Text className="text-blue-600 text-xs mt-1">
-                  Tap to select/deselect, then press "Add" to save to inventory.
-                </Text>
-              </View>
-
-              {photoItems.map((item, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => togglePhotoItem(index)}
-                  className={`mb-2 p-3 rounded-xl flex-row items-center border ${
-                    item.selected ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white'
-                  }`}
-                >
-                  <Ionicons
-                    name={item.selected ? 'checkbox' : 'square-outline'}
-                    size={22}
-                    color={item.selected ? '#10b981' : '#d1d5db'}
-                  />
-                  <View className="flex-1 ml-3">
-                    <Text className="text-sm font-medium text-gray-800">{item.name}</Text>
-                    <View className="flex-row items-center mt-0.5 gap-2">
-                      <Text className="text-xs text-gray-500">
-                        {item.quantity} {item.unit}
-                      </Text>
-                      <View className="bg-gray-100 px-1.5 py-0.5 rounded">
-                        <Text className="text-[10px] text-gray-500 capitalize">{item.storageLocation}</Text>
-                      </View>
-                      <View className="bg-gray-100 px-1.5 py-0.5 rounded">
-                        <Text className="text-[10px] text-gray-500 capitalize">{item.category}</Text>
-                      </View>
-                      <Text className="text-[10px] text-blue-500">
-                        {Math.round(item.confidence * 100)}% match
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-
-          {/* Success state */}
-          {photoState === 'added' && (
-            <View className="flex-1 items-center justify-center px-6">
-              <View className="bg-primary-100 w-20 h-20 rounded-full items-center justify-center">
-                <Ionicons name="checkmark-circle" size={48} color="#10b981" />
-              </View>
-              <Text className="text-gray-800 mt-4 text-lg font-semibold">Added to Inventory!</Text>
-              <Text className="text-gray-500 mt-2 text-center">
-                {addedCount} item{addedCount !== 1 ? 's' : ''} added successfully.
-              </Text>
-              <TouchableOpacity
-                onPress={closePhotoModal}
-                className="mt-6 bg-primary-500 px-8 py-3 rounded-lg"
-              >
-                <Text className="text-white font-medium">Done</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </Modal>
-
-      {/* ═══ Conversational Input Modal ═══ */}
-      <Modal visible={showConvoModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowConvoModal(false)}>
-        <KeyboardAvoidingView
-          className="flex-1 bg-gray-50"
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          {/* Header */}
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => { setShowConvoModal(false); fetchItems(); }}>
-              <Text className="text-gray-500">Close</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">Quick Add</Text>
-            <View style={{ width: 40 }} />
-          </View>
-
-          {/* Mode toggle */}
-          <View className="flex-row mx-4 mt-3 bg-gray-200 rounded-lg p-0.5">
-            <TouchableOpacity
-              onPress={() => { setConvoMode('text'); if (isListening) stopListening(); }}
-              className={`flex-1 py-2 rounded-md items-center ${convoMode === 'text' ? 'bg-white' : ''}`}
-            >
-              <Text className={`text-sm font-medium ${convoMode === 'text' ? 'text-gray-800' : 'text-gray-500'}`}>
-                Text
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setConvoMode('voice')}
-              className={`flex-1 py-2 rounded-md items-center ${convoMode === 'voice' ? 'bg-white' : ''}`}
-            >
-              <Text className={`text-sm font-medium ${convoMode === 'voice' ? 'text-gray-800' : 'text-gray-500'}`}>
-                Voice {isSupported ? '' : '(web only)'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Messages */}
-          <ScrollView
-            ref={convoScrollRef}
-            className="flex-1 px-4 pt-3"
-            contentContainerStyle={{ paddingBottom: 10 }}
-            onContentSizeChange={() => convoScrollRef.current?.scrollToEnd({ animated: true })}
-          >
-            {convoMessages.map((msg, i) => (
-              <View
-                key={i}
-                className={`mb-2 max-w-[85%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}
-              >
-                <View className={`px-3 py-2 rounded-xl ${
-                  msg.role === 'user' ? 'bg-primary-500' : 'bg-white border border-gray-200'
-                }`}>
-                  <Text className={`text-sm ${msg.role === 'user' ? 'text-white' : 'text-gray-800'}`}>
-                    {msg.text}
-                  </Text>
+                    }}
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#FFF0E8',
+                      borderWidth: 1.5,
+                      borderColor: 'rgba(212,101,46,0.18)',
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 12,
+                      paddingHorizontal: 6,
+                      gap: 5,
+                    }}
+                  >
+                    <Text style={{ fontSize: 20 }}>📸</Text>
+                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 11, color: '#D4652E', textAlign: 'center', letterSpacing: 0.1 }}>
+                      Scan{'\n'}Photo
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={openConvoModal}
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#FFF0E8',
+                      borderWidth: 1.5,
+                      borderColor: 'rgba(212,101,46,0.18)',
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 12,
+                      paddingHorizontal: 6,
+                      gap: 5,
+                    }}
+                  >
+                    <Text style={{ fontSize: 20 }}>🎤</Text>
+                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 11, color: '#D4652E', textAlign: 'center', letterSpacing: 0.1 }}>
+                      Voice{'\n'}Add
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="add-item-button"
+                    onPress={() => setShowAddModal(true)}
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#FFF0E8',
+                      borderWidth: 1.5,
+                      borderColor: 'rgba(212,101,46,0.18)',
+                      borderRadius: 14,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 12,
+                      paddingHorizontal: 6,
+                      gap: 5,
+                    }}
+                  >
+                    <Text style={{ fontSize: 20 }}>✏️</Text>
+                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 11, color: '#D4652E', textAlign: 'center', letterSpacing: 0.1 }}>
+                      Manual{'\n'}Entry
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-            ))}
-            {convoProcessing && (
-              <View className="self-start mb-2">
-                <View className="bg-white border border-gray-200 px-3 py-2 rounded-xl">
-                  <ActivityIndicator size="small" color="#10b981" />
-                </View>
-              </View>
-            )}
-          </ScrollView>
+            ) : null
+          }
+        />
+      )}
 
-          {/* Input area */}
-          <View className="px-4 py-3 bg-white border-t border-gray-200">
-            {convoMode === 'text' ? (
-              <View className="flex-row items-center gap-2">
-                <TextInput
-                  className="flex-1 bg-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-800"
-                  placeholder="e.g. I bought chicken, rice, and onions"
-                  placeholderTextColor="#9ca3af"
-                  value={convoInput}
-                  onChangeText={setConvoInput}
-                  onSubmitEditing={handleConvoSend}
-                  returnKeyType="send"
-                  editable={!convoProcessing}
-                />
-                <TouchableOpacity
-                  onPress={handleConvoSend}
-                  disabled={!convoInput.trim() || convoProcessing}
-                  className={`w-10 h-10 rounded-full items-center justify-center ${
-                    convoInput.trim() && !convoProcessing ? 'bg-primary-500' : 'bg-gray-200'
-                  }`}
-                >
-                  <Ionicons name="send" size={18} color={convoInput.trim() && !convoProcessing ? 'white' : '#9ca3af'} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View className="items-center gap-2">
-                {convoInput ? (
-                  <View className="w-full flex-row items-center gap-2">
-                    <Text className="flex-1 bg-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-800">
-                      {convoInput}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={handleConvoSend}
-                      disabled={convoProcessing}
-                      className="w-10 h-10 rounded-full items-center justify-center bg-primary-500"
-                    >
-                      <Ionicons name="send" size={18} color="white" />
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-                <TouchableOpacity
-                  onPress={handleVoiceToggle}
-                  disabled={!isSupported || convoProcessing}
-                  className={`w-16 h-16 rounded-full items-center justify-center ${
-                    isListening ? 'bg-red-500' : isSupported ? 'bg-blue-500' : 'bg-gray-300'
-                  }`}
-                >
-                  <Ionicons
-                    name={isListening ? 'mic' : 'mic-outline'}
-                    size={28}
-                    color="white"
-                  />
-                </TouchableOpacity>
-                <Text className="text-xs text-gray-400">
-                  {isListening ? 'Listening... tap to stop' : isSupported ? 'Tap to speak' : 'Voice not supported on this device'}
-                </Text>
-              </View>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ═══ Add Item Modal ═══ */}
-      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddModal(false)}>
-        <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => { setShowAddModal(false); resetForm(); }}>
-              <Text className="text-gray-500">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">Add Item</Text>
-            <TouchableOpacity onPress={handleAdd} disabled={!newName.trim() || adding}>
-              <Text className={`font-medium ${newName.trim() ? 'text-primary-500' : 'text-gray-300'}`}>
-                {adding ? 'Adding...' : 'Add'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View className="px-4 pt-4 gap-4">
-            {/* Name */}
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Item Name *</Text>
-              <View className="flex-row items-center gap-2">
-                <TextInput
-                  className="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                  placeholder={isListening ? 'Listening...' : 'e.g. Chicken breast'}
-                  placeholderTextColor={isListening ? '#ef4444' : '#9ca3af'}
-                  value={newName}
-                  onChangeText={setNewName}
-                  autoFocus={!isListening}
-                  editable={!isListening}
-                />
-                {isSupported && (
-                  <TouchableOpacity
-                    onPress={() => isListening ? stopListening() : startListening()}
-                    className={`w-10 h-10 rounded-full items-center justify-center ${
-                      isListening ? 'bg-red-500' : 'bg-gray-100'
-                    }`}
-                  >
-                    <Ionicons
-                      name={isListening ? 'mic' : 'mic-outline'}
-                      size={20}
-                      color={isListening ? 'white' : '#6b7280'}
-                    />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            {/* Storage Location */}
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Storage Location</Text>
-              <View className="flex-row gap-2">
-                {STORAGE_LOCATIONS.map(loc => (
-                  <TouchableOpacity
-                    key={loc}
-                    className={`flex-1 py-2.5 rounded-xl items-center ${
-                      newLocation === loc ? 'bg-primary-500' : 'bg-white border border-gray-200'
-                    }`}
-                    onPress={() => setNewLocation(loc)}
-                  >
-                    <Text className={`text-sm ${newLocation === loc ? 'text-white font-medium' : 'text-gray-600'}`}>
-                      {loc.charAt(0).toUpperCase() + loc.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Category */}
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Category</Text>
-              <View className="flex-row flex-wrap gap-2">
-                {CATEGORIES.map(cat => (
-                  <TouchableOpacity
-                    key={cat}
-                    className={`px-3 py-1.5 rounded-full ${
-                      newCategory === cat ? 'bg-primary-500' : 'bg-white border border-gray-200'
-                    }`}
-                    onPress={() => setNewCategory(cat)}
-                  >
-                    <Text className={`text-xs ${newCategory === cat ? 'text-white' : 'text-gray-600'}`}>
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Quantity & Unit */}
-            <View className="flex-row gap-3">
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-700 mb-1">Quantity</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                  placeholder="e.g. 2"
-                  placeholderTextColor="#9ca3af"
-                  value={newQuantity}
-                  onChangeText={(text) => {
-                    setNewQuantity(text);
-                    const error = validateQuantity(text);
-                    setNewQuantityError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {newQuantityError ? (
-                  <Text className="text-xs text-red-500 mt-1">{newQuantityError}</Text>
-                ) : null}
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                  placeholder="e.g. lbs"
-                  placeholderTextColor="#9ca3af"
-                  value={newUnit}
-                  onChangeText={setNewUnit}
-                />
-              </View>
-            </View>
-
-            {/* Expiry Date */}
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Expiry Date (optional)</Text>
-              <TextInput
-                className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
-                value={newExpiry}
-                onChangeText={setNewExpiry}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-      {/* ═══ Edit Item Modal ═══ */}
-      <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowEditModal(false)}>
-        <View className="flex-1 bg-gray-50">
-          <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-            <TouchableOpacity onPress={() => setShowEditModal(false)}>
-              <Text className="text-gray-500">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-800">Edit Item</Text>
-            <TouchableOpacity onPress={handleSaveEdit} disabled={!editName.trim() || adding}>
-              <Text className={`font-medium ${editName.trim() && !adding ? 'text-primary-500' : 'text-gray-300'}`}>
-                {adding ? 'Saving...' : 'Save'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView className="px-4 pt-4" contentContainerStyle={{ gap: 16 }}>
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Item Name *</Text>
-              <TextInput
-                className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                value={editName}
-                onChangeText={setEditName}
-                autoFocus
-              />
-            </View>
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Storage Location</Text>
-              <View className="flex-row gap-2">
-                {STORAGE_LOCATIONS.map(loc => (
-                  <TouchableOpacity
-                    key={loc}
-                    className={`flex-1 py-2.5 rounded-xl items-center ${
-                      editLocation === loc ? 'bg-primary-500' : 'bg-white border border-gray-200'
-                    }`}
-                    onPress={() => setEditLocation(loc)}
-                  >
-                    <Text className={`text-sm ${editLocation === loc ? 'text-white font-medium' : 'text-gray-600'}`}>
-                      {loc.charAt(0).toUpperCase() + loc.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Category</Text>
-              <View className="flex-row flex-wrap gap-2">
-                {CATEGORIES.map(cat => (
-                  <TouchableOpacity
-                    key={cat}
-                    className={`px-3 py-1.5 rounded-full ${
-                      editCategory === cat ? 'bg-primary-500' : 'bg-white border border-gray-200'
-                    }`}
-                    onPress={() => setEditCategory(cat)}
-                  >
-                    <Text className={`text-xs ${editCategory === cat ? 'text-white' : 'text-gray-600'}`}>
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-            <View className="flex-row gap-3">
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-700 mb-1">Quantity</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                  placeholder="e.g. 2"
-                  placeholderTextColor="#9ca3af"
-                  value={editQuantity}
-                  onChangeText={(text) => {
-                    setEditQuantity(text);
-                    const error = validateQuantity(text);
-                    setEditQuantityError(error);
-                  }}
-                  keyboardType="numeric"
-                />
-                {editQuantityError ? (
-                  <Text className="text-xs text-red-500 mt-1">{editQuantityError}</Text>
-                ) : null}
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>
-                <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                  placeholder="e.g. lbs"
-                  placeholderTextColor="#9ca3af"
-                  value={editUnit}
-                  onChangeText={setEditUnit}
-                />
-              </View>
-            </View>
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Expiry Date</Text>
-              <TextInput
-                className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800"
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor="#9ca3af"
-                value={editExpiry}
-                onChangeText={setEditExpiry}
-              />
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* ═══ Delete Confirmation Modal (web) ═══ */}
-      <Modal
-        visible={!!deleteConfirm}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDeleteConfirm(null)}
+      {/* ── Bottom Action Bar ── */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          flexDirection: 'row',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 12,
+          paddingVertical: 14,
+          paddingHorizontal: 20,
+          paddingBottom: 28,
+          backgroundColor: '#FFFBF5',
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(139,115,85,0.1)',
+          zIndex: 20,
+        }}
       >
         <TouchableOpacity
-          className="flex-1 bg-black/40 justify-center items-center"
-          activeOpacity={1}
-          onPress={() => setDeleteConfirm(null)}
+          onPress={() => {
+            if (Platform.OS === 'web') {
+              startPhotoAnalysis('library');
+            } else {
+              Alert.alert('Scan Items', 'Try taking a photo of your shopping haul, receipt, or fridge.', [
+                { text: 'Take Photo', onPress: () => startPhotoAnalysis('camera') },
+                { text: 'Choose from Library', onPress: () => startPhotoAnalysis('library') },
+                { text: 'Cancel', style: 'cancel' },
+              ]);
+            }
+          }}
+          style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#FFF0E8',
+            borderWidth: 1.5,
+            borderColor: '#D4652E',
+            borderRadius: 16,
+            paddingVertical: 14,
+            gap: 8,
+          }}
         >
-          <View className="bg-white rounded-2xl px-6 py-5 mx-8 w-72">
-            <Text className="text-base font-semibold text-gray-800 text-center">Delete Item</Text>
-            <Text className="text-sm text-gray-500 text-center mt-2">
-              Remove "{deleteConfirm?.name}" from inventory?
-            </Text>
-            <View className="flex-row justify-center gap-3 mt-4">
-              <TouchableOpacity
-                className="flex-1 py-2.5 rounded-lg bg-gray-100"
-                onPress={() => setDeleteConfirm(null)}
-              >
-                <Text className="text-sm text-gray-600 text-center font-medium">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="flex-1 py-2.5 rounded-lg bg-red-500"
-                onPress={() => deleteConfirm && confirmDelete(deleteConfirm.id)}
-              >
-                <Text className="text-sm text-white text-center font-medium">Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <Ionicons name="camera-outline" size={20} color="#D4652E" />
+          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 14, color: '#D4652E' }}>Scan Photo</Text>
         </TouchableOpacity>
-      </Modal>
 
-      {/* ═══ Item Action Sheet ═══ */}
-      <Modal
-        visible={!!actionItem}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setActionItem(null)}
-      >
         <TouchableOpacity
-          className="flex-1 bg-black/40 justify-end"
-          activeOpacity={1}
-          onPress={() => setActionItem(null)}
+          testID="add-item-button"
+          onPress={() => setShowAddModal(true)}
+          style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#2D2520',
+            borderRadius: 16,
+            paddingVertical: 14,
+            gap: 8,
+          }}
         >
-          <View className="bg-white rounded-t-2xl px-4 pt-4 pb-8">
-            <Text className="text-base font-semibold text-gray-800 text-center mb-4">
-              {actionItem?.name}
-            </Text>
-            <TouchableOpacity
-              className="flex-row items-center py-3 border-b border-gray-100"
-              onPress={() => { if (actionItem) openEditItem(actionItem); }}
-            >
-              <Ionicons name="pencil-outline" size={20} color="#6b7280" />
-              <Text className="text-sm text-gray-700 ml-3">Edit Item</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              className="flex-row items-center py-3 border-b border-gray-100"
-              onPress={() => {
-                if (actionItem) {
-                  const item = actionItem;
-                  setActionItem(null);
-                  handleDelete(item.id, item.name);
-                }
-              }}
-            >
-              <Ionicons name="trash-outline" size={20} color="#ef4444" />
-              <Text className="text-sm text-red-500 ml-3">Delete Item</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              className="py-3 mt-1"
-              onPress={() => setActionItem(null)}
-            >
-              <Text className="text-sm text-gray-400 text-center">Cancel</Text>
-            </TouchableOpacity>
-          </View>
+          <Ionicons name="add" size={20} color="#FFFBF5" />
+          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 14, color: '#FFFBF5' }}>Add Item</Text>
         </TouchableOpacity>
-      </Modal>
+      </View>
+
+      {/* ═══ Extracted Modals ═══ */}
+      <PhotoScanModal
+        visible={showPhotoModal}
+        onClose={closePhotoModal}
+        photoState={photoState}
+        photoItems={photoItems}
+        photoError={photoError}
+        addedCount={addedCount}
+        adding={adding}
+        onToggleItem={togglePhotoItem}
+        onAddPhotoItems={handleAddPhotoItems}
+        onRetryCamera={() => startPhotoAnalysis('camera')}
+        onRetryLibrary={() => startPhotoAnalysis('library')}
+        onAddManually={() => setShowAddModal(true)}
+      />
+
+      <ConversationalAddModal
+        visible={showConvoModal}
+        onClose={() => { setShowConvoModal(false); fetchItems(); }}
+        convoMode={convoMode}
+        setConvoMode={setConvoMode}
+        convoInput={convoInput}
+        setConvoInput={setConvoInput}
+        convoMessages={convoMessages}
+        convoProcessing={convoProcessing}
+        convoScrollRef={convoScrollRef}
+        onSend={handleConvoSend}
+        onVoiceToggle={handleVoiceToggle}
+        isListening={isListening}
+        isSupported={isSupported}
+        onStopListening={stopListening}
+      />
+
+      <ItemFormModal
+        showAddModal={showAddModal}
+        onCloseAdd={() => { setShowAddModal(false); resetForm(); }}
+        newName={newName}
+        setNewName={setNewName}
+        newLocation={newLocation}
+        setNewLocation={setNewLocation}
+        newCategory={newCategory}
+        setNewCategory={setNewCategory}
+        newQuantity={newQuantity}
+        setNewQuantity={setNewQuantity}
+        newQuantityError={newQuantityError}
+        setNewQuantityError={setNewQuantityError}
+        newUnit={newUnit}
+        setNewUnit={setNewUnit}
+        newExpiry={newExpiry}
+        setNewExpiry={setNewExpiry}
+        adding={adding}
+        onAdd={handleAdd}
+        isListening={isListening}
+        isSupported={isSupported}
+        onStartListening={startListening}
+        onStopListening={stopListening}
+        showEditModal={showEditModal}
+        onCloseEdit={() => setShowEditModal(false)}
+        editName={editName}
+        setEditName={setEditName}
+        editLocation={editLocation}
+        setEditLocation={setEditLocation}
+        editCategory={editCategory}
+        setEditCategory={setEditCategory}
+        editQuantity={editQuantity}
+        setEditQuantity={setEditQuantity}
+        editQuantityError={editQuantityError}
+        setEditQuantityError={setEditQuantityError}
+        editUnit={editUnit}
+        setEditUnit={setEditUnit}
+        editExpiry={editExpiry}
+        setEditExpiry={setEditExpiry}
+        onSaveEdit={handleSaveEdit}
+        deleteConfirm={deleteConfirm}
+        onCancelDelete={() => setDeleteConfirm(null)}
+        onConfirmDelete={confirmDelete}
+        actionItem={actionItem}
+        onDismissAction={() => setActionItem(null)}
+        onEditItem={openEditItem}
+        onDeleteItem={handleDelete}
+      />
     </View>
   );
 }

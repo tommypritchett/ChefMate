@@ -77,51 +77,69 @@ export default function ChatInput({ onSend, disabled }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={100}
     >
-      <View className="px-5 py-4 bg-white border-t border-gray-200">
-        <View className="flex-row items-center gap-3">
-          <TextInput
-            ref={inputRef}
-            className="flex-1 bg-gray-100 rounded-3xl px-4 py-3 text-base max-h-[120px] text-gray-800 border-2 border-gray-200"
-            placeholder={isListening ? 'Listening...' : 'Ask Kitcho anything...'}
-            placeholderTextColor={isListening ? '#ef4444' : '#9ca3af'}
-            value={text}
-            onChangeText={setText}
-            onKeyPress={handleKeyPress}
-            multiline
-            editable={!disabled && !isListening}
-          />
-
-          {/* Mic or Send button */}
-          {isSupported && !hasText && !disabled ? (
+      <View
+        className="px-4 pt-[10px] pb-3 bg-cream"
+        style={{ borderTopWidth: 1, borderTopColor: 'rgba(45,37,32,0.07)' }}
+      >
+        <View className="flex-row items-end gap-2">
+          {/* Mic button — left side */}
+          {isSupported ? (
             <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
               <TouchableOpacity
                 onPress={handleMicPress}
-                className={`w-12 h-12 rounded-full items-center justify-center ${
-                  isListening ? 'bg-red-500' : 'bg-primary-500'
+                disabled={disabled}
+                className={`w-11 h-11 rounded-full items-center justify-center ${
+                  isListening ? 'bg-red-500' : 'bg-warm-dark'
                 }`}
+                style={{
+                  shadowColor: '#2D2520',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 8,
+                  elevation: 3,
+                }}
               >
                 <Ionicons
                   name={isListening ? 'mic' : 'mic-outline'}
-                  size={20}
-                  color="white"
+                  size={18}
+                  color="#FFFBF5"
                 />
               </TouchableOpacity>
             </Animated.View>
-          ) : (
+          ) : null}
+
+          {/* Input field with send button inside */}
+          <View
+            className="flex-1 flex-row items-center bg-cream-dark rounded-[22px] px-[14px] py-[10px] gap-2"
+            style={{
+              borderWidth: 1.5,
+              borderColor: 'rgba(45,37,32,0.08)',
+            }}
+          >
+            <TextInput
+              ref={inputRef}
+              className="flex-1 text-sm text-warm-dark font-sans max-h-[120px]"
+              style={{ lineHeight: 20 }}
+              placeholder={isListening ? 'Listening...' : 'Ask Kitcho anything...'}
+              placeholderTextColor={isListening ? '#ef4444' : '#B8A68E'}
+              value={text}
+              onChangeText={setText}
+              onKeyPress={handleKeyPress}
+              multiline
+              editable={!disabled && !isListening}
+            />
             <TouchableOpacity
               onPress={handleSend}
               disabled={!hasText || disabled}
-              className={`w-12 h-12 rounded-full items-center justify-center ${
-                hasText && !disabled ? 'bg-primary-500' : 'bg-gray-300'
-              }`}
+              className="w-[30px] h-[30px] bg-warm-dark rounded-full items-center justify-center"
             >
               <Ionicons
                 name="send"
-                size={18}
-                color={hasText && !disabled ? 'white' : '#9ca3af'}
+                size={14}
+                color={hasText && !disabled ? '#FFFBF5' : '#B8A68E'}
               />
             </TouchableOpacity>
-          )}
+          </View>
         </View>
       </View>
     </KeyboardAvoidingView>

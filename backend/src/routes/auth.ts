@@ -192,14 +192,15 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
 // PATCH /api/auth/me
 router.patch('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { firstName, lastName, preferences, notificationSettings } = req.body;
+    const { firstName, lastName, preferences, notificationSettings, onboardingCompleted } = req.body;
 
     const updateData: any = {};
-    
+
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
     if (preferences !== undefined) updateData.preferences = JSON.stringify(preferences);
     if (notificationSettings !== undefined) updateData.notificationSettings = JSON.stringify(notificationSettings);
+    if (onboardingCompleted !== undefined) updateData.onboardingCompleted = Boolean(onboardingCompleted);
 
     const user = await prisma.user.update({
       where: { id: req.user!.userId },

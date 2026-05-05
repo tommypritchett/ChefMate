@@ -7,27 +7,58 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/store/authStore';
 import { authApi } from '../src/services/api';
+import { CARD_SHADOW } from '../src/constants/styles';
+import { ScreenHeader } from '../src/components/ui/ScreenHeader';
+
+const DEFAULT_TIMES: Record<string, string> = {
+  breakfast: '8:00 AM',
+  lunch: '12:30 PM',
+  dinner: '7:00 PM',
+};
+
+const TIME_OPTIONS = [
+  '6:00 AM', '6:30 AM', '7:00 AM', '7:30 AM', '8:00 AM', '8:30 AM',
+  '9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
+  '12:00 PM', '12:30 PM', '1:00 PM', '1:30 PM', '2:00 PM', '2:30 PM',
+  '3:00 PM', '3:30 PM', '4:00 PM', '4:30 PM', '5:00 PM', '5:30 PM',
+  '6:00 PM', '6:30 PM', '7:00 PM', '7:30 PM', '8:00 PM', '8:30 PM',
+  '9:00 PM', '9:30 PM',
+];
 
 export default function PreferencesScreen() {
   const { user, setUser } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [macroTracking, setMacroTracking] = useState(false);
   const [householdSize, setHouseholdSize] = useState(1);
-  const [mealReminders, setMealReminders] = useState({ breakfast: false, lunch: false, dinner: false });
+  const [mealReminders, setMealReminders] = useState<Record<string, boolean>>({
+    breakfast: false, lunch: false, dinner: false,
+  });
+  const [reminderTimes, setReminderTimes] = useState<Record<string, string>>({
+    breakfast: DEFAULT_TIMES.breakfast,
+    lunch: DEFAULT_TIMES.lunch,
+    dinner: DEFAULT_TIMES.dinner,
+  });
+
+  // Time picker modal
+  const [timePickerMeal, setTimePickerMeal] = useState<string | null>(null);
 
   useEffect(() => {
     try {
       const prefs = user?.preferences ? JSON.parse(user.preferences) : {};
-      setMacroTracking(prefs.macroTracking ?? false);
       setHouseholdSize(prefs.householdSize ?? 1);
       setMealReminders(prefs.mealReminders ?? { breakfast: false, lunch: false, dinner: false });
+      setReminderTimes(prefs.reminderTimes ?? {
+        breakfast: DEFAULT_TIMES.breakfast,
+        lunch: DEFAULT_TIMES.lunch,
+        dinner: DEFAULT_TIMES.dinner,
+      });
     } catch {}
     setLoading(false);
   }, []);
@@ -38,14 +69,14 @@ export default function PreferencesScreen() {
       const existing = user?.preferences ? JSON.parse(user.preferences) : {};
       const updated = {
         ...existing,
-        macroTracking,
         householdSize,
         mealReminders,
+        reminderTimes,
       };
       const res = await authApi.updateProfile({ preferences: updated });
       setUser(res.user);
       Alert.alert('Saved', 'Preferences updated.');
-      router.back();
+      router.push('/(tabs)/profile');
     } catch (err) {
       console.error('Failed to save preferences:', err);
       Alert.alert('Error', 'Failed to save preferences.');
@@ -56,105 +87,178 @@ export default function PreferencesScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-gray-50">
-        <ActivityIndicator size="large" color="#10b981" />
+      <View className="flex-1 items-center justify-center bg-cream">
+        <ActivityIndicator size="large" color="#D4652E" />
       </View>
     );
   }
 
+  const MEAL_DESCS: Record<string, string> = {
+    breakfast: 'Morning meal reminder',
+    lunch: 'Midday meal reminder',
+    dinner: 'Evening meal reminder',
+  };
+
   return (
-    <View className="flex-1 bg-gray-50">
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={22} color="#374151" />
-        </TouchableOpacity>
-        <Text className="text-lg font-semibold text-gray-800">Preferences</Text>
-        <View style={{ width: 22 }} />
-      </View>
+    <View className="flex-1 bg-cream">
+      <ScreenHeader title="Preferences" onBack={() => router.push('/(tabs)/profile')} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* Macro Tracking */}
-        <View className="mx-4 mt-4 bg-white rounded-xl p-4">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-1 mr-3">
-              <Text className="text-sm font-semibold text-gray-800">Macro Tracking</Text>
-              <Text className="text-xs text-gray-400 mt-0.5">
-                Track daily calories and macros. Your AI assistant will suggest meals to help meet your goals.
-              </Text>
-            </View>
-            <Switch
-              value={macroTracking}
-              onValueChange={setMacroTracking}
-              trackColor={{ false: '#d1d5db', true: '#6ee7b7' }}
-              thumbColor={macroTracking ? '#10b981' : '#f4f3f4'}
-            />
-          </View>
-        </View>
-
-        {/* Household Size */}
-        <View className="mx-4 mt-3 bg-white rounded-xl p-4">
-          <Text className="text-sm font-semibold text-gray-800 mb-1">Household Size</Text>
-          <Text className="text-xs text-gray-400 mb-3">How many people do you typically cook for?</Text>
-          <View className="flex-row gap-2">
+        {/* ─── Household Section ─────────────────────────────────── */}
+        <Text className="text-[11px] font-sans-semibold text-brown uppercase mx-4 mt-5 mb-2" style={{ letterSpacing: 1 }}>
+          Household
+        </Text>
+        <View className="mx-4 bg-white rounded-2xl p-4" style={CARD_SHADOW}>
+          <Text className="text-base font-sans-medium text-warm-dark mb-1">Household Size</Text>
+          <Text className="text-xs font-sans text-brown mb-3">Used for recipe scaling & shopping quantities</Text>
+          <View className="flex-row" style={{ gap: 8 }}>
             {[1, 2, 3, 4, 5, 6].map(n => (
               <TouchableOpacity
                 key={n}
-                className={`flex-1 py-2.5 rounded-lg border items-center ${
-                  householdSize === n ? 'bg-primary-50 border-primary-400' : 'bg-white border-gray-200'
-                }`}
+                className="items-center justify-center rounded-xl"
+                style={[
+                  { width: 42, height: 42 },
+                  CARD_SHADOW,
+                  householdSize === n
+                    ? { backgroundColor: '#FFF0E8', borderWidth: 1.5, borderColor: '#D4652E' }
+                    : { backgroundColor: '#fff', borderWidth: 1.5, borderColor: 'transparent' },
+                ]}
                 onPress={() => setHouseholdSize(n)}
               >
-                <Text className={`text-sm font-medium ${householdSize === n ? 'text-primary-700' : 'text-gray-600'}`}>
-                  {n}
+                <Text
+                  className="text-base font-sans-semibold"
+                  style={{ color: householdSize === n ? '#D4652E' : '#8B7355' }}
+                >
+                  {n === 6 ? '6+' : n}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Meal Reminders */}
-        <View className="mx-4 mt-3 bg-white rounded-xl p-4">
-          <Text className="text-sm font-semibold text-gray-800 mb-1">Meal Reminders</Text>
-          <Text className="text-xs text-gray-400 mb-3">Get reminded to log your meals</Text>
-
-          {(['breakfast', 'lunch', 'dinner'] as const).map(meal => (
-            <View key={meal} className="flex-row items-center justify-between py-2 border-t border-gray-100">
-              <Text className="text-sm text-gray-700 capitalize">{meal}</Text>
+        {/* ─── Meal Reminders Section ────────────────────────────── */}
+        <Text className="text-[11px] font-sans-semibold text-brown uppercase mx-4 mt-5 mb-2" style={{ letterSpacing: 1 }}>
+          Meal Reminders
+        </Text>
+        <View className="mx-4 bg-white rounded-2xl overflow-hidden" style={CARD_SHADOW}>
+          {(['breakfast', 'lunch', 'dinner'] as const).map((meal, idx) => (
+            <View
+              key={meal}
+              className={`flex-row items-center px-4 py-3.5 ${idx < 2 ? 'border-b border-cream-deeper' : ''}`}
+            >
+              <View className="flex-1">
+                <View className="flex-row items-center" style={{ gap: 8 }}>
+                  <Text className="text-base font-sans-medium text-warm-dark capitalize">{meal}</Text>
+                  <TouchableOpacity
+                    onPress={() => mealReminders[meal] && setTimePickerMeal(meal)}
+                    className="px-2 py-0.5 rounded-lg"
+                    style={{ backgroundColor: '#FFF0E8' }}
+                    disabled={!mealReminders[meal]}
+                  >
+                    <Text
+                      className="text-xs font-sans-semibold"
+                      style={{ color: mealReminders[meal] ? '#D4652E' : '#B8A68E' }}
+                    >
+                      {reminderTimes[meal]}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text className="text-xs font-sans text-brown mt-0.5">{MEAL_DESCS[meal]}</Text>
+              </View>
               <Switch
                 value={mealReminders[meal]}
                 onValueChange={(val) => setMealReminders(prev => ({ ...prev, [meal]: val }))}
-                trackColor={{ false: '#d1d5db', true: '#6ee7b7' }}
-                thumbColor={mealReminders[meal] ? '#10b981' : '#f4f3f4'}
+                trackColor={{ false: '#D9CFC7', true: '#D4652E' }}
+                thumbColor="#fff"
               />
             </View>
           ))}
         </View>
 
-        {/* Dietary Preferences Link */}
+        {/* ─── Dietary Section ───────────────────────────────────── */}
+        <Text className="text-[11px] font-sans-semibold text-brown uppercase mx-4 mt-5 mb-2" style={{ letterSpacing: 1 }}>
+          Dietary
+        </Text>
         <TouchableOpacity
-          className="mx-4 mt-3 bg-white rounded-xl p-4 flex-row items-center"
+          className="mx-4 bg-white rounded-2xl flex-row items-center px-4 py-3.5"
+          style={CARD_SHADOW}
           onPress={() => router.push('/health-goals')}
         >
-          <Ionicons name="nutrition-outline" size={20} color="#10b981" />
-          <Text className="text-sm text-gray-800 ml-3 flex-1">Dietary Preferences</Text>
-          <Text className="text-xs text-gray-400 mr-1">Set in My Nutrition</Text>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          <View
+            className="items-center justify-center rounded-xl mr-3"
+            style={{ width: 36, height: 36, backgroundColor: '#FFF0E8' }}
+          >
+            <Ionicons name="nutrition-outline" size={18} color="#D4652E" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-base font-sans-medium text-warm-dark">Dietary Preferences & Allergies</Text>
+            <Text className="text-xs font-sans text-brown mt-0.5">Vegetarian, gluten-free, nut-free...</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#B8A68E" />
         </TouchableOpacity>
       </ScrollView>
 
       {/* Save Button */}
-      <View className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
+      <View className="p-4 bg-cream">
         <TouchableOpacity
-          className="bg-primary-500 py-3.5 rounded-xl items-center"
+          className="bg-warm-dark py-4 rounded-2xl items-center"
           onPress={handleSave}
           disabled={saving}
         >
-          <Text className="text-white font-semibold">
+          <Text className="text-cream font-sans-semibold text-base">
             {saving ? 'Saving...' : 'Save Preferences'}
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* ─── Time Picker Modal ──────────────────────────────────── */}
+      <Modal visible={!!timePickerMeal} transparent animationType="fade" onRequestClose={() => setTimePickerMeal(null)}>
+        <TouchableOpacity
+          className="flex-1 bg-black/40 items-center justify-end"
+          activeOpacity={1}
+          onPress={() => setTimePickerMeal(null)}
+        >
+          <View
+            className="bg-white rounded-t-2xl w-full"
+            style={{ maxHeight: 400 }}
+            onStartShouldSetResponder={() => true}
+          >
+            <View className="flex-row items-center justify-between px-5 py-4 border-b border-cream-deeper">
+              <Text className="text-base font-sans-semibold text-warm-dark capitalize">
+                {timePickerMeal} Reminder Time
+              </Text>
+              <TouchableOpacity onPress={() => setTimePickerMeal(null)}>
+                <Ionicons name="close" size={22} color="#8B7355" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView className="px-4 py-2" contentContainerStyle={{ paddingBottom: 40 }}>
+              {TIME_OPTIONS.map(time => {
+                const isSelected = timePickerMeal ? reminderTimes[timePickerMeal] === time : false;
+                return (
+                  <TouchableOpacity
+                    key={time}
+                    className="py-3 flex-row items-center justify-between border-b border-cream-deeper"
+                    onPress={() => {
+                      if (timePickerMeal) {
+                        setReminderTimes(prev => ({ ...prev, [timePickerMeal]: time }));
+                        setTimePickerMeal(null);
+                      }
+                    }}
+                  >
+                    <Text
+                      className="text-sm font-sans"
+                      style={{ color: isSelected ? '#D4652E' : '#2D2520', fontWeight: isSelected ? '600' : '400' }}
+                    >
+                      {time}
+                    </Text>
+                    {isSelected && <Ionicons name="checkmark-circle" size={20} color="#D4652E" />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }

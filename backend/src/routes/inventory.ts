@@ -66,7 +66,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     let computedExpiry: Date | null = expiresAt ? setUTCMidnight(new Date(expiresAt)) : null;
     if (!computedExpiry) {
       const purchaseDate = purchasedAt ? new Date(purchasedAt) : undefined;
-      computedExpiry = calculateExpiryDate(storageLocation || 'pantry', effectiveCategory, purchaseDate);
+      computedExpiry = calculateExpiryDate(storageLocation || 'pantry', effectiveCategory, purchaseDate, name);
     }
 
     const item = await prisma.inventoryItem.create({

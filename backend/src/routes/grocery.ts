@@ -27,6 +27,8 @@ router.post('/compare', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     let priceResult = getPricesForList(items);
+    console.log(`[compare] Items: ${items.join(', ')}`);
+    console.log(`[compare] Mock totals:`, priceResult.storeTotals);
     const maxMiles = maxDistance || 20;
 
     // If user provided location, add distance data and smart scoring
@@ -43,6 +45,13 @@ router.post('/compare', requireAuth, async (req: AuthenticatedRequest, res) => {
           const bannerName = enrichedItems[0]?.stores.find(
             (s) => !['Walmart', 'Target', 'Aldi', 'Amazon Fresh'].includes(s.store),
           )?.store || 'Kroger';
+
+          console.log(`[compare] Kroger banner resolved: "${bannerName}"`);
+          // Log per-item Kroger prices after enrichment
+          for (const item of enrichedItems) {
+            const krogerStore = item.stores.find((s) => s.store === bannerName);
+            console.log(`[compare] ${item.item}: ${bannerName} $${krogerStore?.price ?? 'N/A'} (${krogerStore?.unit || '?'})`);
+          }
 
           // Recalculate store total for the Kroger-family banner
           const krogerTotal = enrichedItems.reduce((sum, item) => {
